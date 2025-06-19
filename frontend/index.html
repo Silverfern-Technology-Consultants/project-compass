@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Compass - Coming Soon</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            padding: 3rem;
+            border-radius: 10px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            max-width: 600px;
+            text-align: center;
+        }
+        
+        .logo {
+            width: 60px;
+            height: 60px;
+            margin: 0 auto 1rem;
+            display: block;
+        }
+        
+        .company-tagline {
+            color: #888;
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+            font-weight: 300;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 1rem;
+            font-size: 2.5rem;
+            font-weight: 600;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 2rem;
+            font-size: 1.2rem;
+            line-height: 1.4;
+        }
+        
+        .features {
+            margin: 2rem 0;
+            text-align: left;
+        }
+        
+        .feature {
+            padding: 0.5rem 0;
+            color: #555;
+            display: flex;
+            align-items: center;
+        }
+        
+        .feature::before {
+            content: "✅";
+            margin-right: 0.5rem;
+            flex-shrink: 0;
+        }
+        
+        .coming-soon {
+            margin: 2rem 0 1rem;
+        }
+        
+        .coming-soon strong {
+            color: #667eea;
+            font-size: 1.1rem;
+        }
+        
+        .cta-text {
+            color: #666;
+            margin-bottom: 2rem;
+        }
+        
+        .email-form {
+            margin-top: 2rem;
+        }
+        
+        input[type="email"] {
+            padding: 12px 20px;
+            width: 300px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            margin-right: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="email"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            font-weight: 500;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .success-message {
+            color: #28a745;
+            margin-top: 1rem;
+            display: none;
+            font-weight: 500;
+        }
+        
+        .footer-branding {
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 1px solid #eee;
+            color: #999;
+            font-size: 0.85rem;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                padding: 2rem;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            input[type="email"] {
+                width: 100%;
+                margin-bottom: 10px;
+                margin-right: 0;
+            }
+            
+            button {
+                width: 100%;
+            }
+            
+            .features {
+                text-align: center;
+            }
+            
+            .feature {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Use the symbol logo here - save it as 'silverfern-symbol.png' in your frontend folder -->
+        <img src="silverfern-symbol.png" alt="Silverfern Logo" class="logo">
+        <p class="company-tagline">A Silverfern Technology Consultants Product</p>
+        
+        <h1>Project Compass</h1>
+        <p class="subtitle">Automated cloud infrastructure governance assessments for better security, compliance, and cost optimization</p>
+        
+        <div class="features">
+            <div class="feature">Automated naming convention analysis</div>
+            <div class="feature">Resource tagging compliance assessment</div>
+            <div class="feature">Security and access control review</div>
+            <div class="feature">Cost optimization recommendations</div>
+            <div class="feature">Executive-ready compliance reports</div>
+        </div>
+        
+        <p class="coming-soon"><strong>Coming Soon</strong></p>
+        <p class="cta-text">Get early access and be the first to know when we launch</p>
+        
+        <form class="email-form" onsubmit="handleSubmit(event)">
+            <input type="email" id="email" placeholder="Enter your email" required>
+            <button type="submit">Get Early Access</button>
+        </form>
+        
+        <div id="success" class="success-message">
+            Thanks! We'll be in touch soon.
+        </div>
+        
+        <div class="footer-branding">
+            © 2025 Silverfern Technology Consultants
+        </div>
+    </div>
+
+    <script>
+        function handleSubmit(event) {
+            event.preventDefault();
+            const email = document.getElementById('email').value;
+            
+            // For now, just show success message
+            // Later we'll integrate with email service
+            document.getElementById('success').style.display = 'block';
+            document.getElementById('email').value = '';
+            
+            // Log to console for now
+            console.log('Email signup:', email);
+            
+            // Optional: You could also store in localStorage for now
+            const signups = JSON.parse(localStorage.getItem('emailSignups') || '[]');
+            signups.push({
+                email: email,
+                timestamp: new Date().toISOString()
+            });
+            localStorage.setItem('emailSignups', JSON.stringify(signups));
+        }
+    </script>
+</body>
+</html>
