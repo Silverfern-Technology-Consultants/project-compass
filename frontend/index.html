@@ -186,10 +186,15 @@
         <p class="coming-soon"><strong>Coming Soon</strong></p>
         <p class="cta-text">Get early access and be the first to know when we launch</p>
         
-        <form class="email-form" onsubmit="handleSubmit(event)">
-            <input type="email" id="email" placeholder="Enter your email" required>
-            <button type="submit">Get Early Access</button>
+        <form class="email-form" name="early-access" method="POST" data-netlify="true">
+        <input type="hidden" name="form-name" value="early-access">
+        <input type="email" name="email" id="email" placeholder="Enter your email" required>
+        <button type="submit">Get Early Access</button>
         </form>
+
+        <div id="success" class="success-message">
+    T   hanks! We'll be in touch soon.
+        </div>
         
         <div id="success" class="success-message">
             Thanks! We'll be in touch soon.
@@ -199,28 +204,5 @@
             © 2025 Silverfern Technology Consultants
         </div>
     </div>
-
-    <script>
-        function handleSubmit(event) {
-            event.preventDefault();
-            const email = document.getElementById('email').value;
-            
-            // For now, just show success message
-            // Later we'll integrate with email service
-            document.getElementById('success').style.display = 'block';
-            document.getElementById('email').value = '';
-            
-            // Log to console for now
-            console.log('Email signup:', email);
-            
-            // Optional: You could also store in localStorage for now
-            const signups = JSON.parse(localStorage.getItem('emailSignups') || '[]');
-            signups.push({
-                email: email,
-                timestamp: new Date().toISOString()
-            });
-            localStorage.setItem('emailSignups', JSON.stringify(signups));
-        }
-    </script>
 </body>
 </html>
