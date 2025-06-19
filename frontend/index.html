@@ -186,14 +186,15 @@
         <p class="coming-soon"><strong>Coming Soon</strong></p>
         <p class="cta-text">Get early access and be the first to know when we launch</p>
         
-        <form class="email-form" name="early-access" method="POST" data-netlify="true">
+        <form class="email-form" name="early-access" method="POST" data-netlify="true" action="/frontend/thank-you.html">
         <input type="hidden" name="form-name" value="early-access">
+        <input type="hidden" name="bot-field">
         <input type="email" name="email" id="email" placeholder="Enter your email" required>
         <button type="submit">Get Early Access</button>
         </form>
 
         <div id="success" class="success-message">
-    T   hanks! We'll be in touch soon.
+        Thanks! We'll be in touch soon.
         </div>
         
         <div id="success" class="success-message">
