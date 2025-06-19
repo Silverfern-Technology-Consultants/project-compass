@@ -1,0 +1,43 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36212.18 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Compass.core", "Compass.core\Compass.core.csproj", "{4C6FE23D-1CCB-4EEE-BB03-D888AA8FD292}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Compass.Data", "Compass.Data\Compass.Data.csproj", "{242D7C7C-7B8B-4066-8518-9D90CFE2D4FA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Compass.Api", "Compass.Api\Compass.Api.csproj", "{AD08422E-A74B-4AA2-9450-FFD41ADE0D36}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Compass.Tests", "Compass.Tests\Compass.Tests.csproj", "{DAD22F7F-B2AF-4F27-A977-E3AC8E8CBD75}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4C6FE23D-1CCB-4EEE-BB03-D888AA8FD292}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C6FE23D-1CCB-4EEE-BB03-D888AA8FD292}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C6FE23D-1CCB-4EEE-BB03-D888AA8FD292}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C6FE23D-1CCB-4EEE-BB03-D888AA8FD292}.Release|Any CPU.Build.0 = Release|Any CPU
+		{242D7C7C-7B8B-4066-8518-9D90CFE2D4FA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{242D7C7C-7B8B-4066-8518-9D90CFE2D4FA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{242D7C7C-7B8B-4066-8518-9D90CFE2D4FA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{242D7C7C-7B8B-4066-8518-9D90CFE2D4FA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AD08422E-A74B-4AA2-9450-FFD41ADE0D36}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AD08422E-A74B-4AA2-9450-FFD41ADE0D36}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AD08422E-A74B-4AA2-9450-FFD41ADE0D36}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AD08422E-A74B-4AA2-9450-FFD41ADE0D36}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DAD22F7F-B2AF-4F27-A977-E3AC8E8CBD75}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DAD22F7F-B2AF-4F27-A977-E3AC8E8CBD75}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DAD22F7F-B2AF-4F27-A977-E3AC8E8CBD75}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DAD22F7F-B2AF-4F27-A977-E3AC8E8CBD75}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {1EEF839E-1C80-457D-9603-060AF7E15CA4}
+	EndGlobalSection
+EndGlobal

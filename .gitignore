@@ -1,0 +1,27 @@
+# Create .gitignore file
+echo "# Visual Studio files
+.vs/
+bin/
+obj/
+*.user
+*.suo
+*.cache
+.vscode/
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+bld/
+[Bb]in/
+[Oo]bj/
+
+# NuGet packages
+packages/
+*.nupkg
+*.snupkg
+
+# Azure Functions
+local.settings.json" > .gitignore
