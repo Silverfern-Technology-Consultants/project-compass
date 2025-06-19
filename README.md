@@ -20,11 +20,11 @@ Project Compass is a SaaS application designed to help organizations analyze and
 
 ## Project Structure
 project-compass/
-├── docs/                 # Project documentation
-├── frontend/             # React web application
-├── backend/              # .NET Core API
-├── infrastructure/       # Azure Bicep templates
-└── database/            # Database scripts and migrations
+ - docs/                 # Project documentation
+ - frontend/             # React web application
+ - backend/              # .NET Core API
+ - infrastructure/       # Azure Bicep templates
+ - database/             # Database scripts and migrations
 
 ## Development Setup
 
