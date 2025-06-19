@@ -1,5 +1,3 @@
-# Create a proper .gitignore file with correct line breaks
-@"
 # Visual Studio files
 .vs/
 bin/
@@ -28,7 +26,3 @@ packages/
 appsettings.json
 appsettings.*.json
 local.settings.json
-
-# Azure Functions
-local.settings.json
-"@ | Out-File -FilePath .gitignore -Encoding UTF8
