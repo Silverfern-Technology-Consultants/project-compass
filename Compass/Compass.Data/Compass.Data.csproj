@@ -14,8 +14,4 @@
     </PackageReference>
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\Compass.core\Compass.core.csproj" />
-  </ItemGroup>
-
 </Project>

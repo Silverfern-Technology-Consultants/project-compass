@@ -1,35 +1,63 @@
-using Microsoft.EntityFrameworkCore;
+using Compass.Api.Extensions;
+using Compass.Api.Services;
 using Compass.Data;
-using Compass.Data.Repositories;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Azure Governance Assessment API",
+        Version = "v1",
+        Description = "API for assessing Azure resource naming conventions and tagging compliance"
+    });
 
-// Add Entity Framework
-builder.Services.AddDbContext<CompassDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    // Add XML comments for better Swagger documentation
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+    {
+        c.IncludeXmlComments(xmlPath);
+    }
+});
 
-// Add repositories
-builder.Services.AddScoped<IAssessmentRepository, AssessmentRepository>();
-
-// Add CORS for frontend
+// Add CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowFrontend", policy =>
+    options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("https://helpful-capybara-7e02ca.netlify.app")
-              .AllowAnyHeader()
-              .AllowAnyMethod();
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
     });
 });
-// Add Entity Framework with retry logic
-builder.Services.AddDbContext<CompassDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
-        sqlOptions => sqlOptions.EnableRetryOnFailure()));
+
+// Add custom services (this includes the DbContext)
+builder.Services.AddCompassServices(builder.Configuration);
+builder.Services.AddAzureServices();
+
+// Add simple health checks
+builder.Services.AddHealthChecks();
+
+// Add background services
+builder.Services.AddHostedService<AssessmentBackgroundService>();
+
+// Add logging
+builder.Services.AddLogging(logging =>
+{
+    logging.AddConsole();
+    logging.AddDebug();
+    if (builder.Environment.IsDevelopment())
+    {
+        logging.SetMinimumLevel(LogLevel.Debug);
+    }
+});
 
 var app = builder.Build();
 
@@ -37,15 +65,25 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Azure Governance Assessment API v1");
+        c.RoutePrefix = string.Empty; // Serve Swagger UI at root
+    });
 }
 
 app.UseHttpsRedirection();
-app.UseCors("AllowFrontend");
+app.UseCors();
 app.UseAuthorization();
-app.MapControllers();
 
-// Health check endpoint
-app.MapGet("/health", () => "Healthy");
+app.MapControllers();
+app.MapHealthChecks("/health");
+
+// Ensure database is created and migrated
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<CompassDbContext>();
+    context.Database.EnsureCreated();
+}
 
 app.Run();

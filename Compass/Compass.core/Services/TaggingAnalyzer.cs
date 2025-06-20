@@ -1,0 +1,249 @@
+﻿using Compass.Core.Models;
+using Microsoft.Extensions.Logging;
+
+namespace Compass.Core.Services;
+
+public interface ITaggingAnalyzer
+{
+    Task<TaggingResults> AnalyzeTaggingAsync(List<AzureResource> resources, CancellationToken cancellationToken = default);
+}
+
+public class TaggingAnalyzer : ITaggingAnalyzer
+{
+    private readonly ILogger<TaggingAnalyzer> _logger;
+
+    // Common required tags based on best practices
+    private readonly string[] _commonRequiredTags =
+    {
+        "Environment",
+        "Owner",
+        "Project",
+        "CostCenter",
+        "Department"
+    };
+
+    // Tags that should have consistent values across resources
+    private readonly string[] _consistencyTags =
+    {
+        "Environment",
+        "Project",
+        "Department",
+        "Owner"
+    };
+
+    // Resource types that should always be tagged
+    private readonly string[] _tagRequiredResourceTypes =
+    {
+        "microsoft.compute/virtualmachines",
+        "microsoft.storage/storageaccounts",
+        "microsoft.sql/servers",
+        "microsoft.web/sites",
+        "microsoft.keyvault/vaults",
+        "microsoft.network/virtualnetworks"
+    };
+
+    public TaggingAnalyzer(ILogger<TaggingAnalyzer> logger)
+    {
+        _logger = logger;
+    }
+
+    public Task<TaggingResults> AnalyzeTaggingAsync(List<AzureResource> resources, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Starting tagging analysis for {ResourceCount} resources", resources.Count);
+
+        var results = new TaggingResults
+        {
+            TotalResources = resources.Count,
+            TaggedResources = resources.Count(r => r.HasTags)
+        };
+
+        results.TagCoveragePercentage = results.TotalResources > 0
+            ? Math.Round((decimal)results.TaggedResources / results.TotalResources * 100, 2)
+            : 100m;
+
+        // Analyze tag usage frequency
+        results.TagUsageFrequency = AnalyzeTagUsageFrequency(resources);
+
+        // Find missing required tags
+        results.MissingRequiredTags = FindMissingRequiredTags(resources);
+
+        // Find violations
+        results.Violations = FindTaggingViolations(resources).ToList();
+
+        // Calculate overall score
+        results.Score = CalculateTaggingScore(results);
+
+        _logger.LogInformation("Tagging analysis completed. Score: {Score}%, Coverage: {Coverage}%",
+            results.Score, results.TagCoveragePercentage);
+
+        return Task.FromResult(results);
+    }
+
+    private Dictionary<string, int> AnalyzeTagUsageFrequency(List<AzureResource> resources)
+    {
+        var tagFrequency = new Dictionary<string, int>();
+
+        foreach (var resource in resources)
+        {
+            foreach (var tag in resource.Tags.Keys)
+            {
+                if (tagFrequency.ContainsKey(tag))
+                {
+                    tagFrequency[tag]++;
+                }
+                else
+                {
+                    tagFrequency[tag] = 1;
+                }
+            }
+        }
+
+        return tagFrequency.OrderByDescending(kvp => kvp.Value)
+            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+    }
+
+    private List<string> FindMissingRequiredTags(List<AzureResource> resources)
+    {
+        var missingTags = new List<string>();
+
+        foreach (var requiredTag in _commonRequiredTags)
+        {
+            var resourcesWithTag = resources.Count(r =>
+                r.Tags.Keys.Any(k => k.Equals(requiredTag, StringComparison.OrdinalIgnoreCase)));
+
+            // If less than 30% of resources have this tag, consider it "missing"
+            if (resourcesWithTag < resources.Count * 0.3)
+            {
+                missingTags.Add(requiredTag);
+            }
+        }
+
+        return missingTags;
+    }
+
+    private IEnumerable<TaggingViolation> FindTaggingViolations(List<AzureResource> resources)
+    {
+        foreach (var resource in resources)
+        {
+            // Check if critical resource types are missing tags entirely
+            if (ShouldRequireTags(resource.Type) && !resource.HasTags)
+            {
+                yield return new TaggingViolation
+                {
+                    ResourceId = resource.Id,
+                    ResourceName = resource.Name,
+                    ResourceType = resource.Type,
+                    ViolationType = "NoTags",
+                    Issue = "Critical resource type has no tags",
+                    MissingTags = _commonRequiredTags.ToList(),
+                    Severity = "High"
+                };
+                continue;
+            }
+
+            // Check for missing required tags
+            var missingRequiredTags = new List<string>();
+            foreach (var requiredTag in _commonRequiredTags)
+            {
+                if (!resource.Tags.Keys.Any(k => k.Equals(requiredTag, StringComparison.OrdinalIgnoreCase)))
+                {
+                    missingRequiredTags.Add(requiredTag);
+                }
+            }
+
+            if (missingRequiredTags.Any())
+            {
+                yield return new TaggingViolation
+                {
+                    ResourceId = resource.Id,
+                    ResourceName = resource.Name,
+                    ResourceType = resource.Type,
+                    ViolationType = "MissingRequiredTags",
+                    Issue = $"Missing required tags: {string.Join(", ", missingRequiredTags)}",
+                    MissingTags = missingRequiredTags,
+                    Severity = missingRequiredTags.Count > 2 ? "High" : "Medium"
+                };
+            }
+
+            // Check for empty tag values
+            var emptyTags = resource.Tags.Where(kvp => string.IsNullOrWhiteSpace(kvp.Value)).ToList();
+            if (emptyTags.Any())
+            {
+                yield return new TaggingViolation
+                {
+                    ResourceId = resource.Id,
+                    ResourceName = resource.Name,
+                    ResourceType = resource.Type,
+                    ViolationType = "EmptyTagValues",
+                    Issue = $"Tags with empty values: {string.Join(", ", emptyTags.Select(t => t.Key))}",
+                    MissingTags = emptyTags.Select(t => t.Key).ToList(),
+                    Severity = "Medium"
+                };
+            }
+
+            // Check for inconsistent tag naming (case sensitivity)
+            var inconsistentTags = FindInconsistentTagNames(resource.Tags.Keys);
+            if (inconsistentTags.Any())
+            {
+                yield return new TaggingViolation
+                {
+                    ResourceId = resource.Id,
+                    ResourceName = resource.Name,
+                    ResourceType = resource.Type,
+                    ViolationType = "InconsistentTagNaming",
+                    Issue = $"Inconsistent tag naming: {string.Join(", ", inconsistentTags)}",
+                    MissingTags = inconsistentTags,
+                    Severity = "Low"
+                };
+            }
+        }
+    }
+
+    private bool ShouldRequireTags(string resourceType)
+    {
+        return _tagRequiredResourceTypes.Contains(resourceType.ToLowerInvariant());
+    }
+
+    private List<string> FindInconsistentTagNames(IEnumerable<string> tagNames)
+    {
+        var inconsistent = new List<string>();
+        var tagGroups = tagNames.GroupBy(t => t.ToLowerInvariant()).ToList();
+
+        foreach (var group in tagGroups.Where(g => g.Count() > 1))
+        {
+            // If there are multiple variations of the same tag name (different cases)
+            inconsistent.AddRange(group.Skip(1)); // Add all but the first one
+        }
+
+        return inconsistent;
+    }
+
+    private decimal CalculateTaggingScore(TaggingResults results)
+    {
+        var factors = new List<decimal>();
+
+        // Tag coverage (40% weight)
+        factors.Add(results.TagCoveragePercentage * 0.4m);
+
+        // Required tag coverage (30% weight)
+        var requiredTagCoverage = _commonRequiredTags.Length > 0
+            ? (decimal)(_commonRequiredTags.Length - results.MissingRequiredTags.Count) / _commonRequiredTags.Length * 100
+            : 100m;
+        factors.Add(requiredTagCoverage * 0.3m);
+
+        // Violation penalty (30% weight)
+        var violationPenalty = 0m;
+        if (results.TotalResources > 0)
+        {
+            var highSeverityViolations = results.Violations.Count(v => v.Severity == "High");
+            var mediumSeverityViolations = results.Violations.Count(v => v.Severity == "Medium");
+            var lowSeverityViolations = results.Violations.Count(v => v.Severity == "Low");
+
+            violationPenalty = (highSeverityViolations * 10 + mediumSeverityViolations * 5 + lowSeverityViolations * 2);
+            violationPenalty = Math.Min(violationPenalty, 100); // Cap at 100%
+        }
+        factors.Add((100 - violationPenalty) * 0.3m);
+
+        return Math.Round(factors.Sum(), 2);
+    }
+}

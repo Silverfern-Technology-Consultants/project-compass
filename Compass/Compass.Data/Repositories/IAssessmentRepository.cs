@@ -1,18 +1,18 @@
-﻿using Compass.Core.Models;
+﻿using Compass.Data.Entities;  // ← Changed from Compass.Core.Models
 
-namespace Compass.Data.Repositories
+namespace Compass.Data.Repositories;
+
+public interface IAssessmentRepository
 {
-    public interface IAssessmentRepository
-    {
-        Task<Assessment?> GetByIdAsync(Guid id);
-        Task<IEnumerable<Assessment>> GetByCustomerIdAsync(Guid customerId);
-        Task<Assessment> CreateAsync(Assessment assessment);
-        Task<Assessment> UpdateAsync(Assessment assessment);
-        Task DeleteAsync(Guid id);
-
-        // Finding operations
-        Task<AssessmentFinding> AddFindingAsync(AssessmentFinding finding);
-        Task<IEnumerable<AssessmentFinding>> GetFindingsByAssessmentIdAsync(Guid assessmentId);
-        Task UpdateFindingStatusAsync(Guid findingId, FindingStatus status);
-    }
+    Task<Assessment?> GetByIdAsync(Guid id);
+    Task<Assessment> CreateAsync(Assessment assessment);
+    Task<List<Assessment>> GetByEnvironmentIdAsync(Guid environmentId, int limit = 10);
+    Task<List<Assessment>> GetByCustomerIdAsync(Guid customerId, int limit = 10);
+    Task UpdateAsync(Assessment assessment);
+    Task UpdateStatusAsync(Guid assessmentId, string status);
+    Task UpdateAssessmentAsync(Guid assessmentId, decimal score, string status, DateTime completedDate);
+    Task<List<Assessment>> GetPendingAssessmentsAsync();
+    Task<List<AssessmentFinding>> GetFindingsByAssessmentIdAsync(Guid assessmentId);
+    Task CreateFindingsAsync(List<AssessmentFinding> findings);
+    Task UpdateFindingStatusAsync(Guid findingId, string status); // Removed FindingStatus enum for now
 }
