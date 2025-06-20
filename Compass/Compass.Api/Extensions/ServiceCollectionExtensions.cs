@@ -16,11 +16,17 @@ public static class ServiceCollectionExtensions
         // Repositories
         services.AddScoped<IAssessmentRepository, AssessmentRepository>();
 
-        // Core Services
+        // Core Services - Enhanced Analysis Engine
         services.AddScoped<IAzureResourceGraphService, AzureResourceGraphService>();
         services.AddScoped<INamingConventionAnalyzer, NamingConventionAnalyzer>();
         services.AddScoped<ITaggingAnalyzer, TaggingAnalyzer>();
+        services.AddScoped<IDependencyAnalyzer, DependencyAnalyzer>();
         services.AddScoped<IAssessmentOrchestrator, AssessmentOrchestrator>();
+
+        // Client Preferences Services - NEW!
+        services.AddScoped<IClientPreferencesRepository, ClientPreferencesRepository>();
+        services.AddScoped<IPreferenceAwareNamingAnalyzer, PreferenceAwareNamingAnalyzer>();
+        // services.AddScoped<PreferenceBasedAssessmentService>(); // Comment out until implemented
 
         return services;
     }

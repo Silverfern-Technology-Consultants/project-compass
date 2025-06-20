@@ -24,6 +24,7 @@ public class AssessmentBackgroundService : BackgroundService
         {
             try
             {
+                // Create a new scope for each processing cycle to avoid DbContext disposal issues
                 using var scope = _serviceProvider.CreateScope();
                 var orchestrator = scope.ServiceProvider.GetRequiredService<IAssessmentOrchestrator>();
 
@@ -34,7 +35,16 @@ public class AssessmentBackgroundService : BackgroundService
                 _logger.LogError(ex, "Error processing pending assessments");
             }
 
-            await Task.Delay(_checkInterval, stoppingToken);
+            // Wait before checking again
+            try
+            {
+                await Task.Delay(_checkInterval, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when the service is stopping
+                break;
+            }
         }
 
         _logger.LogInformation("Assessment Background Service stopped");
