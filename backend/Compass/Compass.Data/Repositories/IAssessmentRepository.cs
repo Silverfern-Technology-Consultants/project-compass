@@ -15,4 +15,7 @@ public interface IAssessmentRepository
     Task<List<AssessmentFinding>> GetFindingsByAssessmentIdAsync(Guid assessmentId);
     Task CreateFindingsAsync(List<AssessmentFinding> findings);
     Task UpdateFindingStatusAsync(Guid findingId, string status); // Removed FindingStatus enum for now
+
+    // NEW: Delete assessment method
+    Task DeleteAsync(Guid assessmentId);
 }

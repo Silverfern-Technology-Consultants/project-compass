@@ -49,7 +49,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
             AssessmentType = request.Type.ToString(),
             Status = AssessmentStatus.Pending.ToString(),
             StartedDate = DateTime.UtcNow,
-            CustomerId = Guid.NewGuid(), // In real implementation, get from context
+            CustomerId = Guid.Parse("00000000-0000-0000-0000-000000000000"), // Use consistent customer ID
             CustomerName = "Sample Customer" // In real implementation, get from context
         };
 

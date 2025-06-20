@@ -4,6 +4,7 @@ using Compass.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Compass.Data.Migrations
 {
     [DbContext(typeof(CompassDbContext))]
-    partial class CompassDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250620185537_InitialAzureSQL")]
+    partial class InitialAzureSQL
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -22,11 +25,15 @@ namespace Compass.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("Compass.Core.Models.Assessment", b =>
+            modelBuilder.Entity("Compass.Data.Entities.Assessment", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AssessmentType")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("CompletedDate")
                         .HasColumnType("datetime2");
@@ -39,8 +46,12 @@ namespace Compass.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
 
-                    b.Property<int>("OverallScore")
-                        .HasColumnType("int");
+                    b.Property<Guid>("EnvironmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("OverallScore")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
 
                     b.Property<string>("ReportBlobUrl")
                         .HasMaxLength(500)
@@ -49,11 +60,9 @@ namespace Compass.Data.Migrations
                     b.Property<DateTime>("StartedDate")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Type")
-                        .HasColumnType("int");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
@@ -64,7 +73,7 @@ namespace Compass.Data.Migrations
                     b.ToTable("Assessments");
                 });
 
-            modelBuilder.Entity("Compass.Core.Models.AssessmentFinding", b =>
+            modelBuilder.Entity("Compass.Data.Entities.AssessmentFinding", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -73,11 +82,9 @@ namespace Compass.Data.Migrations
                     b.Property<Guid>("AssessmentId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("Category")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("datetime2");
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("EstimatedEffort")
                         .HasMaxLength(50)
@@ -108,11 +115,9 @@ namespace Compass.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<int>("Severity")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
 
                     b.HasKey("Id");
 
@@ -125,9 +130,9 @@ namespace Compass.Data.Migrations
                     b.ToTable("AssessmentFindings");
                 });
 
-            modelBuilder.Entity("Compass.Core.Models.AssessmentFinding", b =>
+            modelBuilder.Entity("Compass.Data.Entities.AssessmentFinding", b =>
                 {
-                    b.HasOne("Compass.Core.Models.Assessment", "Assessment")
+                    b.HasOne("Compass.Data.Entities.Assessment", "Assessment")
                         .WithMany("Findings")
                         .HasForeignKey("AssessmentId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -136,7 +141,7 @@ namespace Compass.Data.Migrations
                     b.Navigation("Assessment");
                 });
 
-            modelBuilder.Entity("Compass.Core.Models.Assessment", b =>
+            modelBuilder.Entity("Compass.Data.Entities.Assessment", b =>
                 {
                     b.Navigation("Findings");
                 });

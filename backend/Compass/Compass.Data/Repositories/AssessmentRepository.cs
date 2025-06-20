@@ -104,4 +104,25 @@ public class AssessmentRepository : IAssessmentRepository
             await _context.SaveChangesAsync();
         }
     }
+
+    // NEW: Delete assessment method
+    public async Task DeleteAsync(Guid assessmentId)
+    {
+        var assessment = await _context.Assessments
+            .Include(a => a.Findings)
+            .FirstOrDefaultAsync(a => a.Id == assessmentId);
+
+        if (assessment != null)
+        {
+            // Delete associated findings first
+            if (assessment.Findings.Any())
+            {
+                _context.AssessmentFindings.RemoveRange(assessment.Findings);
+            }
+
+            // Delete the assessment
+            _context.Assessments.Remove(assessment);
+            await _context.SaveChangesAsync();
+        }
+    }
 }
