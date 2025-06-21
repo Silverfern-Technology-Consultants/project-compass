@@ -49,8 +49,8 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
             AssessmentType = request.Type.ToString(),
             Status = AssessmentStatus.Pending.ToString(),
             StartedDate = DateTime.UtcNow,
-            CustomerId = Guid.Parse("00000000-0000-0000-0000-000000000000"), // Use consistent customer ID
-            CustomerName = "Sample Customer" // In real implementation, get from context
+            CustomerId = Guid.Parse("9bc034b0-852f-4618-9434-c040d13de712"), // Use the seeded test customer ID
+            CustomerName = "Test Company" // In real implementation, get from context
         };
 
         await _assessmentRepository.CreateAsync(assessment);

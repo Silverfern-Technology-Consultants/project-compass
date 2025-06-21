@@ -4,6 +4,7 @@ using Compass.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Compass.Data.Migrations
 {
     [DbContext(typeof(CompassDbContext))]
-    partial class CompassDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250621001027_MakeCustomerFieldsNullable")]
+    partial class MakeCustomerFieldsNullable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -31,9 +34,6 @@ namespace Compass.Data.Migrations
                     b.Property<string>("AssessmentType")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("AzureEnvironmentId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("CompletedDate")
                         .HasColumnType("datetime2");
@@ -62,8 +62,6 @@ namespace Compass.Data.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("AzureEnvironmentId");
 
                     b.HasIndex("CustomerId");
 
@@ -117,68 +115,6 @@ namespace Compass.Data.Migrations
                     b.ToTable("AssessmentFindings");
                 });
 
-            modelBuilder.Entity("Compass.Data.Entities.AzureEnvironment", b =>
-                {
-                    b.Property<Guid>("AzureEnvironmentId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("CustomerId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("LastAccessDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("LastConnectionError")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool?>("LastConnectionTest")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("LastConnectionTestDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("ServicePrincipalId")
-                        .HasMaxLength(36)
-                        .HasColumnType("nvarchar(36)");
-
-                    b.Property<string>("ServicePrincipalName")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.PrimitiveCollection<string>("SubscriptionIds")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(36)
-                        .HasColumnType("nvarchar(36)");
-
-                    b.HasKey("AzureEnvironmentId");
-
-                    b.HasIndex("CustomerId");
-
-                    b.HasIndex("TenantId");
-
-                    b.ToTable("AzureEnvironments");
-                });
-
             modelBuilder.Entity("Compass.Data.Entities.Customer", b =>
                 {
                     b.Property<Guid>("CustomerId")
@@ -186,27 +122,44 @@ namespace Compass.Data.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Address")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("City")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CompanyName")
-                        .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("CompanyName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
                     b.Property<string>("CompanySize")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ContactEmail")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("ContactName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
 
                     b.Property<string>("ContactPhone")
-                        .HasColumnType("nvarchar(max)");
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("Country")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("CreatedBy")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
 
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("datetime2");
@@ -216,22 +169,9 @@ namespace Compass.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
 
-                    b.Property<DateTime?>("EmailVerificationExpiry")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("EmailVerificationToken")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("EmailVerified")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("FirstName")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
                     b.Property<string>("Industry")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
@@ -242,36 +182,22 @@ namespace Compass.Data.Migrations
                     b.Property<DateTime?>("LastLoginDate")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("LastLoginIP")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("LastName")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("PasswordHash")
+                    b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
 
-                    b.Property<DateTime?>("PasswordResetExpiry")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("PasswordResetToken")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("PostalCode")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("RegistrationIP")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("State")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("TimeZone")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime?>("TrialEndDate")
                         .HasColumnType("datetime2");
@@ -283,7 +209,7 @@ namespace Compass.Data.Migrations
 
                     b.HasIndex("CompanyName");
 
-                    b.HasIndex("Email");
+                    b.HasIndex("ContactEmail");
 
                     b.HasIndex("IsTrialAccount");
 
@@ -497,21 +423,16 @@ namespace Compass.Data.Migrations
                     b.Property<decimal?>("AnnualPrice")
                         .HasColumnType("decimal(10,2)");
 
-                    b.Property<bool>("ApiAccess")
-                        .HasColumnType("bit");
-
                     b.Property<bool>("AutoRenew")
                         .HasColumnType("bit");
 
                     b.Property<string>("BillingCycle")
+                        .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("datetime2");
-
-                    b.Property<bool>("CustomReporting")
-                        .HasColumnType("bit");
 
                     b.Property<Guid>("CustomerId")
                         .HasColumnType("uniqueidentifier");
@@ -528,19 +449,10 @@ namespace Compass.Data.Migrations
                     b.Property<bool>("IncludesWhiteLabel")
                         .HasColumnType("bit");
 
-                    b.Property<DateTime?>("LastBillingDate")
-                        .HasColumnType("datetime2");
-
                     b.Property<int?>("MaxAssessmentsPerMonth")
                         .HasColumnType("int");
 
-                    b.Property<int?>("MaxEnvironments")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("MaxSubscriptions")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("MaxUsersPerEnvironment")
+                    b.Property<int>("MaxSubscriptions")
                         .HasColumnType("int");
 
                     b.Property<DateTime>("ModifiedDate")
@@ -557,9 +469,6 @@ namespace Compass.Data.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<bool>("PrioritySupport")
-                        .HasColumnType("bit");
-
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("datetime2");
 
@@ -568,16 +477,10 @@ namespace Compass.Data.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<bool>("SupportIncluded")
-                        .HasColumnType("bit");
-
                     b.Property<string>("SupportLevel")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTime?>("TrialEndDate")
-                        .HasColumnType("datetime2");
 
                     b.HasKey("SubscriptionId");
 
@@ -650,66 +553,8 @@ namespace Compass.Data.Migrations
                     b.ToTable("UsageMetrics");
                 });
 
-            modelBuilder.Entity("Compass.Data.Entities.UsageRecord", b =>
-                {
-                    b.Property<Guid>("UsageRecordId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("AssessmentId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("BillingMonth")
-                        .HasColumnType("int");
-
-                    b.Property<int>("BillingYear")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("CustomerId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<Guid?>("EnvironmentId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Quantity")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("SubscriptionId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("UsageDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("UsageType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.HasKey("UsageRecordId");
-
-                    b.HasIndex("AssessmentId");
-
-                    b.HasIndex("EnvironmentId");
-
-                    b.HasIndex("SubscriptionId");
-
-                    b.HasIndex("UsageDate");
-
-                    b.HasIndex("CustomerId", "BillingMonth", "BillingYear");
-
-                    b.ToTable("UsageRecords");
-                });
-
             modelBuilder.Entity("Compass.Data.Entities.Assessment", b =>
                 {
-                    b.HasOne("Compass.Data.Entities.AzureEnvironment", null)
-                        .WithMany("Assessments")
-                        .HasForeignKey("AzureEnvironmentId");
-
                     b.HasOne("Compass.Data.Entities.Customer", null)
                         .WithMany("Assessments")
                         .HasForeignKey("CustomerId")
@@ -726,17 +571,6 @@ namespace Compass.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Assessment");
-                });
-
-            modelBuilder.Entity("Compass.Data.Entities.AzureEnvironment", b =>
-                {
-                    b.HasOne("Compass.Data.Entities.Customer", "Customer")
-                        .WithMany("AzureEnvironments")
-                        .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Customer");
                 });
 
             modelBuilder.Entity("Compass.Data.Entities.Invoice", b =>
@@ -807,54 +641,14 @@ namespace Compass.Data.Migrations
                     b.Navigation("Subscription");
                 });
 
-            modelBuilder.Entity("Compass.Data.Entities.UsageRecord", b =>
-                {
-                    b.HasOne("Compass.Data.Entities.Assessment", "Assessment")
-                        .WithMany()
-                        .HasForeignKey("AssessmentId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
-                    b.HasOne("Compass.Data.Entities.Customer", "Customer")
-                        .WithMany()
-                        .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.HasOne("Compass.Data.Entities.AzureEnvironment", "AzureEnvironment")
-                        .WithMany()
-                        .HasForeignKey("EnvironmentId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
-                    b.HasOne("Compass.Data.Entities.Subscription", "Subscription")
-                        .WithMany("UsageRecords")
-                        .HasForeignKey("SubscriptionId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.Navigation("Assessment");
-
-                    b.Navigation("AzureEnvironment");
-
-                    b.Navigation("Customer");
-
-                    b.Navigation("Subscription");
-                });
-
             modelBuilder.Entity("Compass.Data.Entities.Assessment", b =>
                 {
                     b.Navigation("Findings");
                 });
 
-            modelBuilder.Entity("Compass.Data.Entities.AzureEnvironment", b =>
-                {
-                    b.Navigation("Assessments");
-                });
-
             modelBuilder.Entity("Compass.Data.Entities.Customer", b =>
                 {
                     b.Navigation("Assessments");
-
-                    b.Navigation("AzureEnvironments");
 
                     b.Navigation("Invoices");
 
@@ -875,8 +669,6 @@ namespace Compass.Data.Migrations
                     b.Navigation("SubscriptionFeatures");
 
                     b.Navigation("UsageMetrics");
-
-                    b.Navigation("UsageRecords");
                 });
 #pragma warning restore 612, 618
         }

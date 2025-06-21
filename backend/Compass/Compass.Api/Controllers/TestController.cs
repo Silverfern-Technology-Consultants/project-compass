@@ -1,4 +1,5 @@
 ﻿using Compass.Core.Services;
+using Compass.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Compass.Api.Controllers;
@@ -10,18 +11,45 @@ public class TestController : ControllerBase
     private readonly IAzureResourceGraphService _resourceGraphService;
     private readonly INamingConventionAnalyzer _namingAnalyzer;
     private readonly ITaggingAnalyzer _taggingAnalyzer;
+    private readonly TestDataSeeder _testDataSeeder;
     private readonly ILogger<TestController> _logger;
 
     public TestController(
         IAzureResourceGraphService resourceGraphService,
         INamingConventionAnalyzer namingAnalyzer,
         ITaggingAnalyzer taggingAnalyzer,
+        TestDataSeeder testDataSeeder,
         ILogger<TestController> logger)
     {
         _resourceGraphService = resourceGraphService;
         _namingAnalyzer = namingAnalyzer;
         _taggingAnalyzer = taggingAnalyzer;
+        _testDataSeeder = testDataSeeder;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Seed test data for development
+    /// </summary>
+    [HttpPost("seed-data")]
+    public async Task<IActionResult> SeedTestData()
+    {
+        try
+        {
+            await _testDataSeeder.SeedTestDataAsync();
+            return Ok(new
+            {
+                message = "Test data seeded successfully",
+                testCustomerId = "9bc034b0-852f-4618-9434-c040d13de712",
+                testEmail = "test@testcompany.com",
+                testPassword = "TestPassword123!"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to seed test data");
+            return StatusCode(500, new { error = "Failed to seed test data", details = ex.Message });
+        }
     }
 
     /// <summary>

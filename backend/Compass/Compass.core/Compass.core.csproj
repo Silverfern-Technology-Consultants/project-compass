@@ -9,14 +9,19 @@
 		<PackageReference Include="Azure.ResourceManager.ResourceGraph" Version="1.1.0-beta.3" />
 		<PackageReference Include="Azure.Identity" Version="1.12.1" />
 		<PackageReference Include="Azure.Core" Version="1.44.1" />
-		<!-- Need to add Azure.ResourceManager for ArmClient -->
 		<PackageReference Include="Azure.ResourceManager" Version="1.13.0" />
 
-		<!-- Microsoft Extensions - Match Entity Framework 9.0.6 versions -->
+		<!-- Entity Framework - Match version 9.0.6 -->
+		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.6" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.6" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.6" />
-		<!-- System.Text.Json - Match Entity Framework requirement -->
+		<PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.6" />
 		<PackageReference Include="System.Text.Json" Version="9.0.6" />
+
+		<!-- Authentication packages -->
+		<PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.1" />
+		<PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
 	</ItemGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\Compass.Data\Compass.Data.csproj" />

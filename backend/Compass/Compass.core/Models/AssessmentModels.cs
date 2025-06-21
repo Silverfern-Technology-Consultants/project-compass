@@ -1,13 +1,5 @@
 ﻿namespace Compass.Core.Models;
 
-public class AssessmentRequest
-{
-    public Guid EnvironmentId { get; set; }
-    public string[] SubscriptionIds { get; set; } = Array.Empty<string>();
-    public AssessmentType Type { get; set; } = AssessmentType.Full;
-    public AssessmentOptions? Options { get; set; }
-}
-
 public class AssessmentOptions
 {
     public bool AnalyzeNamingConventions { get; set; } = true;

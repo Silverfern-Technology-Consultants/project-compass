@@ -1,63 +1,99 @@
-using Compass.Api.Extensions;
 using Compass.Api.Services;
+using Compass.Core.Services;
 using Compass.Data;
+using Compass.Data.Repositories;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.OpenApi.Models;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
+builder.Services.AddSwaggerGen();
+
+// Add HTTP Context Accessor
+builder.Services.AddHttpContextAccessor();
+
+//DB Seeder
+builder.Services.AddScoped<TestDataSeeder>();
+
+// Add DbContext
+builder.Services.AddDbContext<CompassDbContext>(options =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    options.UseSqlServer(connectionString);
+});
+
+// JWT Configuration
+var jwtSection = builder.Configuration.GetSection("Jwt");
+var secretKey = jwtSection["SecretKey"] ?? "your-super-secret-key-that-is-at-least-32-characters-long!";
+var issuer = jwtSection["Issuer"] ?? "compass-api";
+var audience = jwtSection["Audience"] ?? "compass-client";
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
     {
-        Title = "Azure Governance Assessment API",
-        Version = "v1",
-        Description = "API for assessing Azure resource naming conventions and tagging compliance"
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(secretKey)),
+            ValidateIssuer = true,
+            ValidIssuer = issuer,
+            ValidateAudience = true,
+            ValidAudience = audience,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero
+        };
     });
 
-    // Add XML comments for better Swagger documentation
-    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
-    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-    if (File.Exists(xmlPath))
-    {
-        c.IncludeXmlComments(xmlPath);
-    }
-});
+builder.Services.AddAuthorization();
+
+// Register repositories
+builder.Services.AddScoped<IAssessmentRepository, AssessmentRepository>();
+builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
+builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
+builder.Services.AddScoped<IUsageMetricRepository, UsageMetricRepository>();
+
+// Register services
+builder.Services.AddScoped<IAssessmentOrchestrator, AssessmentOrchestrator>();
+builder.Services.AddScoped<IAzureResourceGraphService, AzureResourceGraphService>();
+builder.Services.AddScoped<INamingConventionAnalyzer, NamingConventionAnalyzer>();
+builder.Services.AddScoped<ITaggingAnalyzer, TaggingAnalyzer>();
+builder.Services.AddScoped<IDependencyAnalyzer, DependencyAnalyzer>();
+builder.Services.AddScoped<ILicenseValidationService, LicenseValidationService>();
+builder.Services.AddScoped<IUsageTrackingService, UsageTrackingService>();
+
+// Register NEW authentication services
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
 // Add CORS
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(policy =>
+    options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.AllowAnyOrigin()
+        policy.WithOrigins("http://localhost:3000", "https://localhost:3000")
+              .AllowAnyHeader()
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowCredentials();
     });
 });
-
-// Add custom services (this includes the DbContext)
-builder.Services.AddCompassServices(builder.Configuration);
-builder.Services.AddAzureServices();
-
-// Add simple health checks
-builder.Services.AddHealthChecks();
-
-// Add background services
-builder.Services.AddHostedService<AssessmentBackgroundService>();
 
 // Add logging
 builder.Services.AddLogging(logging =>
 {
     logging.AddConsole();
     logging.AddDebug();
-    if (builder.Environment.IsDevelopment())
-    {
-        logging.SetMinimumLevel(LogLevel.Debug);
-    }
 });
+
+// Add health checks
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<CompassDbContext>();
 
 var app = builder.Build();
 
@@ -65,25 +101,26 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Azure Governance Assessment API v1");
-        c.RoutePrefix = string.Empty; // Serve Swagger UI at root
-    });
+    app.UseSwaggerUI();
 }
 
 app.UseHttpsRedirection();
-app.UseCors();
+app.UseCors("AllowFrontend");
+
+// Add authentication & authorization middleware
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHealthChecks("/health");
 
-// Ensure database is created and migrated
-using (var scope = app.Services.CreateScope())
+// Health check endpoints
+app.MapGet("/health", () => Results.Ok(new
 {
-    var context = scope.ServiceProvider.GetRequiredService<CompassDbContext>();
-    context.Database.EnsureCreated();
-}
+    Status = "Healthy",
+    Timestamp = DateTime.UtcNow,
+    Version = "1.0.0"
+}));
+
+app.MapHealthChecks("/health/db");
 
 app.Run();
