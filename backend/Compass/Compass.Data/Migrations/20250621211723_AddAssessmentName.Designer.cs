@@ -4,6 +4,7 @@ using Compass.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Compass.Data.Migrations
 {
     [DbContext(typeof(CompassDbContext))]
-    partial class CompassDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250621211723_AddAssessmentName")]
+    partial class AddAssessmentName
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -240,9 +243,6 @@ namespace Compass.Data.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
-                    b.Property<bool>("IsMfaEnabled")
-                        .HasColumnType("bit");
-
                     b.Property<bool>("IsTrialAccount")
                         .HasColumnType("bit");
 
@@ -252,22 +252,10 @@ namespace Compass.Data.Migrations
                     b.Property<string>("LastLoginIP")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime?>("LastMfaUsedDate")
-                        .HasColumnType("datetime2");
-
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("MfaBackupCodes")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("MfaSecret")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("MfaSetupDate")
-                        .HasColumnType("datetime2");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
@@ -285,9 +273,6 @@ namespace Compass.Data.Migrations
 
                     b.Property<string>("RegistrationIP")
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("RequireMfaSetup")
-                        .HasColumnType("bit");
 
                     b.Property<string>("State")
                         .HasColumnType("nvarchar(max)");

@@ -200,8 +200,8 @@ public class AssessmentsController : ControllerBase
 
     [HttpGet("customer/{customerId}")]
     public async Task<ActionResult<List<AssessmentSummary>>> GetAssessmentsByCustomer(
-        Guid customerId,
-        [FromQuery] int limit = 50)
+    Guid customerId,
+    [FromQuery] int limit = 50)
     {
         try
         {
@@ -219,6 +219,7 @@ public class AssessmentsController : ControllerBase
                 var summary = new AssessmentSummary
                 {
                     AssessmentId = assessment.Id,
+                    Name = assessment.Name, // ADD THIS: Include the user-entered name
                     AssessmentType = assessment.AssessmentType,
                     Status = assessment.Status,
                     OverallScore = assessment.OverallScore,

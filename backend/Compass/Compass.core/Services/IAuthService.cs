@@ -3,6 +3,7 @@ using Compass.Data;
 using Compass.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Security.Cryptography;
 
 namespace Compass.Core.Services;
 
@@ -14,6 +15,11 @@ public interface IAuthService
     Task<bool> ResendVerificationEmailAsync(string email);
     Task<Customer?> GetCustomerByIdAsync(Guid customerId);
     Task<bool> IsEmailTakenAsync(string email);
+
+    // NEW METHODS FOR MFA SUPPORT
+    Task<string> GenerateJwtTokenAsync(Customer customer);
+    Task InitiatePasswordResetAsync(string email);
+    Task<AuthResponse> ResetPasswordAsync(ResetPasswordRequest request);
 }
 
 public class AuthService : IAuthService
@@ -33,6 +39,14 @@ public class AuthService : IAuthService
         _jwtService = jwtService;
         _emailService = emailService;
         _logger = logger;
+    }
+
+    private static string GenerateSecureToken()
+    {
+        using var rng = RandomNumberGenerator.Create();
+        var bytes = new byte[32];
+        rng.GetBytes(bytes);
+        return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, string? ipAddress = null)
@@ -61,6 +75,10 @@ public class AuthService : IAuthService
                     ipAddress, recentRegistrations);
             }
 
+            // Generate verification token
+            var verificationToken = GenerateSecureToken();
+            _logger.LogInformation("Generated verification token: {Token}", verificationToken);
+
             // Create customer
             var customer = new Customer
             {
@@ -68,8 +86,8 @@ public class AuthService : IAuthService
                 FirstName = request.FirstName,
                 LastName = request.LastName,
                 Email = request.Email.ToLowerInvariant(),
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("TempPassword123!"), // Temporary
-                EmailVerificationToken = _jwtService.GenerateEmailVerificationToken(),
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("TempPassword123!"), // Temporary password - user will need to set during verification
+                EmailVerificationToken = verificationToken,
                 EmailVerificationExpiry = DateTime.UtcNow.AddDays(7),
                 RegistrationIP = ipAddress,
                 EmailVerified = false,
@@ -93,9 +111,10 @@ public class AuthService : IAuthService
             _context.Subscriptions.Add(trialSubscription);
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Customer saved to database. Verification token: {Token}", customer.EmailVerificationToken);
+
             // Send verification email
-            await _emailService.SendVerificationEmailAsync(customer.Email,
-                customer.EmailVerificationToken!);
+            await _emailService.SendVerificationEmailAsync(customer.Email, customer.EmailVerificationToken!);
 
             _logger.LogInformation("New customer registered: {Email}, Company: {Company}",
                 request.Email, request.CompanyName);
@@ -204,18 +223,34 @@ public class AuthService : IAuthService
     {
         try
         {
+            _logger.LogInformation("Attempting to verify email with token: {Token}", token);
+
             var customer = await _context.Customers
                 .FirstOrDefaultAsync(c => c.EmailVerificationToken == token &&
                                          c.EmailVerificationExpiry > DateTime.UtcNow);
 
             if (customer == null)
             {
+                _logger.LogWarning("No customer found with token: {Token}", token);
+
+                // Debug: Check if token exists but is expired
+                var expiredCustomer = await _context.Customers
+                    .FirstOrDefaultAsync(c => c.EmailVerificationToken == token);
+
+                if (expiredCustomer != null)
+                {
+                    _logger.LogWarning("Found customer with token but it's expired. Expiry: {Expiry}, Now: {Now}",
+                        expiredCustomer.EmailVerificationExpiry, DateTime.UtcNow);
+                }
+
                 return new AuthResponse
                 {
                     Success = false,
                     Message = "Invalid or expired verification token"
                 };
             }
+
+            _logger.LogInformation("Found customer for verification: {Email}", customer.Email);
 
             customer.EmailVerified = true;
             customer.EmailVerificationToken = null;
@@ -252,11 +287,14 @@ public class AuthService : IAuthService
 
             if (customer == null) return false;
 
-            customer.EmailVerificationToken = _jwtService.GenerateEmailVerificationToken();
+            customer.EmailVerificationToken = GenerateSecureToken();
             customer.EmailVerificationExpiry = DateTime.UtcNow.AddDays(7);
 
             await _context.SaveChangesAsync();
             await _emailService.SendVerificationEmailAsync(customer.Email, customer.EmailVerificationToken);
+
+            _logger.LogInformation("Resent verification email to: {Email} with token: {Token}",
+                email, customer.EmailVerificationToken);
 
             return true;
         }
@@ -278,5 +316,88 @@ public class AuthService : IAuthService
     {
         return await _context.Customers
             .AnyAsync(c => c.Email == email.ToLowerInvariant());
+    }
+
+    // NEW METHODS FOR MFA SUPPORT
+
+    public async Task<string> GenerateJwtTokenAsync(Customer customer)
+    {
+        return _jwtService.GenerateToken(customer);
+    }
+
+    public async Task InitiatePasswordResetAsync(string email)
+    {
+        try
+        {
+            var customer = await _context.Customers
+                .FirstOrDefaultAsync(c => c.Email == email.ToLowerInvariant());
+
+            if (customer == null)
+            {
+                // Don't reveal if email exists - security best practice
+                _logger.LogInformation("Password reset requested for non-existent email: {Email}", email);
+                return;
+            }
+
+            // Generate password reset token
+            var resetToken = GenerateSecureToken();
+            customer.PasswordResetToken = resetToken;
+            customer.PasswordResetExpiry = DateTime.UtcNow.AddHours(1); // 1 hour expiry
+
+            await _context.SaveChangesAsync();
+
+            // Send password reset email
+            await _emailService.SendPasswordResetEmailAsync(customer.Email, resetToken);
+
+            _logger.LogInformation("Password reset initiated for: {Email}", email);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to initiate password reset for: {Email}", email);
+            throw;
+        }
+    }
+
+    public async Task<AuthResponse> ResetPasswordAsync(ResetPasswordRequest request)
+    {
+        try
+        {
+            var customer = await _context.Customers
+                .FirstOrDefaultAsync(c => c.PasswordResetToken == request.Token &&
+                                         c.PasswordResetExpiry > DateTime.UtcNow);
+
+            if (customer == null)
+            {
+                return new AuthResponse
+                {
+                    Success = false,
+                    Message = "Invalid or expired reset token"
+                };
+            }
+
+            // Update password
+            customer.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+            customer.PasswordResetToken = null;
+            customer.PasswordResetExpiry = null;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Password reset successful for: {Email}", customer.Email);
+
+            return new AuthResponse
+            {
+                Success = true,
+                Message = "Password has been reset successfully"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Password reset failed for token: {Token}", request.Token);
+            return new AuthResponse
+            {
+                Success = false,
+                Message = "Password reset failed"
+            };
+        }
     }
 }

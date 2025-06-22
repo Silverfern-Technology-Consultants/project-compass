@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
-const VerifyEmailPage = ({ token, onSwitchToLogin }) => {
+const VerifyEmailPage = () => {
     const [status, setStatus] = useState('verifying'); // 'verifying', 'success', 'error', 'resent', 'pending'
     const [message, setMessage] = useState('');
     const [email, setEmail] = useState('');
     const [isResending, setIsResending] = useState(false);
     const { verifyEmail, resendVerification, user } = useAuth();
+    const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
 
     useEffect(() => {
+        // Extract token from URL parameters
+        const token = searchParams.get('token');
+
         if (token) {
             handleEmailVerification(token);
         } else if (user && !user.emailVerified) {
@@ -17,23 +23,26 @@ const VerifyEmailPage = ({ token, onSwitchToLogin }) => {
             setMessage('Please check your email for a verification link.');
         } else {
             setStatus('error');
-            setMessage('No verification token provided.');
+            setMessage('No verification token provided. Please check your email for the verification link.');
         }
-    }, [token, user]);
+    }, [searchParams, user]);
 
     const handleEmailVerification = async (token) => {
         try {
+            setStatus('verifying');
+            setMessage('Verifying your email address...');
+
             const result = await verifyEmail(token);
             setStatus('success');
-            setMessage(result.message || 'Email verified successfully!');
+            setMessage(result.message || 'Email verified successfully! You can now sign in.');
 
             // Redirect to login after a delay
             setTimeout(() => {
-                onSwitchToLogin && onSwitchToLogin();
+                navigate('/login');
             }, 3000);
         } catch (error) {
             setStatus('error');
-            setMessage(error.message || 'Email verification failed.');
+            setMessage(error.message || 'Email verification failed. The link may be expired or invalid.');
         }
     };
 
@@ -47,12 +56,20 @@ const VerifyEmailPage = ({ token, onSwitchToLogin }) => {
         try {
             await resendVerification(email);
             setStatus('resent');
-            setMessage('Verification email sent! Please check your inbox.');
+            setMessage('Verification email sent! Please check your inbox and spam folder.');
         } catch (error) {
             setMessage(error.message || 'Failed to resend verification email.');
         } finally {
             setIsResending(false);
         }
+    };
+
+    const handleBackToLogin = () => {
+        navigate('/login');
+    };
+
+    const handleCreateNewAccount = () => {
+        navigate('/register');
     };
 
     const renderContent = () => {
@@ -76,12 +93,13 @@ const VerifyEmailPage = ({ token, onSwitchToLogin }) => {
                         </div>
                         <h2 className="mt-4 text-2xl font-bold text-gray-900">Email Verified!</h2>
                         <p className="mt-2 text-sm text-gray-600">{message}</p>
+                        <p className="mt-2 text-xs text-gray-500">Redirecting to login in 3 seconds...</p>
                         <div className="mt-6">
                             <button
-                                onClick={onSwitchToLogin}
+                                onClick={handleBackToLogin}
                                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
                             >
-                                Sign In
+                                Sign In Now
                             </button>
                         </div>
                     </div>
@@ -123,6 +141,13 @@ const VerifyEmailPage = ({ token, onSwitchToLogin }) => {
                             >
                                 {isResending ? 'Sending...' : 'Resend Verification Email'}
                             </button>
+
+                            <button
+                                onClick={handleBackToLogin}
+                                className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                            >
+                                Back to Sign In
+                            </button>
                         </div>
                     </div>
                 );
@@ -139,7 +164,7 @@ const VerifyEmailPage = ({ token, onSwitchToLogin }) => {
                         <p className="mt-2 text-sm text-gray-600">{message}</p>
                         <div className="mt-6">
                             <button
-                                onClick={onSwitchToLogin}
+                                onClick={handleBackToLogin}
                                 className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
                             >
                                 Back to Sign In
@@ -161,18 +186,40 @@ const VerifyEmailPage = ({ token, onSwitchToLogin }) => {
                         <p className="mt-2 text-sm text-gray-600">{message}</p>
 
                         <div className="mt-6 space-y-3">
+                            <div>
+                                <label htmlFor="resend-email" className="block text-sm font-medium text-gray-700">
+                                    Resend verification to:
+                                </label>
+                                <div className="mt-1">
+                                    <input
+                                        id="resend-email"
+                                        name="resend-email"
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                        placeholder="Enter your email"
+                                    />
+                                </div>
+                            </div>
+
                             <button
-                                onClick={() => {
-                                    // Create new account functionality could be added here
-                                    onSwitchToLogin && onSwitchToLogin();
-                                }}
-                                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                                onClick={handleResendVerification}
+                                disabled={isResending || !email}
+                                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                            >
+                                {isResending ? 'Sending...' : 'Resend Verification Email'}
+                            </button>
+
+                            <button
+                                onClick={handleCreateNewAccount}
+                                className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
                             >
                                 Create New Account
                             </button>
 
                             <button
-                                onClick={onSwitchToLogin}
+                                onClick={handleBackToLogin}
                                 className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
                             >
                                 Back to Sign In

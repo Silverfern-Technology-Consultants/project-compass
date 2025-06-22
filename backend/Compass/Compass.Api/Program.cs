@@ -5,6 +5,7 @@ using Compass.Data.Repositories;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,7 +13,42 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+// Enhanced Swagger configuration with JWT support
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Compass API",
+        Version = "v1",
+        Description = "Azure Governance Assessment Platform API"
+    });
+
+    // Add JWT Authentication to Swagger
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token in the text input below.",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 // Add HTTP Context Accessor
 builder.Services.AddHttpContextAccessor();
@@ -29,7 +65,7 @@ builder.Services.AddDbContext<CompassDbContext>(options =>
 
 // JWT Configuration
 var jwtSection = builder.Configuration.GetSection("Jwt");
-var secretKey = jwtSection["SecretKey"] ?? "your-super-secret-key-that-is-at-least-32-characters-long!";
+var secretKey = jwtSection["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey is required and must be configured in user secrets (development) or environment variables (production)");
 var issuer = jwtSection["Issuer"] ?? "compass-api";
 var audience = jwtSection["Audience"] ?? "compass-client";
 
@@ -51,6 +87,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
+// Email Configuration  
+builder.Services.Configure<Compass.Core.Services.EmailOptions>(
+    builder.Configuration.GetSection("Email"));
+
 // Register repositories
 builder.Services.AddScoped<IAssessmentRepository, AssessmentRepository>();
 builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
@@ -66,11 +106,14 @@ builder.Services.AddScoped<IDependencyAnalyzer, DependencyAnalyzer>();
 builder.Services.AddScoped<ILicenseValidationService, LicenseValidationService>();
 builder.Services.AddScoped<IUsageTrackingService, UsageTrackingService>();
 
-// Register NEW authentication services
+// Register authentication services
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+
+// Register MFA service - NEW
+builder.Services.AddScoped<IMfaService, MfaService>();
 
 // Add CORS
 builder.Services.AddCors(options =>
@@ -101,7 +144,11 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Compass API v1");
+        c.DisplayRequestDuration();
+    });
 }
 
 app.UseHttpsRedirection();

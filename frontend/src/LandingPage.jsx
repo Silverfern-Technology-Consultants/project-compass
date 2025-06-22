@@ -1,8 +1,18 @@
 ﻿import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Shield, BarChart3, Users, CheckCircle, ArrowRight, Menu, X, Star, Award, TrendingUp } from 'lucide-react';
 
 const NavigationBar = () => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const navigate = useNavigate();
+
+    const handleSignIn = () => {
+        navigate('/login');
+    };
+
+    const handleStartTrial = () => {
+        navigate('/register');
+    };
 
     return (
         <nav className="bg-gray-950 border-b border-gray-800">
@@ -28,8 +38,16 @@ const NavigationBar = () => {
 
                     {/* Desktop CTA */}
                     <div className="hidden md:flex items-center space-x-4">
-                        <button className="text-gray-300 hover:text-white transition-colors">Sign In</button>
-                        <button className="bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors">
+                        <button
+                            onClick={handleSignIn}
+                            className="text-gray-300 hover:text-white transition-colors"
+                        >
+                            Sign In
+                        </button>
+                        <button
+                            onClick={handleStartTrial}
+                            className="bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
+                        >
                             Start Free Trial
                         </button>
                     </div>
@@ -54,8 +72,16 @@ const NavigationBar = () => {
                             <a href="#about" className="block px-3 py-2 text-gray-300 hover:text-white">About</a>
                             <a href="#contact" className="block px-3 py-2 text-gray-300 hover:text-white">Contact</a>
                             <div className="pt-4 pb-2 border-t border-gray-800 mt-4">
-                                <button className="block w-full text-left px-3 py-2 text-gray-300 hover:text-white">Sign In</button>
-                                <button className="block w-full mt-2 bg-yellow-600 hover:bg-yellow-700 text-black px-3 py-2 rounded font-medium">
+                                <button
+                                    onClick={handleSignIn}
+                                    className="block w-full text-left px-3 py-2 text-gray-300 hover:text-white"
+                                >
+                                    Sign In
+                                </button>
+                                <button
+                                    onClick={handleStartTrial}
+                                    className="block w-full mt-2 bg-yellow-600 hover:bg-yellow-700 text-black px-3 py-2 rounded font-medium"
+                                >
                                     Start Free Trial
                                 </button>
                             </div>
@@ -68,6 +94,17 @@ const NavigationBar = () => {
 };
 
 const HeroSection = () => {
+    const navigate = useNavigate();
+
+    const handleStartAssessment = () => {
+        navigate('/register');
+    };
+
+    const handleWatchDemo = () => {
+        // You can add a demo modal or navigate to a demo page
+        console.log('Watch demo clicked');
+    };
+
     return (
         <div className="relative bg-gray-950 overflow-hidden">
             {/* Background Pattern */}
@@ -85,11 +122,17 @@ const HeroSection = () => {
                     </p>
 
                     <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                        <button className="bg-yellow-600 hover:bg-yellow-700 text-black px-8 py-3 rounded-lg font-semibold text-lg transition-colors flex items-center space-x-2">
+                        <button
+                            onClick={handleStartAssessment}
+                            className="bg-yellow-600 hover:bg-yellow-700 text-black px-8 py-3 rounded-lg font-semibold text-lg transition-colors flex items-center space-x-2"
+                        >
                             <span>Start Free Assessment</span>
                             <ArrowRight size={20} />
                         </button>
-                        <button className="border border-gray-700 hover:border-gray-600 text-white px-8 py-3 rounded-lg font-semibold text-lg transition-colors">
+                        <button
+                            onClick={handleWatchDemo}
+                            className="border border-gray-700 hover:border-gray-600 text-white px-8 py-3 rounded-lg font-semibold text-lg transition-colors"
+                        >
                             Watch Demo
                         </button>
                     </div>
@@ -258,6 +301,17 @@ const TestimonialSection = () => {
 };
 
 const PricingSection = () => {
+    const navigate = useNavigate();
+
+    const handleStartTrial = () => {
+        navigate('/register');
+    };
+
+    const handleContactSales = () => {
+        // You can add a contact modal or navigate to a contact page
+        console.log('Contact sales clicked');
+    };
+
     const plans = [
         {
             name: 'Starter',
@@ -272,7 +326,8 @@ const PricingSection = () => {
                 '1 team member'
             ],
             cta: 'Start Free Trial',
-            popular: false
+            popular: false,
+            onClick: handleStartTrial
         },
         {
             name: 'Professional',
@@ -289,7 +344,8 @@ const PricingSection = () => {
                 'API access'
             ],
             cta: 'Start Free Trial',
-            popular: true
+            popular: true,
+            onClick: handleStartTrial
         },
         {
             name: 'Enterprise',
@@ -306,7 +362,8 @@ const PricingSection = () => {
                 'On-premise deployment'
             ],
             cta: 'Contact Sales',
-            popular: false
+            popular: false,
+            onClick: handleContactSales
         }
     ];
 
@@ -352,10 +409,13 @@ const PricingSection = () => {
                                 ))}
                             </ul>
 
-                            <button className={`w-full py-3 px-4 rounded-lg font-semibold transition-colors ${plan.popular
+                            <button
+                                onClick={plan.onClick}
+                                className={`w-full py-3 px-4 rounded-lg font-semibold transition-colors ${plan.popular
                                     ? 'bg-yellow-600 hover:bg-yellow-700 text-black'
                                     : 'border border-gray-700 hover:border-gray-600 text-white'
-                                }`}>
+                                    }`}
+                            >
                                 {plan.cta}
                             </button>
                         </div>
@@ -367,6 +427,17 @@ const PricingSection = () => {
 };
 
 const CTASection = () => {
+    const navigate = useNavigate();
+
+    const handleStartTrial = () => {
+        navigate('/register');
+    };
+
+    const handleScheduleDemo = () => {
+        // You can add a demo scheduling modal or navigate to a contact page
+        console.log('Schedule demo clicked');
+    };
+
     return (
         <div className="bg-gradient-to-r from-yellow-600 to-yellow-500">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
@@ -380,11 +451,17 @@ const CTASection = () => {
                     </p>
 
                     <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                        <button className="bg-black hover:bg-gray-900 text-white px-8 py-3 rounded-lg font-semibold text-lg transition-colors flex items-center space-x-2">
+                        <button
+                            onClick={handleStartTrial}
+                            className="bg-black hover:bg-gray-900 text-white px-8 py-3 rounded-lg font-semibold text-lg transition-colors flex items-center space-x-2"
+                        >
                             <span>Start Free Trial</span>
                             <ArrowRight size={20} />
                         </button>
-                        <button className="border-2 border-black hover:bg-black hover:text-white text-black px-8 py-3 rounded-lg font-semibold text-lg transition-colors">
+                        <button
+                            onClick={handleScheduleDemo}
+                            className="border-2 border-black hover:bg-black hover:text-white text-black px-8 py-3 rounded-lg font-semibold text-lg transition-colors"
+                        >
                             Schedule Demo
                         </button>
                     </div>

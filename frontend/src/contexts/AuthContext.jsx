@@ -1,5 +1,35 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import { AuthApi } from '../services/apiService';
+import { AuthApi, MfaApi } from '../services/apiService';
+
+// Simple JWT decoder function (inline to avoid extra file)
+const decodeJWT = (token) => {
+    try {
+        if (!token) return null;
+        const parts = token.split('.');
+        if (parts.length !== 3) return null;
+        const payload = parts[1];
+        const paddedPayload = payload + '='.repeat((4 - payload.length % 4) % 4);
+        const decodedPayload = atob(paddedPayload);
+        return JSON.parse(decodedPayload);
+    } catch (error) {
+        console.error('Error decoding JWT token:', error);
+        return null;
+    }
+};
+
+const getEmailVerifiedFromToken = (token) => {
+    try {
+        const decoded = decodeJWT(token);
+        if (!decoded) return null;
+        const emailVerified = decoded.email_verified;
+        if (emailVerified === 'true' || emailVerified === true) return true;
+        if (emailVerified === 'false' || emailVerified === false) return false;
+        return null;
+    } catch (error) {
+        console.error('Error extracting email verification from token:', error);
+        return null;
+    }
+};
 
 // Auth state management
 const authReducer = (state, action) => {
@@ -17,13 +47,19 @@ const authReducer = (state, action) => {
             return { ...state, token: action.payload };
         case 'SET_ERROR':
             return { ...state, error: action.payload, isLoading: false };
+        case 'SET_MFA_REQUIRED':
+            return { ...state, mfaRequired: action.payload, isLoading: false };
+        case 'SET_MFA_SETUP_REQUIRED':
+            return { ...state, mfaSetupRequired: action.payload, isLoading: false };
         case 'LOGOUT':
             return {
                 user: null,
                 token: null,
                 isAuthenticated: false,
                 isLoading: false,
-                error: null
+                error: null,
+                mfaRequired: false,
+                mfaSetupRequired: false
             };
         case 'CLEAR_ERROR':
             return { ...state, error: null };
@@ -37,7 +73,9 @@ const initialState = {
     token: localStorage.getItem('compass_token'),
     isAuthenticated: false,
     isLoading: true,
-    error: null
+    error: null,
+    mfaRequired: false,
+    mfaSetupRequired: false
 };
 
 const AuthContext = createContext();
@@ -70,6 +108,8 @@ export const AuthProvider = ({ children }) => {
                     const userResponse = await AuthApi.getCurrentUser();
 
                     console.log('[Auth] Token verified successfully:', userResponse);
+                    console.log('[Auth] User subscription status:', userResponse.subscriptionStatus);
+                    console.log('[Auth] User trial end date:', userResponse.trialEndDate);
 
                     dispatch({ type: 'SET_TOKEN', payload: token });
                     dispatch({ type: 'SET_USER', payload: userResponse });
@@ -105,13 +145,59 @@ export const AuthProvider = ({ children }) => {
             const response = await AuthApi.login(email, password);
             console.log('[Auth] Login API response:', response);
 
-            const { token, customer } = response;
+            // Handle different response structures
+            const customer = response.customer || response.user || response;
+            const token = response.token;
 
+            // If customer object is missing emailVerified field, try to get it from JWT token
+            if (customer && customer.emailVerified === undefined && token) {
+                const emailVerifiedFromToken = getEmailVerifiedFromToken(token);
+                if (emailVerifiedFromToken !== null) {
+                    customer.emailVerified = emailVerifiedFromToken;
+                    console.log('[Auth] Email verified status from JWT token:', customer.emailVerified);
+                }
+            }
+
+            // Check email verification status
+            if (customer && customer.emailVerified === false) {
+                console.log('[Auth] Email verification required for user');
+                dispatch({ type: 'SET_LOADING', payload: false });
+                return {
+                    requiresEmailVerification: true,
+                    customer,
+                    email: customer.email || email
+                };
+            }
+
+            // Handle MFA requirements
+            if (response.requiresMfa) {
+                console.log('[Auth] MFA verification required');
+                dispatch({ type: 'SET_MFA_REQUIRED', payload: true });
+                return { requiresMfa: true };
+            }
+
+            if (response.requiresMfaSetup) {
+                console.log('[Auth] MFA setup required');
+                // Store temporary token for MFA setup
+                if (token) {
+                    AuthApi.setAuthToken(token);
+                    dispatch({ type: 'SET_TOKEN', payload: token });
+                }
+                if (customer) {
+                    dispatch({ type: 'SET_USER', payload: customer });
+                }
+                dispatch({ type: 'SET_MFA_SETUP_REQUIRED', payload: true });
+                return { requiresMfaSetup: true, customer, token };
+            }
+
+            // Normal successful login
             if (!token || !customer) {
-                throw new Error('Invalid response from server');
+                console.error('[Auth] Missing token or customer in response:', { token: !!token, customer: !!customer });
+                throw new Error('Invalid response from server - missing authentication data');
             }
 
             console.log('[Auth] Login successful, storing token and user data');
+            console.log('[Auth] Customer email verified status:', customer.emailVerified);
 
             // Store token
             localStorage.setItem('compass_token', token);
@@ -122,14 +208,34 @@ export const AuthProvider = ({ children }) => {
             dispatch({ type: 'SET_USER', payload: customer });
 
             console.log('[Auth] Login completed successfully');
-            return customer;
+            return { success: true, customer, token };
         } catch (error) {
             console.error('[Auth] Login failed:', error);
+            console.error('[Auth] Error response:', error.response?.data);
 
             const errorMessage = error.response?.data?.message || error.message || 'Login failed';
             dispatch({ type: 'SET_ERROR', payload: errorMessage });
             throw new Error(errorMessage);
         }
+    };
+
+    const completeMfaVerification = (response) => {
+        console.log('[Auth] Completing MFA verification');
+        if (response.token) {
+            localStorage.setItem('compass_token', response.token);
+            AuthApi.setAuthToken(response.token);
+            dispatch({ type: 'SET_TOKEN', payload: response.token });
+        }
+        if (response.customer || response.user) {
+            dispatch({ type: 'SET_USER', payload: response.customer || response.user });
+        }
+        dispatch({ type: 'SET_MFA_REQUIRED', payload: false });
+    };
+
+    const completeMfaSetup = () => {
+        console.log('[Auth] Completing MFA setup');
+        dispatch({ type: 'SET_MFA_SETUP_REQUIRED', payload: false });
+        // User is already logged in with the temp token
     };
 
     const register = async (userData) => {
@@ -187,6 +293,68 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // MFA methods
+    const getMfaStatus = async () => {
+        try {
+            const response = await MfaApi.getMfaStatus();
+            // Map backend property names to frontend expectations
+            return {
+                isMfaEnabled: response.isEnabled,
+                mfaSetupDate: response.setupDate,
+                lastMfaUsedDate: response.lastUsedDate,
+                backupCodesRemaining: response.backupCodesRemaining,
+                requiresMfaSetup: response.requiresSetup
+            };
+        } catch (error) {
+            throw error;
+        }
+    };
+
+    const setupMfa = async () => {
+        try {
+            const response = await MfaApi.setupMfa();
+            return response;
+        } catch (error) {
+            throw error;
+        }
+    };
+
+    const verifyMfaSetup = async (totpCode) => {
+        try {
+            const response = await MfaApi.verifyMfaSetup(totpCode);
+            return response;
+        } catch (error) {
+            throw error;
+        }
+    };
+
+    const verifyMfa = async (code, isBackupCode = false) => {
+        try {
+            const response = await MfaApi.verifyMfa(code, isBackupCode);
+            return response;
+        } catch (error) {
+            throw error;
+        }
+    };
+
+    const disableMfa = async (password, mfaCode) => {
+        try {
+            const response = await MfaApi.disableMfa(password, mfaCode);
+            return response;
+        } catch (error) {
+            throw error;
+        }
+    };
+
+    const regenerateBackupCodes = async (mfaCode) => {
+        try {
+            const response = await MfaApi.regenerateBackupCodes(mfaCode);
+            return response;
+        } catch (error) {
+            throw error;
+        }
+    };
+
     const clearError = () => {
         dispatch({ type: 'CLEAR_ERROR' });
     };
@@ -198,6 +366,8 @@ export const AuthProvider = ({ children }) => {
         isAuthenticated: state.isAuthenticated,
         isLoading: state.isLoading,
         error: state.error,
+        mfaRequired: state.mfaRequired,
+        mfaSetupRequired: state.mfaSetupRequired,
 
         // Actions
         login,
@@ -206,7 +376,17 @@ export const AuthProvider = ({ children }) => {
         verifyEmail,
         resendVerification,
         checkEmailAvailability,
-        clearError
+        clearError,
+        completeMfaVerification,
+        completeMfaSetup,
+
+        // MFA methods
+        getMfaStatus,
+        setupMfa,
+        verifyMfaSetup,
+        verifyMfa,
+        disableMfa,
+        regenerateBackupCodes
     };
 
     return (

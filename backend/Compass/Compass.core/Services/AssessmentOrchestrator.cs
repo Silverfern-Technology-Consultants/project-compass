@@ -46,6 +46,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         {
             Id = Guid.NewGuid(),
             EnvironmentId = request.EnvironmentId,
+            Name = request.Name, // ✅ FIXED: Store the user-entered assessment name
             AssessmentType = request.Type.ToString(),
             Status = AssessmentStatus.Pending.ToString(),
             StartedDate = DateTime.UtcNow,

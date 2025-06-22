@@ -13,7 +13,7 @@ public class CustomerRepository : ICustomerRepository
         _context = context;
     }
 
-    public async Task<Customer> GetByIdAsync(Guid customerId)
+    public async Task<Customer?> GetByIdAsync(Guid customerId)
     {
         return await _context.Customers
             .Include(c => c.Subscriptions)
@@ -21,11 +21,11 @@ public class CustomerRepository : ICustomerRepository
             .FirstOrDefaultAsync(c => c.CustomerId == customerId);
     }
 
-    public async Task<Customer> GetByEmailAsync(string email)
+    public async Task<Customer?> GetByEmailAsync(string email)
     {
         return await _context.Customers
             .Include(c => c.Subscriptions)
-            .FirstOrDefaultAsync(c => c.Email == email || c.ContactEmail == email);
+            .FirstOrDefaultAsync(c => c.Email == email.ToLowerInvariant());
     }
 
     public async Task<IEnumerable<Customer>> GetAllAsync()
@@ -40,7 +40,6 @@ public class CustomerRepository : ICustomerRepository
     public async Task<Customer> CreateAsync(Customer customer)
     {
         customer.CreatedDate = DateTime.UtcNow;
-
         _context.Customers.Add(customer);
         await _context.SaveChangesAsync();
         return customer;
@@ -72,6 +71,6 @@ public class CustomerRepository : ICustomerRepository
     public async Task<bool> EmailExistsAsync(string email)
     {
         return await _context.Customers
-            .AnyAsync(c => (c.Email == email || c.ContactEmail == email) && c.IsActive);
+            .AnyAsync(c => c.Email == email.ToLowerInvariant() && c.IsActive);
     }
 }

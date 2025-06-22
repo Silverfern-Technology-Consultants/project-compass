@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Play, FileText, Calendar, Filter, Search, MoreVertical, Eye, Download, Trash2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
+import { Play, FileText, Calendar, Search, MoreVertical, Eye, Download, Trash2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { useAssessments, useAzureTest } from '../../hooks/useApi';
 import NewAssessmentModal from '../modals/NewAssessmentModal';
 import AssessmentDetailModal from '../modals/AssessmentDetailModal';
@@ -22,17 +22,31 @@ const AssessmentCard = ({ assessment, onView, onDelete }) => {
         return 'text-red-400';
     };
 
+    // Enhanced display format: "User Name - Assessment ID"
+    const formatAssessmentTitle = (assessment) => {
+        const shortId = assessment.id.substring(0, 8).toUpperCase();
+        // Try to get the user-entered name, fall back to generated name
+        const userEnteredName = assessment.rawData?.name || assessment.userEnteredName || assessment.name;
+        return `${userEnteredName} - ${shortId}`;
+    };
+
+    // Format company and type for subtitle
+    const formatAssessmentSubtitle = (assessment) => {
+        // Show environment info on second line
+        return `${assessment.environment} Environment`;
+    };
+
     return (
         <div className="bg-gray-900 border border-gray-800 rounded p-6 hover:border-gray-700 transition-colors">
             <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-white mb-1">{assessment.name}</h3>
-                    <p className="text-gray-400 text-sm">{assessment.environment}</p>
+                    <h3 className="text-lg font-semibold text-white mb-1">{formatAssessmentTitle(assessment)}</h3>
+                    <p className="text-gray-400 text-sm">{formatAssessmentSubtitle(assessment)}</p>
                 </div>
                 <div className="flex items-center space-x-2">
-                    <div className={`px-3 py-1 rounded text-sm font-medium ${getStatusColor(assessment.status)}`}>
+                    <span className={`text-xs px-2 py-1 rounded ${getStatusColor(assessment.status)}`}>
                         {assessment.status}
-                    </div>
+                    </span>
                     <div className="relative">
                         <button
                             onClick={() => setShowDropdown(!showDropdown)}
@@ -40,9 +54,8 @@ const AssessmentCard = ({ assessment, onView, onDelete }) => {
                         >
                             <MoreVertical size={16} />
                         </button>
-
                         {showDropdown && (
-                            <div className="absolute right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded shadow-lg z-10">
+                            <div className="absolute right-0 top-8 w-48 bg-gray-800 border border-gray-700 rounded shadow-lg z-10">
                                 <button
                                     onClick={() => {
                                         onView(assessment);
@@ -53,7 +66,6 @@ const AssessmentCard = ({ assessment, onView, onDelete }) => {
                                     <Eye size={14} />
                                     <span>View Details</span>
                                 </button>
-
                                 {assessment.status === 'Completed' && (
                                     <button
                                         onClick={() => setShowDropdown(false)}
@@ -109,17 +121,10 @@ const AssessmentCard = ({ assessment, onView, onDelete }) => {
                 <div className="flex items-center space-x-2">
                     <button
                         onClick={() => onView(assessment)}
-                        className="flex items-center space-x-1 px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-black rounded text-sm font-medium transition-colors"
+                        className="text-sm bg-yellow-600 hover:bg-yellow-700 text-black px-3 py-1 rounded transition-colors"
                     >
-                        <Eye size={14} />
-                        <span>View</span>
+                        View Details
                     </button>
-                    {assessment.status === 'Completed' && (
-                        <button className="flex items-center space-x-1 px-3 py-1 bg-gray-800 hover:bg-gray-700 text-white rounded text-sm transition-colors">
-                            <Download size={14} />
-                            <span>Export</span>
-                        </button>
-                    )}
                 </div>
             </div>
         </div>
@@ -203,75 +208,63 @@ const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, assessment }) => 
 
 const ConnectionTestModal = ({ isOpen, onClose, subscriptionIds }) => {
     const { testConnection, connectionStatus, loading } = useAzureTest();
-    const [testStarted, setTestStarted] = useState(false);
 
-    const handleTestConnection = async () => {
+    const handleTestConnection = useCallback(async () => {
         if (!subscriptionIds || subscriptionIds.length === 0) return;
 
-        setTestStarted(true);
         try {
             await testConnection(subscriptionIds);
         } catch (error) {
             console.error('Connection test failed:', error);
         }
-    };
+    }, [subscriptionIds, testConnection]);
+
+    useEffect(() => {
+        if (isOpen && subscriptionIds && subscriptionIds.length > 0) {
+            handleTestConnection();
+        }
+    }, [isOpen, subscriptionIds, handleTestConnection]);
 
     if (!isOpen) return null;
-
-    const getStatusIcon = () => {
-        if (loading) return <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-yellow-600"></div>;
-        if (connectionStatus?.success) return <CheckCircle size={24} className="text-green-400" />;
-        if (connectionStatus && !connectionStatus.success) return <XCircle size={24} className="text-red-400" />;
-        return <AlertCircle size={24} className="text-gray-400" />;
-    };
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-gray-900 border border-gray-800 rounded w-full max-w-md mx-4">
                 <div className="p-6 border-b border-gray-800">
-                    <h2 className="text-xl font-semibold text-white">Test Azure Connection</h2>
+                    <h2 className="text-xl font-semibold text-white">Testing Azure Connection</h2>
                 </div>
 
-                <div className="p-6 text-center">
-                    <div className="mb-4">
-                        {getStatusIcon()}
+                <div className="p-6">
+                    <div className="flex items-center space-x-3 mb-4">
+                        <div className="flex-shrink-0">
+                            {loading ? (
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-yellow-600"></div>
+                            ) : connectionStatus?.success ? (
+                                <CheckCircle size={24} className="text-green-400" />
+                            ) : (
+                                <XCircle size={24} className="text-red-400" />
+                            )}
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-medium text-white">
+                                {loading ? 'Testing connection...' :
+                                    connectionStatus?.success ? 'Connection successful!' : 'Connection failed'}
+                            </h3>
+                            <p className="text-gray-400">
+                                {loading ? 'Verifying access to Azure subscriptions' :
+                                    connectionStatus?.message || 'Unable to connect to Azure subscriptions'}
+                            </p>
+                        </div>
                     </div>
 
-                    {!testStarted && (
-                        <div>
-                            <p className="text-gray-400 mb-4">
-                                Test connection to {subscriptionIds?.length || 0} Azure subscription(s)
-                            </p>
-                            <button
-                                onClick={handleTestConnection}
-                                className="bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
-                            >
-                                Start Connection Test
-                            </button>
-                        </div>
-                    )}
-
-                    {loading && (
-                        <div>
-                            <h3 className="text-lg font-semibold text-white mb-2">Testing Connection...</h3>
-                            <p className="text-gray-400">Verifying access to Azure subscriptions</p>
-                        </div>
-                    )}
-
-                    {connectionStatus && !loading && (
-                        <div>
-                            <h3 className={`text-lg font-semibold mb-2 ${connectionStatus.success ? 'text-green-400' : 'text-red-400'}`}>
-                                {connectionStatus.success ? 'Connection Successful!' : 'Connection Failed'}
-                            </h3>
-                            <p className="text-gray-400 mb-4">{connectionStatus.message}</p>
-
-                            {connectionStatus.success && (
-                                <div className="bg-gray-800 rounded p-3 mb-4">
-                                    <p className="text-sm text-gray-300">
-                                        Successfully connected to Azure Resource Graph API
-                                    </p>
-                                </div>
-                            )}
+                    {subscriptionIds && subscriptionIds.length > 0 && (
+                        <div className="bg-gray-800 rounded p-3 mb-4">
+                            <p className="text-sm text-gray-300 mb-2">Testing subscriptions:</p>
+                            <ul className="text-sm text-gray-400 space-y-1">
+                                {subscriptionIds.map((id, index) => (
+                                    <li key={index} className="font-mono">{id}</li>
+                                ))}
+                            </ul>
                         </div>
                     )}
                 </div>
@@ -279,9 +272,9 @@ const ConnectionTestModal = ({ isOpen, onClose, subscriptionIds }) => {
                 <div className="p-6 border-t border-gray-800 flex justify-end">
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
+                        className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-black rounded font-medium transition-colors"
                     >
-                        Close
+                        {connectionStatus?.success ? 'Continue' : 'Close'}
                     </button>
                 </div>
             </div>
@@ -290,39 +283,78 @@ const ConnectionTestModal = ({ isOpen, onClose, subscriptionIds }) => {
 };
 
 const AssessmentsPage = () => {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [statusFilter, setStatusFilter] = useState('All');
-    const [showNewModal, setShowNewModal] = useState(false);
-    const [showConnectionTest, setShowConnectionTest] = useState(false);
-    const [showDetailModal, setShowDetailModal] = useState(false);
-    const [showDeleteModal, setShowDeleteModal] = useState(false);
-    const [selectedAssessment, setSelectedAssessment] = useState(null);
-    const [assessmentToDelete, setAssessmentToDelete] = useState(null);
-    const [testSubscriptions, setTestSubscriptions] = useState([]);
-
     const {
         assessments,
         loading: assessmentsLoading,
         error: assessmentsError,
         startAssessment,
         deleteAssessment,
-        loadAssessments,
-        refreshAssessments
+        refreshAssessments,
+        loadAssessments
     } = useAssessments();
 
-    // Load assessments on component mount
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('All');
+    const [showNewModal, setShowNewModal] = useState(false);
+    const [showDetailModal, setShowDetailModal] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [showConnectionTest, setShowConnectionTest] = useState(false);
+    const [selectedAssessment, setSelectedAssessment] = useState(null);
+    const [assessmentToDelete, setAssessmentToDelete] = useState(null);
+    const [testSubscriptions, setTestSubscriptions] = useState([]);
+
+    // Load assessments on mount - run only once
     useEffect(() => {
-        loadAssessments();
-    }, []);
+        if (loadAssessments) {
+            loadAssessments();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Empty dependency array - run only once on mount
 
     // Close dropdown when clicking outside
     useEffect(() => {
-        const handleClickOutside = () => {
-            // This will be handled by individual dropdown components
+        const handleClickOutside = (event) => {
+            if (!event.target.closest('.relative')) {
+                // Close any open dropdowns
+            }
         };
 
         document.addEventListener('click', handleClickOutside);
         return () => document.removeEventListener('click', handleClickOutside);
+    }, []);
+
+    // Listen for dashboard events to auto-open modals
+    useEffect(() => {
+        const handleOpenNewAssessmentModal = () => {
+            setShowNewModal(true);
+        };
+
+        const handleOpenAssessmentDetailModal = (event) => {
+            const assessment = event.detail;
+            setSelectedAssessment(assessment);
+            setShowDetailModal(true);
+        };
+
+        // Check for stored assessment to view from dashboard
+        const storedAssessment = sessionStorage.getItem('viewAssessment');
+        if (storedAssessment) {
+            try {
+                const assessment = JSON.parse(storedAssessment);
+                setSelectedAssessment(assessment);
+                setShowDetailModal(true);
+                sessionStorage.removeItem('viewAssessment');
+            } catch (error) {
+                console.error('Failed to parse stored assessment:', error);
+            }
+        }
+
+        window.addEventListener('openNewAssessmentModal', handleOpenNewAssessmentModal);
+        window.addEventListener('openAssessmentDetailModal', handleOpenAssessmentDetailModal);
+
+        return () => {
+            window.removeEventListener('openNewAssessmentModal', handleOpenNewAssessmentModal);
+            window.removeEventListener('openAssessmentDetailModal', handleOpenAssessmentDetailModal);
+        };
     }, []);
 
     const filteredAssessments = assessments.filter(assessment => {
@@ -398,7 +430,7 @@ const AssessmentsPage = () => {
         }
     };
 
-    if (assessmentsLoading && assessments.length === 0) {
+    if (assessmentsLoading && (!assessments || assessments.length === 0)) {
         return (
             <div className="space-y-6">
                 <div className="flex items-center justify-center p-12">
@@ -442,52 +474,51 @@ const AssessmentsPage = () => {
             )}
 
             {/* Filters */}
-            <div className="bg-gray-900 border border-gray-800 rounded p-4">
-                <div className="flex flex-col sm:flex-row gap-4">
-                    <div className="flex-1 relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                        <input
-                            type="text"
-                            placeholder="Search assessments..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full bg-gray-800 border border-gray-700 rounded pl-10 pr-4 py-2 text-white focus:outline-none focus:border-yellow-600"
-                        />
-                    </div>
-                    <div className="flex items-center space-x-3">
-                        <Filter size={16} className="text-gray-400" />
-                        <select
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                            className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-yellow-600"
-                        >
-                            <option value="All">All Status</option>
-                            <option value="Completed">Completed</option>
-                            <option value="In Progress">In Progress</option>
-                            <option value="Failed">Failed</option>
-                            <option value="Pending">Pending</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            {/* Assessments Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {filteredAssessments.map(assessment => (
-                    <AssessmentCard
-                        key={assessment.id}
-                        assessment={assessment}
-                        onView={handleViewAssessment}
-                        onDelete={handleDeleteAssessment}
+            <div className="flex flex-col sm:flex-row gap-4">
+                <div className="relative flex-1">
+                    <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Search assessments..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 bg-gray-900 border border-gray-700 rounded text-white focus:border-yellow-600 focus:outline-none"
                     />
-                ))}
+                </div>
+                <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="px-4 py-2 bg-gray-900 border border-gray-700 rounded text-white focus:border-yellow-600 focus:outline-none"
+                >
+                    <option value="All">All Status</option>
+                    <option value="Completed">Completed</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Failed">Failed</option>
+                </select>
             </div>
 
-            {filteredAssessments.length === 0 && !assessmentsLoading && (
-                <div className="bg-gray-900 border border-gray-800 rounded p-12 text-center">
+            {/* Assessment Grid */}
+            {filteredAssessments.length > 0 ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {filteredAssessments.map((assessment) => (
+                        <AssessmentCard
+                            key={assessment.id}
+                            assessment={assessment}
+                            onView={handleViewAssessment}
+                            onDelete={handleDeleteAssessment}
+                        />
+                    ))}
+                </div>
+            ) : (
+                <div className="bg-gray-950 border border-gray-800 rounded p-12 text-center">
                     <FileText size={48} className="text-gray-600 mx-auto mb-4" />
                     <h3 className="text-lg font-semibold text-white mb-2">No assessments found</h3>
-                    <p className="text-gray-400 mb-4">Try adjusting your search or filters, or start a new assessment.</p>
+                    <p className="text-gray-400 mb-4">
+                        {(assessments?.length || 0) === 0
+                            ? "Start your first assessment to begin monitoring Azure governance."
+                            : "Try adjusting your search or filters."
+                        }
+                    </p>
                     <button
                         onClick={() => setShowNewModal(true)}
                         className="bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"

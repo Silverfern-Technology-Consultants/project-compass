@@ -1,5 +1,4 @@
-﻿// Add to Compass.Core/Models/ folder
-namespace Compass.Core.Models;
+﻿namespace Compass.Core.Models;
 
 // LicensingController DTOs
 public class FeatureAccess

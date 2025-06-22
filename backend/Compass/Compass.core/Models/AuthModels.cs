@@ -20,6 +20,10 @@ public class RegisterRequest
     [EmailAddress]
     [StringLength(255)]
     public string Email { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(100, MinimumLength = 8)]
+    public string Password { get; set; } = string.Empty;
 }
 
 public class LoginRequest
@@ -64,4 +68,57 @@ public class ResendVerificationRequest
     [Required]
     [EmailAddress]
     public string Email { get; set; } = string.Empty;
+}
+
+// NEW MODELS FOR MFA AND PASSWORD RESET
+public class ResetPasswordRequest
+{
+    [Required]
+    public string Token { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(100, MinimumLength = 8)]
+    public string NewPassword { get; set; } = string.Empty;
+}
+
+public class ForgotPasswordRequest
+{
+    [Required]
+    [EmailAddress]
+    public string Email { get; set; } = string.Empty;
+}
+
+public class CustomerDto
+{
+    public Guid CustomerId { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public bool EmailVerified { get; set; } // ✅ ADDED: Missing EmailVerified property
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public string CompanyName { get; set; } = string.Empty;
+}
+
+public class LoginWithMfaRequest
+{
+    [Required]
+    [EmailAddress]
+    public string Email { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(100, MinimumLength = 6)]
+    public string Password { get; set; } = string.Empty;
+
+    public string? MfaToken { get; set; }
+    public bool IsBackupCode { get; set; } = false;
+}
+
+public class LoginResponse
+{
+    public bool Success { get; set; }
+    public string? Token { get; set; }
+    public bool RequiresMfa { get; set; }
+    public bool RequiresMfaSetup { get; set; }
+    public bool RequiresEmailVerification { get; set; } // ✅ ADDED: Missing RequiresEmailVerification property
+    public string Message { get; set; } = string.Empty;
+    public CustomerDto? Customer { get; set; }
 }

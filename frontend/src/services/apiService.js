@@ -1,63 +1,40 @@
+﻿// apiService.js - Enhanced with MFA support
 import axios from 'axios';
 
-// Configure base URL - update this to match your API
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://localhost:7163/api';
 
 // Create axios instance with default config
-const apiClient = axios.create({
+export const apiClient = axios.create({
     baseURL: API_BASE_URL,
+    timeout: 30000,
     headers: {
         'Content-Type': 'application/json',
     },
-    timeout: 30000, // 30 second timeout
 });
 
-// Request interceptor for adding auth tokens
+// Request interceptor to add auth token
 apiClient.interceptors.request.use(
     (config) => {
-        // Updated to use the same token key as AuthContext
-        const token = localStorage.getItem('compass_token') || localStorage.getItem('authToken');
+        const token = localStorage.getItem('compass_token');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
-
-        // Add logging for debugging
-        console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`, {
-            params: config.params,
-            data: config.data,
-            headers: config.headers
-        });
-
         return config;
     },
     (error) => {
-        console.error('[API] Request error:', error);
+        console.error('[API] Request interceptor error:', error);
         return Promise.reject(error);
     }
 );
 
-// Response interceptor for handling errors
+// Response interceptor for handling auth errors
 apiClient.interceptors.response.use(
-    (response) => {
-        console.log(`[API] Response ${response.status}:`, response.data);
-        return response;
-    },
+    (response) => response,
     (error) => {
-        console.error('[API] Response error:', error);
-
-        // Enhanced error logging to see response data
-        if (error.response) {
-            console.error('[API] Error status:', error.response.status);
-            console.error('[API] Error data:', error.response.data);
-            console.error('[API] Error headers:', error.response.headers);
-        } else if (error.request) {
-            console.error('[API] No response received:', error.request);
-        } else {
-            console.error('[API] Request setup error:', error.message);
-        }
+        console.error('[API] Response interceptor error:', error);
 
         if (error.response?.status === 401) {
-            // Handle unauthorized - clear both token keys and redirect to login
+            // Handle unauthorized - clear token and redirect to login
             localStorage.removeItem('compass_token');
             localStorage.removeItem('authToken');
             window.location.href = '/login';
@@ -66,107 +43,82 @@ apiClient.interceptors.response.use(
     }
 );
 
-// Authentication API class for cleaner organization
-export class AuthApi {
-    // Set auth token manually (used by AuthContext)
-    static setAuthToken(token) {
-        if (token) {
-            apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-            localStorage.setItem('compass_token', token);
-        } else {
-            delete apiClient.defaults.headers.common['Authorization'];
-            localStorage.removeItem('compass_token');
-            localStorage.removeItem('authToken');
-        }
-    }
-
-    // Login with enhanced error handling
-    static async login(email, password) {
-        try {
-            console.log('[AuthApi] Attempting login with:', { email, passwordLength: password.length });
-            const response = await apiClient.post('/auth/login', { email, password });
-            console.log('[AuthApi] Login response:', response.data);
-            return response.data;
-        } catch (error) {
-            console.error('[AuthApi] Login error details:', {
-                status: error.response?.status,
-                data: error.response?.data,
-                message: error.message
-            });
-            throw error;
-        }
-    }
-
-    // Register
-    static async register(userData) {
-        const response = await apiClient.post('/auth/register', userData);
-        return response.data;
-    }
-
-    // Verify email
-    static async verifyEmail(token) {
-        const response = await apiClient.post('/auth/verify-email', { token });
-        return response.data;
-    }
-
-    // Resend verification
-    static async resendVerification(email) {
-        const response = await apiClient.post('/auth/resend-verification', { email });
-        return response.data;
-    }
-
-    // Get current user
-    static async getCurrentUser() {
-        const response = await apiClient.get('/auth/me');
-        return response.data;
-    }
-
-    // Check email availability
-    static async checkEmailAvailability(email) {
-        const response = await apiClient.post('/auth/check-email', { email });
-        return response.data;
-    }
-}
-
-// Helper function to convert assessment type string to number
+// Helper functions
 const getAssessmentTypeNumber = (typeString) => {
-    switch (typeString) {
-        case 'NamingConvention': return 0;
-        case 'Tagging': return 1;
-        case 'Full': return 2;
-        default: return 2;
+    const types = {
+        'Naming Convention': 0,
+        'Tagging': 1,
+        'Full': 2,
+        'NamingConvention': 0
+    };
+    return types[typeString] ?? 2;
+};
+
+const formatTimeAgo = (date) => {
+    if (!date) return 'Unknown';
+
+    try {
+        // Parse the date string - handle various formats
+        let past;
+        if (typeof date === 'string') {
+            // Try parsing as ISO string first
+            past = new Date(date);
+
+            // If that fails, try other common formats
+            if (isNaN(past.getTime())) {
+                // Handle SQL Server datetime format or other formats
+                past = new Date(date.replace(' ', 'T'));
+            }
+        } else {
+            past = new Date(date);
+        }
+
+        // Check if the date is valid
+        if (isNaN(past.getTime())) {
+            console.warn('Invalid date received:', date);
+            return 'Unknown';
+        }
+
+        const now = new Date();
+        const diffInMs = now.getTime() - past.getTime();
+
+        // For debugging - log the actual dates
+        console.log('Date comparison:', { now: now.toISOString(), past: past.toISOString(), diffInMs });
+
+        // Handle very small differences or future dates
+        if (diffInMs < 0) {
+            console.warn('Future date detected:', { now, past, diffInMs });
+            return 'Just now'; // Treat future dates as "just now"
+        }
+
+        if (diffInMs < 60000) { // Less than 1 minute
+            return 'Just now';
+        }
+
+        const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
+        if (diffInMinutes < 60) {
+            return `${diffInMinutes}m ago`;
+        }
+
+        const diffInHours = Math.floor(diffInMinutes / 60);
+        if (diffInHours < 24) {
+            return `${diffInHours}h ago`;
+        }
+
+        const diffInDays = Math.floor(diffInHours / 24);
+        if (diffInDays < 7) {
+            return `${diffInDays}d ago`;
+        }
+
+        // For dates older than a week, show the actual date
+        return past.toLocaleDateString();
+
+    } catch (error) {
+        console.error('Error formatting time:', error, 'Original date:', date);
+        return 'Unknown';
     }
 };
 
-// Helper function to convert assessment type number to string
-const getAssessmentTypeString = (typeNumber) => {
-    switch (typeNumber) {
-        case 0: return 'NamingConvention';
-        case 1: return 'Tagging';
-        case 2: return 'Full';
-        default: return 'Full';
-    }
-};
-
-// Helper function to format time ago
-const getTimeAgo = (dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInMinutes = Math.floor((now - date) / (1000 * 60));
-
-    if (diffInMinutes < 1) return 'Just now';
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) return `${diffInHours}h ago`;
-
-    const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 7) return `${diffInDays}d ago`;
-
-    return date.toLocaleDateString();
-};
-
-// Helper function to calculate duration
 const calculateDuration = (startDate, endDate) => {
     if (!endDate) return 'In progress...';
 
@@ -183,36 +135,164 @@ const calculateDuration = (startDate, endDate) => {
     return `${seconds}s`;
 };
 
-// Remove duplicate helper functions from bottom of file
+// Generate meaningful assessment names based on assessment data
+const generateAssessmentName = (assessment) => {
+    const type = assessment.assessmentType || assessment.type || 'Azure';
+    const customerName = assessment.customerName || 'Environment';
 
-// Assessments API (SIMPLIFIED AND FIXED)
+    // Create a descriptive name based on type and customer
+    switch (type.toLowerCase()) {
+        case 'namingconvention':
+        case 'naming convention':
+            return `${customerName} - Naming Analysis`;
+        case 'tagging':
+            return `${customerName} - Tagging Assessment`;
+        case 'full':
+            return `${customerName} - Full Governance Review`;
+        default:
+            return `${customerName} - Azure Assessment`;
+    }
+};
+
+// Generate environment name based on available data
+const generateEnvironmentName = (assessment) => {
+    // Try to infer environment from customer name or assessment type
+    const customerName = assessment.customerName || '';
+
+    if (customerName.toLowerCase().includes('prod')) return 'Production';
+    if (customerName.toLowerCase().includes('dev')) return 'Development';
+    if (customerName.toLowerCase().includes('test')) return 'Testing';
+    if (customerName.toLowerCase().includes('staging')) return 'Staging';
+
+    // Default based on assessment maturity
+    if (assessment.overallScore >= 80) return 'Production';
+    if (assessment.overallScore >= 60) return 'Staging';
+    return 'Development';
+};
+
+// Authentication API class
+export class AuthApi {
+    static setAuthToken(token) {
+        if (token) {
+            apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            localStorage.setItem('compass_token', token);
+        } else {
+            delete apiClient.defaults.headers.common['Authorization'];
+            localStorage.removeItem('compass_token');
+            localStorage.removeItem('authToken');
+        }
+    }
+
+    static async login(email, password) {
+        try {
+            console.log('[AuthApi] Attempting login with:', { email, passwordLength: password.length });
+            const response = await apiClient.post('/auth/login', { email, password });
+            console.log('[AuthApi] Login response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[AuthApi] Login error details:', {
+                status: error.response?.status,
+                data: error.response?.data,
+                message: error.message
+            });
+            throw error;
+        }
+    }
+
+    static async register(userData) {
+        const response = await apiClient.post('/auth/register', userData);
+        return response.data;
+    }
+
+    static async verifyEmail(token) {
+        const response = await apiClient.post('/auth/verify-email', { token });
+        return response.data;
+    }
+
+    static async resendVerification(email) {
+        const response = await apiClient.post('/auth/resend-verification', { email });
+        return response.data;
+    }
+
+    static async getCurrentUser() {
+        const response = await apiClient.get('/auth/me');
+        return response.data;
+    }
+
+    static async checkEmailAvailability(email) {
+        const response = await apiClient.post('/auth/check-email', { email });
+        return response.data;
+    }
+}
+
+// MFA API class
+export class MfaApi {
+    static async getMfaStatus() {
+        const response = await apiClient.get('/mfa/status');
+        return response.data;
+    }
+
+    static async setupMfa() {
+        const response = await apiClient.post('/mfa/setup');
+        return response.data;
+    }
+
+    static async verifyMfaSetup(totpCode) {
+        const response = await apiClient.post('/mfa/verify-setup', { totpCode });
+        return response.data;
+    }
+
+    static async verifyMfa(code, isBackupCode = false) {
+        const response = await apiClient.post('/mfa/verify', { code, isBackupCode });
+        return response.data;
+    }
+
+    static async disableMfa(password, mfaCode) {
+        const response = await apiClient.post('/mfa/disable', { password, mfaCode });
+        return response.data;
+    }
+
+    static async regenerateBackupCodes(mfaCode) {
+        const response = await apiClient.post('/mfa/regenerate-backup-codes', { mfaCode });
+        return response.data;
+    }
+}
+
+// Enhanced Assessments API with proper naming
 export const assessmentApi = {
-    // Get all assessments for a customer
+    // Get all assessments for a customer with enhanced naming
     getAllAssessments: async (customerId = '9bc034b0-852f-4618-9434-c040d13de712') => {
         try {
             console.log('[assessmentApi] getAllAssessments called with customerId:', customerId);
             const response = await apiClient.get(`/assessments/customer/${customerId}`);
             console.log('[assessmentApi] Raw API response:', response.data);
 
-            // Return empty array if no data
             if (!response.data || !Array.isArray(response.data)) {
                 console.log('[assessmentApi] No assessments found, returning empty array');
                 return [];
             }
 
-            // Simple transformation
-            return response.data.map(assessment => ({
-                id: assessment.assessmentId || assessment.id,
-                name: 'Azure Assessment',
-                environment: 'Production',
-                status: assessment.status || 'Completed',
-                score: assessment.overallScore ? Math.round(assessment.overallScore) : null,
-                resourceCount: assessment.totalResourcesAnalyzed || 0,
-                issuesCount: assessment.issuesFound || 0,
-                duration: '2m 15s',
-                date: 'Just now',
-                type: 'Full'
-            }));
+            // Enhanced transformation with proper naming
+            return response.data.map(assessment => {
+                const assessmentName = generateAssessmentName(assessment);
+                const environmentName = generateEnvironmentName(assessment);
+                const timeAgo = formatTimeAgo(assessment.startedDate);
+                const duration = calculateDuration(assessment.startedDate, assessment.completedDate);
+
+                return {
+                    id: assessment.assessmentId || assessment.id,
+                    name: assessmentName,
+                    environment: environmentName,
+                    status: assessment.status || 'Completed',
+                    score: assessment.overallScore ? Math.round(assessment.overallScore) : null,
+                    resourceCount: assessment.totalResourcesAnalyzed || 0,
+                    issuesCount: assessment.issuesFound || 0,
+                    duration: duration,
+                    date: timeAgo,
+                    type: assessment.assessmentType || 'Full',
+                    rawData: assessment // Include raw data for debugging
+                };
+            });
         } catch (error) {
             console.error('[assessmentApi] getAllAssessments error:', error);
             return [];
@@ -226,6 +306,7 @@ export const assessmentApi = {
 
             const payload = {
                 environmentId: assessmentData.environmentId || '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                name: assessmentData.name, // ✅ FIXED: Add the user-entered assessment name
                 subscriptionIds: Array.isArray(assessmentData.subscriptions)
                     ? assessmentData.subscriptions
                     : assessmentData.subscriptions.split('\n').filter(id => id.trim()),
@@ -269,238 +350,132 @@ export const assessmentApi = {
 // Also export as assessmentsApi for consistency
 export const assessmentsApi = assessmentApi;
 
-// Debug: Log what we're exporting to verify the functions exist
-console.log('[apiService] Exporting assessmentApi with functions:', Object.keys(assessmentApi));
-console.log('[apiService] getAllAssessments function:', typeof assessmentApi.getAllAssessments);
-console.log('[apiService] startAssessment function:', typeof assessmentApi.startAssessment);
-
-// Azure Environments API (UNCHANGED)
+// Azure Environments API
 export const azureEnvironmentsApi = {
-    // Get customer environments
     getCustomerEnvironments: async (customerId) => {
         const response = await apiClient.get(`/azure-environments/customer/${customerId}`);
         return response.data;
     },
 
-    // Add new environment
     addEnvironment: async (environmentData) => {
         const response = await apiClient.post('/azure-environments', environmentData);
         return response.data;
     },
 
-    // Update environment
     updateEnvironment: async (environmentId, environmentData) => {
         const response = await apiClient.put(`/azure-environments/${environmentId}`, environmentData);
         return response.data;
     },
 
-    // Delete environment
     deleteEnvironment: async (environmentId) => {
         const response = await apiClient.delete(`/azure-environments/${environmentId}`);
         return response.data;
     },
 
-    // Test connection
     testConnection: async (environmentId) => {
         const response = await apiClient.post(`/azure-environments/${environmentId}/test-connection`);
         return response.data;
     }
 };
 
-// Test APIs (UNCHANGED)
+// Test APIs
 export const testApi = {
-    // Seed test data
     seedTestData: async () => {
         const response = await apiClient.post('/Test/seed-data');
         return response.data;
     },
 
-    // Test Azure connection
     testAzureConnection: async (subscriptionIds) => {
         const response = await apiClient.post('/Test/azure-connection', subscriptionIds);
         return response.data;
     },
 
-    // Test assessment creation
     testAssessmentCreation: async (customerId) => {
         const response = await apiClient.post(`/Test/test-assessment/${customerId}`);
         return response.data;
     },
 
-    // Test Resource Graph query
     testResourceGraphQuery: async (subscriptionIds) => {
         const response = await apiClient.post('/Test/test-resource-graph', subscriptionIds);
         return response.data;
     },
 
-    // Test naming analysis
     testNamingAnalysis: async (subscriptionIds) => {
         const response = await apiClient.post('/Test/test-naming-analysis', subscriptionIds);
         return response.data;
     },
 
-    // Test tagging analysis
     testTaggingAnalysis: async (subscriptionIds) => {
         const response = await apiClient.post('/Test/test-tagging-analysis', subscriptionIds);
         return response.data;
     },
 
-    // Get system status
-    getSystemStatus: async () => {
-        const response = await apiClient.get('/Test/system-status');
+    getDatabaseStatus: async () => {
+        const response = await apiClient.get('/Test/database-status');
+        return response.data;
+    },
+
+    resetDatabase: async () => {
+        const response = await apiClient.post('/Test/reset-database');
         return response.data;
     }
 };
 
-// Client Preferences API calls (UNCHANGED)
-export const clientPreferencesApi = {
-    // Get client preferences
-    getClientPreferences: async (customerId) => {
-        const response = await apiClient.get(`/ClientPreferences/customer/${customerId}`);
-        return response.data;
-    },
-
-    // Save client preferences
-    saveClientPreferences: async (preferences) => {
-        const response = await apiClient.post('/ClientPreferences', preferences);
-        return response.data;
-    },
-
-    // Update client preferences
-    updateClientPreferences: async (customerId, preferences) => {
-        const response = await apiClient.put(`/ClientPreferences/customer/${customerId}`, preferences);
-        return response.data;
-    },
-
-    // Get Safe Haven demo preferences
-    getSafeHavenDemo: async () => {
-        const response = await apiClient.get('/ClientPreferences/demo/safe-haven');
-        return response.data;
-    },
-
-    // Run preference-based assessment
-    runPreferenceBasedAssessment: async (customerId, requestData) => {
-        const response = await apiClient.post(`/ClientPreferences/customer/${customerId}/assess`, requestData);
-        return response.data;
-    }
-};
-
-// Account & Subscription APIs
-export const accountApi = {
-    // Get profile
-    getProfile: async () => {
-        const response = await apiClient.get('/Account/profile');
-        return response.data;
-    },
-
-    // Update profile
-    updateProfile: async (profileData) => {
-        const response = await apiClient.put('/Account/profile', profileData);
-        return response.data;
-    },
-
-    // Test connection
-    testConnection: async (subscriptionIds) => {
-        const response = await apiClient.post('/Account/test-connection', subscriptionIds);
-        return response.data;
-    },
-
-    // Start trial
-    startTrial: async (trialData) => {
-        const response = await apiClient.post('/Account/start-trial', trialData);
-        return response.data;
-    },
-
-    // Get subscription status
-    getSubscriptionStatus: async () => {
-        const response = await apiClient.get('/Account/subscription-status');
-        return response.data;
-    }
-};
-
-// Licensing API
-export const licensingApi = {
-    // Get available features
-    getAvailableFeatures: async () => {
-        const response = await apiClient.get('/licensing/features');
-        return response.data;
-    },
-
-    // Get current limits
-    getCurrentLimits: async () => {
-        const response = await apiClient.get('/licensing/limits');
-        return response.data;
-    },
-
-    // Validate assessment access
-    validateAssessmentAccess: async () => {
-        const response = await apiClient.post('/licensing/validate-assessment');
-        return response.data;
-    },
-
-    // Track usage
-    trackUsage: async (usageData) => {
-        const response = await apiClient.post('/licensing/track-usage', usageData);
-        return response.data;
-    },
-
-    // Get usage report
-    getUsageReport: async (billingPeriod) => {
-        const response = await apiClient.get('/licensing/usage-report', {
-            params: { billingPeriod }
-        });
-        return response.data;
-    }
-};
-
-// Health check (UNCHANGED)
-export const healthApi = {
-    checkHealth: async () => {
-        const response = await apiClient.get('/health');
-        return response.data;
-    }
-};
-
-// Generic API utility functions (UNCHANGED)
+// API utilities
 export const apiUtils = {
-    // Handle API errors gracefully
     handleApiError: (error) => {
-        console.error('API Error:', error);
+        console.error('[apiUtils] Handling API error:', error);
 
         if (error.response) {
             // Server responded with error status
-            console.error('Error Response:', error.response.data);
             return {
-                message: error.response.data?.error || error.response.data?.message || `Server error (${error.response.status})`,
+                message: error.response.data?.message || error.response.data?.error || 'Server error occurred',
                 status: error.response.status,
                 details: error.response.data
             };
         } else if (error.request) {
-            // Request made but no response
+            // Request made but no response received
             return {
-                message: 'Unable to connect to server. Please check your connection.',
+                message: 'Network error - unable to reach server',
                 status: 0,
-                details: error.request
+                details: 'Please check your internet connection'
             };
         } else {
-            // Other error
+            // Something else happened
             return {
-                message: error.message || 'An unexpected error occurred',
+                message: error.message || 'Unknown error occurred',
                 status: -1,
-                details: error
+                details: error.toString()
             };
         }
     },
 
-    // Format API responses consistently
-    formatResponse: (response) => {
-        return {
-            success: true,
-            data: response.data,
-            message: response.message || 'Success'
-        };
+    isAuthError: (error) => {
+        return error.response?.status === 401 || error.response?.status === 403;
+    },
+
+    retry: async (apiCall, maxRetries = 3, delay = 1000) => {
+        for (let i = 0; i < maxRetries; i++) {
+            try {
+                return await apiCall();
+            } catch (error) {
+                if (i === maxRetries - 1 || apiUtils.isAuthError(error)) {
+                    throw error;
+                }
+                await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+            }
+        }
     }
 };
 
-// Export default client
-export default apiClient;
+// Default export
+export default {
+    AuthApi,
+    MfaApi,
+    assessmentApi,
+    assessmentsApi,
+    azureEnvironmentsApi,
+    testApi,
+    apiUtils,
+    apiClient
+};

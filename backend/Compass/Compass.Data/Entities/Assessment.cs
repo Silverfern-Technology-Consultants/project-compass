@@ -8,6 +8,7 @@ public class Assessment
     public Guid CustomerId { get; set; }
     public string CustomerName { get; set; } = string.Empty;
     public Guid EnvironmentId { get; set; }
+    public string Name { get; set; } = string.Empty; // ADD THIS: User-entered assessment name
     public string AssessmentType { get; set; } = string.Empty; // "NamingConvention", "Tagging", "Full"
     public decimal? OverallScore { get; set; }
     public string Status { get; set; } = string.Empty; // "Pending", "InProgress", "Completed", "Failed"
