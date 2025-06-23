@@ -1,5 +1,5 @@
 ﻿import React, { useState } from 'react';
-import apiService from '../../services/apiService';
+import { useAuth } from '../../contexts/AuthContext';
 
 const MfaVerificationModal = ({ isOpen, onClose, onVerificationSuccess }) => {
     const [code, setCode] = useState('');
@@ -7,23 +7,35 @@ const MfaVerificationModal = ({ isOpen, onClose, onVerificationSuccess }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
+    const { verifyMfa } = useAuth();
+
     const handleVerify = async () => {
-        if (!code || (!useBackupCode && code.length !== 6) || (useBackupCode && code.length !== 8)) {
-            setError(useBackupCode ? 'Please enter a valid 8-character backup code' : 'Please enter a valid 6-digit code');
+        if (!code) {
+            setError('Please enter a code');
             return;
+        }
+
+        // Validate code format
+        if (useBackupCode) {
+            // Backup codes should be in format xxxx-xxxx (9 characters total)
+            if (code.length !== 9 || !code.includes('-')) {
+                setError('Please enter a valid backup code in format XXXX-XXXX');
+                return;
+            }
+        } else {
+            // TOTP codes should be 6 digits
+            if (code.length !== 6) {
+                setError('Please enter a valid 6-digit code');
+                return;
+            }
         }
 
         try {
             setLoading(true);
             setError('');
-            const { MfaApi } = apiService;
-            const result = await MfaApi.verifyMfa(code, useBackupCode);
 
-            // Store the final JWT token
-            if (result.token) {
-                const { AuthApi } = apiService;
-                AuthApi.setAuthToken(result.token);
-            }
+            // Use the AuthContext verifyMfa method which calls login with MFA code
+            const result = await verifyMfa(code, useBackupCode);
 
             onVerificationSuccess(result);
             handleClose();
@@ -58,6 +70,7 @@ const MfaVerificationModal = ({ isOpen, onClose, onVerificationSuccess }) => {
                     <button
                         onClick={handleClose}
                         className="text-gray-400 hover:text-gray-300"
+                        disabled={loading}
                     >
                         ✕
                     </button>
@@ -80,19 +93,31 @@ const MfaVerificationModal = ({ isOpen, onClose, onVerificationSuccess }) => {
 
                         <input
                             type="text"
-                            placeholder={useBackupCode ? 'XXXXXXXX' : '000000'}
+                            placeholder={useBackupCode ? 'XXXX-XXXX' : '000000'}
                             value={code}
                             onChange={(e) => {
-                                const value = useBackupCode
-                                    ? e.target.value.toUpperCase().slice(0, 8)
-                                    : e.target.value.replace(/\D/g, '').slice(0, 6);
-                                setCode(value);
+                                if (useBackupCode) {
+                                    // Allow alphanumeric and hyphens, auto-format as XXXX-XXXX
+                                    let value = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+
+                                    // Auto-add hyphen after 4 characters
+                                    if (value.length === 4 && !value.includes('-')) {
+                                        value = value + '-';
+                                    }
+
+                                    // Limit to 9 characters (XXXX-XXXX format)
+                                    setCode(value.slice(0, 9));
+                                } else {
+                                    // Only numbers for TOTP codes
+                                    setCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                                }
                             }}
                             onKeyPress={handleKeyPress}
                             className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-yellow-500 text-center text-lg tracking-widest"
-                            maxLength={useBackupCode ? 8 : 6}
+                            maxLength={useBackupCode ? 9 : 6}
                             autoComplete="off"
                             autoFocus
+                            disabled={loading}
                         />
                     </div>
 
@@ -104,6 +129,7 @@ const MfaVerificationModal = ({ isOpen, onClose, onVerificationSuccess }) => {
                                 setError('');
                             }}
                             className="text-sm text-yellow-400 hover:text-yellow-300 transition-colors"
+                            disabled={loading}
                         >
                             {useBackupCode
                                 ? 'Use authenticator app instead'
@@ -114,7 +140,7 @@ const MfaVerificationModal = ({ isOpen, onClose, onVerificationSuccess }) => {
 
                     <button
                         onClick={handleVerify}
-                        disabled={loading || !code || (!useBackupCode && code.length !== 6) || (useBackupCode && code.length !== 8)}
+                        disabled={loading || !code || (!useBackupCode && code.length !== 6) || (useBackupCode && (code.length !== 9 || !code.includes('-')))}
                         className="w-full bg-yellow-600 hover:bg-yellow-700 text-black py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         {loading ? 'Verifying...' : 'Verify'}

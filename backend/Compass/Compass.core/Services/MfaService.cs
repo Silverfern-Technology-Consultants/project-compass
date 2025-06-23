@@ -8,7 +8,7 @@ namespace Compass.Core.Services;
 
 public class MfaService : IMfaService
 {
-    private const int TotpWindow = 3; // ✅ INCREASED: Allow 3 steps (90 seconds) tolerance for debugging
+    private const int TotpWindow = 2;
     private const int TotpDigits = 6;
     private const int TotpPeriod = 30;
 

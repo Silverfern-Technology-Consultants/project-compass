@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -7,8 +7,16 @@ const LoginPage = () => {
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
-    const { login } = useAuth();
+    const { login, isAuthenticated, mfaRequired, mfaSetupRequired } = useAuth();
     const navigate = useNavigate();
+
+    // Watch for authentication changes and navigate when complete
+    useEffect(() => {
+        if (isAuthenticated && !mfaRequired && !mfaSetupRequired) {
+            console.log('[LoginPage] Authentication completed, navigating to dashboard');
+            navigate('/app/dashboard');
+        }
+    }, [isAuthenticated, mfaRequired, mfaSetupRequired, navigate]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -31,15 +39,15 @@ const LoginPage = () => {
 
             // Handle MFA requirements - modals will be shown automatically by App.jsx
             if (result.requiresMfa) {
-                console.log('[LoginPage] MFA verification required');
-                // MFA modal will show, don't navigate yet
+                console.log('[LoginPage] MFA verification required - waiting for modal completion');
+                // MFA modal will show, don't navigate yet - useEffect will handle navigation when auth completes
                 setIsLoading(false);
                 return;
             }
 
             if (result.requiresMfaSetup) {
-                console.log('[LoginPage] MFA setup required');
-                // MFA setup modal will show, don't navigate yet
+                console.log('[LoginPage] MFA setup required - waiting for setup completion');
+                // MFA setup modal will show, don't navigate yet - useEffect will handle navigation when setup completes
                 setIsLoading(false);
                 return;
             }

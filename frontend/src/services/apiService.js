@@ -183,10 +183,22 @@ export class AuthApi {
         }
     }
 
-    static async login(email, password) {
+    static async login(email, password, mfaToken = null, isBackupCode = false) {
         try {
-            console.log('[AuthApi] Attempting login with:', { email, passwordLength: password.length });
-            const response = await apiClient.post('/auth/login', { email, password });
+            console.log('[AuthApi] Attempting login with:', {
+                email,
+                passwordLength: password.length,
+                hasMfaToken: !!mfaToken,
+                isBackupCode
+            });
+
+            const requestBody = {
+                email,
+                password,
+                ...(mfaToken && { mfaToken, isBackupCode })
+            };
+
+            const response = await apiClient.post('/auth/login', requestBody);
             console.log('[AuthApi] Login response:', response.data);
             return response.data;
         } catch (error) {
@@ -225,7 +237,7 @@ export class AuthApi {
     }
 }
 
-// MFA API class
+// MFA API class - FIXED field names to match backend expectations
 export class MfaApi {
     static async getMfaStatus() {
         const response = await apiClient.get('/mfa/status');
@@ -242,18 +254,27 @@ export class MfaApi {
         return response.data;
     }
 
-    static async verifyMfa(code, isBackupCode = false) {
-        const response = await apiClient.post('/mfa/verify', { code, isBackupCode });
+    static async verifyMfa(token, isBackupCode = false) {
+        const response = await apiClient.post('/mfa/verify', {
+            token,
+            isBackupCode
+        });
         return response.data;
     }
 
     static async disableMfa(password, mfaCode) {
-        const response = await apiClient.post('/mfa/disable', { password, mfaCode });
+        console.log('[MfaApi] Disabling MFA with:', { password: '***', token: mfaCode });
+        const response = await apiClient.post('/mfa/disable', {
+            password,
+            token: mfaCode  // FIXED: Use "token" field name, not "mfaCode"
+        });
         return response.data;
     }
 
     static async regenerateBackupCodes(mfaCode) {
-        const response = await apiClient.post('/mfa/regenerate-backup-codes', { mfaCode });
+        const response = await apiClient.post('/mfa/regenerate-backup-codes', {
+            token: mfaCode  // FIXED: Use "token" field name, not "mfaCode"
+        });
         return response.data;
     }
 }

@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback } from 'react';
-import apiService from '../../services/apiService';
+import { useAuth } from '../../contexts/AuthContext';
 
 const MfaSetupModal = ({ isOpen, onClose, onSetupComplete }) => {
     const [step, setStep] = useState(1); // 1: QR Code, 2: Verify, 3: Backup Codes
@@ -8,25 +8,27 @@ const MfaSetupModal = ({ isOpen, onClose, onSetupComplete }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    const setupMfa = useCallback(async () => {
+    const { setupMfa, verifyMfaSetup } = useAuth();
+
+    const handleSetupMfa = useCallback(async () => {
         try {
             setLoading(true);
             setError('');
-            const { MfaApi } = apiService;
-            const data = await MfaApi.setupMfa();
+            const data = await setupMfa();
+            console.log('[MfaSetupModal] Setup data received:', data);
             setSetupData(data);
         } catch (err) {
             setError(err.message);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [setupMfa]);
 
     useEffect(() => {
         if (isOpen && step === 1) {
-            setupMfa();
+            handleSetupMfa();
         }
-    }, [isOpen, step, setupMfa]);
+    }, [isOpen, step, handleSetupMfa]);
 
     const verifySetup = async () => {
         if (!totpCode || totpCode.length !== 6) {
@@ -37,8 +39,7 @@ const MfaSetupModal = ({ isOpen, onClose, onSetupComplete }) => {
         try {
             setLoading(true);
             setError('');
-            const { MfaApi } = apiService;
-            await MfaApi.verifyMfaSetup(totpCode);
+            await verifyMfaSetup(totpCode);
             setStep(3); // Show backup codes
         } catch (err) {
             setError(err.message);
@@ -81,6 +82,7 @@ const MfaSetupModal = ({ isOpen, onClose, onSetupComplete }) => {
                     <button
                         onClick={onClose}
                         className="text-gray-400 hover:text-gray-300"
+                        disabled={loading}
                     >
                         ✕
                     </button>
@@ -111,16 +113,27 @@ const MfaSetupModal = ({ isOpen, onClose, onSetupComplete }) => {
                         ) : setupData?.qrCode ? (
                             <div className="flex flex-col items-center space-y-4">
                                 <img
-                                    src={`data:image/png;base64,${setupData.qrCode}`}
+                                    src={setupData.qrCode}
                                     alt="MFA QR Code"
                                     className="border border-gray-700 rounded"
+                                    onError={(e) => {
+                                        console.error('[MfaSetupModal] QR Code image failed to load:', setupData.qrCode);
+                                        setError('Failed to load QR code image');
+                                    }}
+                                    onLoad={() => {
+                                        console.log('[MfaSetupModal] QR Code loaded successfully');
+                                    }}
                                 />
                                 <p className="text-xs text-gray-400 text-center">
                                     Can't scan? Enter this code manually:<br />
                                     <code className="bg-gray-800 px-2 py-1 rounded text-white">{setupData.manualEntryKey}</code>
                                 </p>
                             </div>
-                        ) : null}
+                        ) : (
+                            <div className="text-center text-gray-400 py-4">
+                                No QR code data received
+                            </div>
+                        )}
 
                         <button
                             onClick={() => setStep(2)}
@@ -146,12 +159,15 @@ const MfaSetupModal = ({ isOpen, onClose, onSetupComplete }) => {
                             className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-yellow-500 text-center text-lg tracking-widest"
                             maxLength={6}
                             autoComplete="off"
+                            autoFocus
+                            disabled={loading}
                         />
 
                         <div className="flex space-x-3">
                             <button
                                 onClick={() => setStep(1)}
                                 className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded transition-colors"
+                                disabled={loading}
                             >
                                 Back
                             </button>

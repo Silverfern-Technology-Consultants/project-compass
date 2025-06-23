@@ -51,6 +51,20 @@ const authReducer = (state, action) => {
             return { ...state, mfaRequired: action.payload, isLoading: false };
         case 'SET_MFA_SETUP_REQUIRED':
             return { ...state, mfaSetupRequired: action.payload, isLoading: false };
+        case 'SET_PENDING_LOGIN':
+            return { ...state, pendingLogin: action.payload };
+        case 'LOGIN_SUCCESS':
+            return {
+                ...state,
+                user: action.payload.user,
+                token: action.payload.token,
+                isAuthenticated: true,
+                mfaRequired: false,
+                mfaSetupRequired: false,
+                pendingLogin: null,
+                error: null,
+                isLoading: false
+            };
         case 'LOGOUT':
             return {
                 user: null,
@@ -59,7 +73,8 @@ const authReducer = (state, action) => {
                 isLoading: false,
                 error: null,
                 mfaRequired: false,
-                mfaSetupRequired: false
+                mfaSetupRequired: false,
+                pendingLogin: null
             };
         case 'CLEAR_ERROR':
             return { ...state, error: null };
@@ -75,7 +90,8 @@ const initialState = {
     isLoading: true,
     error: null,
     mfaRequired: false,
-    mfaSetupRequired: false
+    mfaSetupRequired: false,
+    pendingLogin: null
 };
 
 const AuthContext = createContext();
@@ -172,6 +188,8 @@ export const AuthProvider = ({ children }) => {
             // Handle MFA requirements
             if (response.requiresMfa) {
                 console.log('[Auth] MFA verification required');
+                // Store login credentials for MFA verification
+                dispatch({ type: 'SET_PENDING_LOGIN', payload: { email, password } });
                 dispatch({ type: 'SET_MFA_REQUIRED', payload: true });
                 return { requiresMfa: true };
             }
@@ -204,8 +222,7 @@ export const AuthProvider = ({ children }) => {
             AuthApi.setAuthToken(token);
 
             // Update state
-            dispatch({ type: 'SET_TOKEN', payload: token });
-            dispatch({ type: 'SET_USER', payload: customer });
+            dispatch({ type: 'LOGIN_SUCCESS', payload: { user: customer, token } });
 
             console.log('[Auth] Login completed successfully');
             return { success: true, customer, token };
@@ -214,6 +231,44 @@ export const AuthProvider = ({ children }) => {
             console.error('[Auth] Error response:', error.response?.data);
 
             const errorMessage = error.response?.data?.message || error.message || 'Login failed';
+            dispatch({ type: 'SET_ERROR', payload: errorMessage });
+            throw new Error(errorMessage);
+        }
+    };
+
+    const verifyMfa = async (mfaCode, isBackupCode = false) => {
+        console.log('[Auth] Verifying MFA code');
+        dispatch({ type: 'SET_LOADING', payload: true });
+        dispatch({ type: 'CLEAR_ERROR' });
+
+        try {
+            const { email, password } = state.pendingLogin;
+            if (!email || !password) {
+                throw new Error('No pending login found');
+            }
+
+            // Call login again with MFA code
+            const response = await AuthApi.login(email, password, mfaCode, isBackupCode);
+            console.log('[Auth] MFA verification response:', response);
+
+            const { success, token, customer } = response;
+
+            if (!success || !token || !customer) {
+                throw new Error('MFA verification failed');
+            }
+
+            // Store token and complete login
+            localStorage.setItem('compass_token', token);
+            AuthApi.setAuthToken(token);
+
+            // Update state
+            dispatch({ type: 'LOGIN_SUCCESS', payload: { user: customer, token } });
+
+            console.log('[Auth] MFA verification completed successfully');
+            return { success: true, customer, token };
+        } catch (error) {
+            console.error('[Auth] MFA verification failed:', error);
+            const errorMessage = error.response?.data?.message || error.message || 'MFA verification failed';
             dispatch({ type: 'SET_ERROR', payload: errorMessage });
             throw new Error(errorMessage);
         }
@@ -328,15 +383,6 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    const verifyMfa = async (code, isBackupCode = false) => {
-        try {
-            const response = await MfaApi.verifyMfa(code, isBackupCode);
-            return response;
-        } catch (error) {
-            throw error;
-        }
-    };
-
     const disableMfa = async (password, mfaCode) => {
         try {
             const response = await MfaApi.disableMfa(password, mfaCode);
@@ -379,12 +425,12 @@ export const AuthProvider = ({ children }) => {
         clearError,
         completeMfaVerification,
         completeMfaSetup,
+        verifyMfa, // NEW: MFA verification method
 
         // MFA methods
         getMfaStatus,
         setupMfa,
         verifyMfaSetup,
-        verifyMfa,
         disableMfa,
         regenerateBackupCodes
     };
