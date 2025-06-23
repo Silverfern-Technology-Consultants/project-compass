@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAssessments } from '../../hooks/useApi';
 import { BarChart3, FileText, Calendar, AlertTriangle, CheckCircle, Clock, TrendingUp, ArrowRight } from 'lucide-react';
@@ -80,8 +81,9 @@ const QuickAction = ({ title, description, icon: Icon, onClick, color = "bg-gray
     </div>
 );
 
-const DashboardPage = ({ setCurrentPage }) => {
+const DashboardPage = () => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const { assessments, loading: assessmentsLoading, error: assessmentsError, loadAssessments } = useAssessments();
     const [stats, setStats] = useState([
         { title: 'Total Assessments', value: '-', icon: FileText, color: 'text-blue-400' },
@@ -152,7 +154,7 @@ const DashboardPage = ({ setCurrentPage }) => {
     const recentAssessments = assessments ? assessments.slice(0, 5) : [];
 
     const handleNewAssessment = () => {
-        setCurrentPage('assessments');
+        navigate('/app/assessments');
         // Small delay to ensure page navigation completes, then trigger new assessment modal
         setTimeout(() => {
             // Dispatch a custom event that the AssessmentsPage can listen for
@@ -163,7 +165,7 @@ const DashboardPage = ({ setCurrentPage }) => {
     const handleViewAssessment = (assessment) => {
         // Store the assessment to view in sessionStorage for the AssessmentsPage
         sessionStorage.setItem('viewAssessment', JSON.stringify(assessment));
-        setCurrentPage('assessments');
+        navigate('/app/assessments');
         // Dispatch event to open the detail modal
         setTimeout(() => {
             window.dispatchEvent(new CustomEvent('openAssessmentDetailModal', { detail: assessment }));
@@ -171,7 +173,7 @@ const DashboardPage = ({ setCurrentPage }) => {
     };
 
     const handleViewAllAssessments = () => {
-        setCurrentPage('assessments');
+        navigate('/app/assessments');
     };
 
     const quickActions = [
@@ -192,13 +194,13 @@ const DashboardPage = ({ setCurrentPage }) => {
             title: 'Generate Report',
             description: 'Create a detailed governance report',
             icon: TrendingUp,
-            onClick: () => setCurrentPage('reports')
+            onClick: () => navigate('/app/reports')
         },
         {
             title: 'Team Management',
             description: 'Manage team access and permissions',
             icon: CheckCircle,
-            onClick: () => setCurrentPage('team')
+            onClick: () => navigate('/app/team')
         }
     ];
 
