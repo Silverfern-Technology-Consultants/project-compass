@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Users, Mail, Shield, Edit, Trash2, Plus, Search, UserPlus, Crown, Settings, AlertCircle, Check, X } from 'lucide-react';
+﻿import React, { useState, useEffect } from 'react';
+import { Users, Mail, Shield, Edit, Trash2, Search, UserPlus, Crown, Settings, AlertCircle, Check, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import RoleChangeVerificationTool from '../Debug/RoleChangeVerificationTool';
 import { teamApi, apiUtils } from '../../services/apiService';
 
 const TeamMemberCard = ({ member, onEdit, onDelete, currentUserId, isOwnerOrAdmin }) => {
@@ -370,9 +371,9 @@ const RemoveConfirmationModal = ({ isOpen, onClose, onConfirm, member, loading }
                             This action will:
                         </p>
                         <ul className="text-sm text-gray-400 space-y-1 mb-4">
-                            <li>� Remove their access to all assessments and reports</li>
-                            <li>� Revoke their login permissions</li>
-                            <li>� Cannot be undone automatically</li>
+                            <li>• Remove their access to all assessments and reports</li>
+                            <li>• Revoke their login permissions</li>
+                            <li>• Cannot be undone automatically</li>
                         </ul>
                         {member.status === 'Pending' && (
                             <div className="bg-yellow-900 border border-yellow-800 rounded p-3 mb-4">
@@ -489,6 +490,9 @@ const TeamManagementPage = () => {
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
     const [actionLoading, setActionLoading] = useState(false);
+
+    // Debug tools state
+    const [showDebugTools, setShowDebugTools] = useState(false);
 
     // Load team data
     const loadTeamData = async () => {
@@ -825,6 +829,26 @@ const TeamManagementPage = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Debug Tools - Only show in development */}
+            {process.env.NODE_ENV === 'development' && (
+                <div className="mt-8 border-t border-gray-800 pt-6">
+                    <button
+                        onClick={() => setShowDebugTools(!showDebugTools)}
+                        className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors text-sm"
+                    >
+                        <span>{showDebugTools ? '🔽' : '▶️'}</span>
+                        <span>{showDebugTools ? 'Hide' : 'Show'} Debug Tools</span>
+                        <span className="bg-gray-800 text-gray-300 px-2 py-1 rounded text-xs">DEV ONLY</span>
+                    </button>
+
+                    {showDebugTools && (
+                        <div className="mt-4 bg-gray-950 border border-gray-800 rounded p-4">
+                            <RoleChangeVerificationTool />
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Modals */}
             <InviteMemberModal

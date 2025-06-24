@@ -66,7 +66,7 @@ builder.Services.AddDbContext<CompassDbContext>(options =>
     options.UseSqlServer(connectionString);
 });
 
-// JWT Configuration
+// JWT Configuration - FIXED
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var secretKey = jwtSection["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey is required and must be configured in user secrets (development) or environment variables (production)");
 var issuer = jwtSection["Issuer"] ?? "compass-api";
@@ -117,6 +117,9 @@ builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
 // Register MFA service
 builder.Services.AddScoped<IMfaService, MfaService>();
+
+// NEW: Register Team Activity Logger
+//builder.Services.AddScoped<ITeamActivityLogger, TeamActivityLogger>();
 
 // Add CORS
 builder.Services.AddCors(options =>

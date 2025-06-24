@@ -22,8 +22,8 @@ public class TeamInvitation
     [MaxLength(500)]
     public string InvitationToken { get; set; } = string.Empty;
 
-    [Required]
-    public Guid InvitedByCustomerId { get; set; }
+    // CHANGED: Made nullable to allow cleanup of foreign key references
+    public Guid? InvitedByCustomerId { get; set; }
 
     public DateTime InvitedDate { get; set; } = DateTime.UtcNow;
 
@@ -42,7 +42,7 @@ public class TeamInvitation
 
     // Navigation properties
     public virtual Organization Organization { get; set; } = null!;
-    public virtual Customer InvitedBy { get; set; } = null!;
+    public virtual Customer? InvitedBy { get; set; } // CHANGED: Made nullable since InvitedByCustomerId is now nullable
     public virtual Customer? AcceptedBy { get; set; }
 
     // Helper properties

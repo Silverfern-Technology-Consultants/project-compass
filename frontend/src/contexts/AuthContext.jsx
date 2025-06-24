@@ -98,6 +98,8 @@ const authReducer = (state, action) => {
             };
         case 'CLEAR_ERROR':
             return { ...state, error: null };
+        case 'SET_VALIDATION_CHECKING':
+            return { ...state, isValidatingUser: action.payload };
         default:
             return state;
     }
@@ -111,7 +113,8 @@ const initialState = {
     error: null,
     mfaRequired: false,
     mfaSetupRequired: false,
-    pendingLogin: null
+    pendingLogin: null,
+    isValidatingUser: false
 };
 
 const AuthContext = createContext();
@@ -194,6 +197,65 @@ export const AuthProvider = ({ children }) => {
 
         initializeAuth();
     }, []);
+
+    // NEW: User validation function
+    const validateCurrentUser = async () => {
+        if (!state.isAuthenticated || !state.token || state.isValidatingUser) {
+            return true; // Skip validation if not authenticated or already validating
+        }
+
+        try {
+            dispatch({ type: 'SET_VALIDATION_CHECKING', payload: true });
+            console.log('[Auth] Validating current user exists...');
+
+            const userResponse = await AuthApi.getCurrentUser();
+            console.log('[Auth] User validation successful:', userResponse.email);
+
+            dispatch({ type: 'SET_VALIDATION_CHECKING', payload: false });
+            return true;
+        } catch (error) {
+            console.warn('[Auth] User validation failed:', error);
+            dispatch({ type: 'SET_VALIDATION_CHECKING', payload: false });
+
+            // If user doesn't exist (404) or unauthorized (401), log them out
+            if (error.response?.status === 404 || error.response?.status === 401) {
+                console.log('[Auth] User no longer exists or unauthorized - logging out');
+                logout();
+                return false;
+            }
+
+            // For other errors (network issues, etc.), don't log out
+            console.warn('[Auth] User validation failed due to network/server error, keeping user logged in');
+            return true;
+        }
+    };
+
+    // NEW: Auto-validate user on page navigation
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            // When user returns to the tab, validate they still exist
+            if (document.visibilityState === 'visible' && state.isAuthenticated) {
+                console.log('[Auth] Page became visible, validating user...');
+                validateCurrentUser();
+            }
+        };
+
+        const handleFocus = () => {
+            // When window gets focus, validate user
+            if (state.isAuthenticated) {
+                console.log('[Auth] Window focused, validating user...');
+                validateCurrentUser();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleFocus);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleFocus);
+        };
+    }, [state.isAuthenticated, state.token]);
 
     const login = async (email, password) => {
         console.log('[Auth] Starting login process for:', email);
@@ -479,6 +541,7 @@ export const AuthProvider = ({ children }) => {
         error: state.error,
         mfaRequired: state.mfaRequired,
         mfaSetupRequired: state.mfaSetupRequired,
+        isValidatingUser: state.isValidatingUser, // NEW: Validation state
 
         // Actions
         login,
@@ -491,6 +554,7 @@ export const AuthProvider = ({ children }) => {
         completeMfaVerification,
         completeMfaSetup,
         verifyMfa, // NEW: MFA verification method
+        validateCurrentUser, // NEW: Manual user validation
 
         // MFA methods
         getMfaStatus,
