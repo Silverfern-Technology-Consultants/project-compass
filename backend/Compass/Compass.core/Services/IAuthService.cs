@@ -63,6 +63,12 @@ public class AuthService : IAuthService
                 };
             }
 
+            // ADDED: Check if this is an invitation-based registration
+            bool isInvitedUser = !string.IsNullOrEmpty(request.InvitationToken);
+
+            _logger.LogInformation("Registration for {Email}, InvitationToken: {HasToken}",
+                request.Email, isInvitedUser ? "Yes" : "No");
+
             // Log IP for monitoring (anti-abuse)
             if (!string.IsNullOrEmpty(ipAddress))
             {
@@ -75,9 +81,13 @@ public class AuthService : IAuthService
                     ipAddress, recentRegistrations);
             }
 
-            // Generate verification token
-            var verificationToken = GenerateSecureToken();
-            _logger.LogInformation("Generated verification token: {Token}", verificationToken);
+            // Generate verification token only if NOT invited
+            string? verificationToken = null;
+            if (!isInvitedUser)
+            {
+                verificationToken = GenerateSecureToken();
+                _logger.LogInformation("Generated verification token for non-invited user: {Token}", verificationToken);
+            }
 
             // Create customer
             var customer = new Customer
@@ -86,12 +96,12 @@ public class AuthService : IAuthService
                 FirstName = request.FirstName,
                 LastName = request.LastName,
                 Email = request.Email.ToLowerInvariant(),
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("TempPassword123!"), // Temporary password - user will need to set during verification
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password), // FIXED: Use actual password, not temp
                 EmailVerificationToken = verificationToken,
-                EmailVerificationExpiry = DateTime.UtcNow.AddDays(7),
+                EmailVerificationExpiry = isInvitedUser ? null : DateTime.UtcNow.AddDays(7),
                 RegistrationIP = ipAddress,
-                EmailVerified = false,
-                IsActive = false // Inactive until email verified
+                EmailVerified = isInvitedUser, // CRITICAL: Auto-verify invited users
+                IsActive = isInvitedUser // CRITICAL: Auto-activate invited users
             };
 
             _context.Customers.Add(customer);
@@ -111,18 +121,34 @@ public class AuthService : IAuthService
             _context.Subscriptions.Add(trialSubscription);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Customer saved to database. Verification token: {Token}", customer.EmailVerificationToken);
+            if (isInvitedUser)
+            {
+                _logger.LogInformation("Invited user registered and auto-verified: {Email}", customer.Email);
+            }
+            else
+            {
+                _logger.LogInformation("Customer saved to database. Verification token: {Token}", customer.EmailVerificationToken);
+            }
 
-            // Send verification email
-            await _emailService.SendVerificationEmailAsync(customer.Email, customer.EmailVerificationToken!);
+            // Send verification email only if NOT invited
+            if (!isInvitedUser && !string.IsNullOrEmpty(verificationToken))
+            {
+                await _emailService.SendVerificationEmailAsync(customer.Email, verificationToken);
+                _logger.LogInformation("Verification email sent to non-invited user: {Email}", customer.Email);
+            }
 
-            _logger.LogInformation("New customer registered: {Email}, Company: {Company}",
-                request.Email, request.CompanyName);
+            _logger.LogInformation("Customer registered: {Email}, Company: {Company}, EmailVerified: {EmailVerified}",
+                request.Email, request.CompanyName, customer.EmailVerified);
+
+            // Return different messages based on invitation status
+            var message = isInvitedUser
+                ? "Account created successfully! You can now log in."
+                : "Registration successful! Please check your email to verify your account.";
 
             return new AuthResponse
             {
                 Success = true,
-                Message = "Registration successful! Please check your email to verify your account.",
+                Message = message,
                 Customer = new CustomerInfo
                 {
                     CustomerId = customer.CustomerId,
@@ -130,7 +156,7 @@ public class AuthService : IAuthService
                     FirstName = customer.FirstName,
                     LastName = customer.LastName,
                     CompanyName = customer.CompanyName,
-                    EmailVerified = false,
+                    EmailVerified = customer.EmailVerified,
                     SubscriptionStatus = "Trial"
                 }
             };
@@ -152,6 +178,7 @@ public class AuthService : IAuthService
         {
             var customer = await _context.Customers
                 .Include(c => c.Subscriptions)
+                .Include(c => c.Organization) // ✅ ADDED: Include Organization data
                 .FirstOrDefaultAsync(c => c.Email == request.Email.ToLowerInvariant());
 
             if (customer == null || !BCrypt.Net.BCrypt.Verify(request.Password, customer.PasswordHash))
@@ -187,6 +214,7 @@ public class AuthService : IAuthService
             await _context.SaveChangesAsync();
 
             var token = _jwtService.GenerateToken(customer);
+
             var activeSubscription = customer.Subscriptions
                 .FirstOrDefault(s => s.Status == "Active" || s.Status == "Trial");
 
@@ -309,6 +337,7 @@ public class AuthService : IAuthService
     {
         return await _context.Customers
             .Include(c => c.Subscriptions)
+            .Include(c => c.Organization) // ✅ ADDED: Include Organization data
             .FirstOrDefaultAsync(c => c.CustomerId == customerId);
     }
 
@@ -319,10 +348,14 @@ public class AuthService : IAuthService
     }
 
     // NEW METHODS FOR MFA SUPPORT
-
     public async Task<string> GenerateJwtTokenAsync(Customer customer)
     {
-        return _jwtService.GenerateToken(customer);
+        // ✅ UPDATED: Ensure customer has Organization data loaded
+        var customerWithOrg = await _context.Customers
+            .Include(c => c.Organization)
+            .FirstOrDefaultAsync(c => c.CustomerId == customer.CustomerId);
+
+        return _jwtService.GenerateToken(customerWithOrg ?? customer);
     }
 
     public async Task InitiatePasswordResetAsync(string email)

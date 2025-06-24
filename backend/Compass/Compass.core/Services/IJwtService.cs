@@ -41,6 +41,13 @@ public class JwtService : IJwtService
             new("email_verified", customer.EmailVerified.ToString().ToLower())
         };
 
+        // Add Organization claims if customer has an organization
+        if (customer.OrganizationId.HasValue)
+        {
+            claims.Add(new("organization_id", customer.OrganizationId.Value.ToString()));
+            claims.Add(new(ClaimTypes.Role, customer.Role));
+        }
+
         var tokenDescriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(claims),

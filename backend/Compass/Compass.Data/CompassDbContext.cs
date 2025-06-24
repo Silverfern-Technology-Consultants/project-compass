@@ -10,6 +10,9 @@ public class CompassDbContext : DbContext
     {
     }
 
+    // ORGANIZATION DBSET - NEW
+    public DbSet<Organization> Organizations { get; set; }
+
     // EXISTING DBSETS
     public DbSet<Customer> Customers { get; set; }
     public DbSet<Assessment> Assessments { get; set; }
@@ -23,25 +26,67 @@ public class CompassDbContext : DbContext
     public DbSet<LicenseFeature> LicenseFeatures { get; set; }
     public DbSet<SubscriptionFeature> SubscriptionFeatures { get; set; }
 
-    // MISSING DBSET
     public DbSet<AzureEnvironment> AzureEnvironments { get; set; }
+
+    // TEAM MANAGEMENT DBSET
+    public DbSet<TeamInvitation> TeamInvitations { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Customer configuration
+        // Organization configuration - NEW
+        modelBuilder.Entity<Organization>(entity =>
+        {
+            entity.HasKey(e => e.OrganizationId);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Status).HasMaxLength(50).HasDefaultValue("Active");
+            entity.Property(e => e.OrganizationType).HasMaxLength(50).HasDefaultValue("MSP");
+
+            // Organization owner relationship
+            entity.HasOne(e => e.Owner)
+                .WithMany()
+                .HasForeignKey(e => e.OwnerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Indexes
+            entity.HasIndex(e => e.Name);
+            entity.HasIndex(e => e.OwnerId);
+            entity.HasIndex(e => new { e.Status, e.OrganizationType });
+        });
+
+        // Customer configuration - UPDATED
         modelBuilder.Entity<Customer>(entity =>
         {
             entity.HasKey(e => e.CustomerId);
             entity.Property(e => e.CompanyName).IsRequired();
             entity.Property(e => e.Email).IsRequired();
+            entity.Property(e => e.Role).HasMaxLength(50).HasDefaultValue("Owner");
 
-            // Add indexes for new properties
+            // Organization relationship
+            entity.HasOne(e => e.Organization)
+                .WithMany(o => o.Members)
+                .HasForeignKey(e => e.OrganizationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Navigation for sent invitations
+            entity.HasMany(e => e.SentInvitations)
+                .WithOne(ti => ti.InvitedBy)
+                .HasForeignKey(ti => ti.InvitedByCustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Navigation for accepted invitations
+            entity.HasMany(e => e.AcceptedInvitations)
+                .WithOne(ti => ti.AcceptedBy)
+                .HasForeignKey(ti => ti.AcceptedByCustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Indexes
             entity.HasIndex(e => e.Email);
             entity.HasIndex(e => e.CompanyName);
             entity.HasIndex(e => e.IsTrialAccount);
+            entity.HasIndex(e => new { e.OrganizationId, e.Role });
         });
 
-        // Assessment configuration
+        // Assessment configuration - UPDATED for Organization
         modelBuilder.Entity<Assessment>(entity =>
         {
             entity.HasKey(e => e.Id);
@@ -50,6 +95,12 @@ public class CompassDbContext : DbContext
                 .WithMany(p => p.Assessments)
                 .HasForeignKey(d => d.CustomerId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Organization relationship for assessments
+            entity.HasOne<Organization>()
+                .WithMany(o => o.Assessments)
+                .HasForeignKey("OrganizationId") // Shadow property for now
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // AssessmentFinding configuration
@@ -63,7 +114,7 @@ public class CompassDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // AzureEnvironment configuration
+        // AzureEnvironment configuration - UPDATED for Organization
         modelBuilder.Entity<AzureEnvironment>(entity =>
         {
             entity.HasKey(e => e.AzureEnvironmentId);
@@ -75,11 +126,50 @@ public class CompassDbContext : DbContext
                 .HasForeignKey(d => d.CustomerId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // Organization relationship for Azure environments
+            entity.HasOne<Organization>()
+                .WithMany(o => o.AzureEnvironments)
+                .HasForeignKey("OrganizationId") // Shadow property for now
+                .OnDelete(DeleteBehavior.Restrict);
+
             entity.HasIndex(e => e.CustomerId);
             entity.HasIndex(e => e.TenantId);
         });
 
-        // Subscription configuration
+        // TeamInvitation configuration - UPDATED for Organization
+        modelBuilder.Entity<TeamInvitation>(entity =>
+        {
+            entity.HasKey(e => e.InvitationId);
+            entity.Property(e => e.InvitedEmail).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.InvitedRole).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.InvitationToken).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.Status).HasMaxLength(50).HasDefaultValue("Pending");
+            entity.Property(e => e.InvitationMessage).HasMaxLength(500);
+
+            // Organization relationship
+            entity.HasOne(d => d.Organization)
+                .WithMany(o => o.TeamInvitations)
+                .HasForeignKey(d => d.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(d => d.InvitedBy)
+                .WithMany(c => c.SentInvitations)
+                .HasForeignKey(d => d.InvitedByCustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.AcceptedBy)
+                .WithMany(c => c.AcceptedInvitations)
+                .HasForeignKey(d => d.AcceptedByCustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Indexes for performance
+            entity.HasIndex(e => e.InvitationToken).IsUnique();
+            entity.HasIndex(e => e.InvitedEmail);
+            entity.HasIndex(e => new { e.OrganizationId, e.Status });
+            entity.HasIndex(e => e.ExpirationDate);
+        });
+
+        // Subscription configuration - UPDATED for Organization
         modelBuilder.Entity<Subscription>(entity =>
         {
             entity.HasKey(e => e.SubscriptionId);
@@ -90,6 +180,12 @@ public class CompassDbContext : DbContext
                 .WithMany(p => p.Subscriptions)
                 .HasForeignKey(d => d.CustomerId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Organization relationship for subscriptions
+            entity.HasOne<Organization>()
+                .WithMany(o => o.Subscriptions)
+                .HasForeignKey("OrganizationId") // Shadow property for now
+                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasIndex(e => new { e.CustomerId, e.Status });
             entity.HasIndex(e => e.NextBillingDate);
@@ -114,7 +210,7 @@ public class CompassDbContext : DbContext
             entity.HasIndex(e => e.RecordedDate);
         });
 
-        // UsageRecord configuration - FIXED CASCADE ISSUES
+        // UsageRecord configuration
         modelBuilder.Entity<UsageRecord>(entity =>
         {
             entity.HasKey(e => e.UsageRecordId);
@@ -122,22 +218,22 @@ public class CompassDbContext : DbContext
             entity.HasOne(d => d.Customer)
                 .WithMany()
                 .HasForeignKey(d => d.CustomerId)
-                .OnDelete(DeleteBehavior.NoAction); // CHANGED TO NoAction
+                .OnDelete(DeleteBehavior.NoAction);
 
             entity.HasOne(d => d.Subscription)
                 .WithMany(p => p.UsageRecords)
                 .HasForeignKey(d => d.SubscriptionId)
-                .OnDelete(DeleteBehavior.NoAction); // CHANGED TO NoAction
+                .OnDelete(DeleteBehavior.NoAction);
 
             entity.HasOne(d => d.Assessment)
                 .WithMany()
                 .HasForeignKey(d => d.AssessmentId)
-                .OnDelete(DeleteBehavior.NoAction); // CHANGED TO NoAction
+                .OnDelete(DeleteBehavior.NoAction);
 
             entity.HasOne(d => d.AzureEnvironment)
                 .WithMany()
                 .HasForeignKey(d => d.EnvironmentId)
-                .OnDelete(DeleteBehavior.NoAction); // CHANGED TO NoAction
+                .OnDelete(DeleteBehavior.NoAction);
 
             entity.HasIndex(e => new { e.CustomerId, e.BillingMonth, e.BillingYear });
             entity.HasIndex(e => e.UsageDate);

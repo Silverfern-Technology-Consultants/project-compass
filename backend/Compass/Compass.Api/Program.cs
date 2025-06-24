@@ -56,6 +56,9 @@ builder.Services.AddHttpContextAccessor();
 //DB Seeder
 builder.Services.AddScoped<TestDataSeeder>();
 
+// Organization Data Migration Service - NEW
+builder.Services.AddScoped<OrganizationDataMigrationService>();
+
 // Add DbContext
 builder.Services.AddDbContext<CompassDbContext>(options =>
 {
@@ -112,7 +115,7 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
-// Register MFA service - NEW
+// Register MFA service
 builder.Services.AddScoped<IMfaService, MfaService>();
 
 // Add CORS
@@ -169,5 +172,26 @@ app.MapGet("/health", () => Results.Ok(new
 }));
 
 app.MapHealthChecks("/health/db");
+
+// Organization migration status endpoint - NEW
+app.MapGet("/admin/migration-status", async (OrganizationDataMigrationService migrationService) =>
+{
+    var status = await migrationService.GetMigrationStatus();
+    return Results.Ok(status);
+});
+
+// Organization migration endpoint - NEW  
+app.MapPost("/admin/migrate-organizations", async (OrganizationDataMigrationService migrationService) =>
+{
+    try
+    {
+        await migrationService.MigrateExistingCustomersToOrganizations();
+        return Results.Ok(new { message = "Organization migration completed successfully" });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Migration failed: {ex.Message}");
+    }
+});
 
 app.Run();

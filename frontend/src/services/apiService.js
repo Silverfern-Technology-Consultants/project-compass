@@ -1,4 +1,4 @@
-﻿// apiService.js - Enhanced with MFA support
+﻿// apiService.js - Enhanced with MFA support and Team Management
 import axios from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://localhost:7163/api';
@@ -51,127 +51,81 @@ const getAssessmentTypeNumber = (typeString) => {
         'Full': 2,
         'NamingConvention': 0
     };
-    return types[typeString] ?? 2;
+    return types[typeString] ?? 2; // Default to Full
 };
 
-const formatTimeAgo = (date) => {
-    if (!date) return 'Unknown';
+// Assessment API
+export const assessmentApi = {
+    createAssessment: async (customerId, assessmentData) => {
+        try {
+            console.log('[assessmentApi] Creating assessment:', { customerId, assessmentData });
 
-    try {
-        // Parse the date string - handle various formats
-        let past;
-        if (typeof date === 'string') {
-            // Try parsing as ISO string first
-            past = new Date(date);
+            const assessmentType = getAssessmentTypeNumber(assessmentData.type);
+            const subscriptionIds = assessmentData.subscriptionIds.map(sub =>
+                typeof sub === 'string' ? sub : sub.subscriptionId || sub.id
+            );
 
-            // If that fails, try other common formats
-            if (isNaN(past.getTime())) {
-                // Handle SQL Server datetime format or other formats
-                past = new Date(date.replace(' ', 'T'));
-            }
-        } else {
-            past = new Date(date);
+            const requestData = {
+                name: assessmentData.name,
+                subscriptionIds: subscriptionIds,
+                type: assessmentType,
+                includeRecommendations: assessmentData.includeRecommendations || true
+            };
+
+            console.log('[assessmentApi] Sending request:', requestData);
+
+            const response = await apiClient.post(`/assessments/${customerId}`, requestData);
+            console.log('[assessmentApi] Assessment created:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[assessmentApi] Error creating assessment:', error);
+            throw error;
         }
+    },
 
-        // Check if the date is valid
-        if (isNaN(past.getTime())) {
-            console.warn('Invalid date received:', date);
-            return 'Unknown';
+    getAssessment: async (assessmentId) => {
+        try {
+            console.log('[assessmentApi] Getting assessment:', assessmentId);
+            const response = await apiClient.get(`/assessments/${assessmentId}`);
+            console.log('[assessmentApi] Assessment response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[assessmentApi] Error getting assessment:', error);
+            throw error;
         }
+    },
 
-        const now = new Date();
-        const diffInMs = now.getTime() - past.getTime();
-
-        // For debugging - log the actual dates
-        console.log('Date comparison:', { now: now.toISOString(), past: past.toISOString(), diffInMs });
-
-        // Handle very small differences or future dates
-        if (diffInMs < 0) {
-            console.warn('Future date detected:', { now, past, diffInMs });
-            return 'Just now'; // Treat future dates as "just now"
+    deleteAssessment: async (assessmentId) => {
+        try {
+            console.log('[assessmentApi] Deleting assessment:', assessmentId);
+            const response = await apiClient.delete(`/assessments/${assessmentId}`);
+            console.log('[assessmentApi] Assessment deleted:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[assessmentApi] Error deleting assessment:', error);
+            throw error;
         }
-
-        if (diffInMs < 60000) { // Less than 1 minute
-            return 'Just now';
-        }
-
-        const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
-        if (diffInMinutes < 60) {
-            return `${diffInMinutes}m ago`;
-        }
-
-        const diffInHours = Math.floor(diffInMinutes / 60);
-        if (diffInHours < 24) {
-            return `${diffInHours}h ago`;
-        }
-
-        const diffInDays = Math.floor(diffInHours / 24);
-        if (diffInDays < 7) {
-            return `${diffInDays}d ago`;
-        }
-
-        // For dates older than a week, show the actual date
-        return past.toLocaleDateString();
-
-    } catch (error) {
-        console.error('Error formatting time:', error, 'Original date:', date);
-        return 'Unknown';
     }
 };
 
-const calculateDuration = (startDate, endDate) => {
-    if (!endDate) return 'In progress...';
-
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const diffInMs = end - start;
-
-    const minutes = Math.floor(diffInMs / (1000 * 60));
-    const seconds = Math.floor((diffInMs % (1000 * 60)) / 1000);
-
-    if (minutes > 0) {
-        return `${minutes}m ${seconds}s`;
-    }
-    return `${seconds}s`;
-};
-
-// Generate meaningful assessment names based on assessment data
-const generateAssessmentName = (assessment) => {
-    const type = assessment.assessmentType || assessment.type || 'Azure';
-    const customerName = assessment.customerName || 'Environment';
-
-    // Create a descriptive name based on type and customer
-    switch (type.toLowerCase()) {
-        case 'namingconvention':
-        case 'naming convention':
-            return `${customerName} - Naming Analysis`;
-        case 'tagging':
-            return `${customerName} - Tagging Assessment`;
-        case 'full':
-            return `${customerName} - Full Governance Review`;
-        default:
-            return `${customerName} - Azure Assessment`;
+// Assessments API (for listing)
+export const assessmentsApi = {
+    getAssessments: async () => {
+        try {
+            console.log('[assessmentsApi] Getting assessments...');
+            const response = await apiClient.get('/assessments');
+            console.log('[assessmentsApi] Assessments response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[assessmentsApi] Error getting assessments:', error);
+            throw error;
+        }
     }
 };
 
-// Generate environment name based on available data
-const generateEnvironmentName = (assessment) => {
-    // Try to infer environment from customer name or assessment type
-    const customerName = assessment.customerName || '';
-
-    if (customerName.toLowerCase().includes('prod')) return 'Production';
-    if (customerName.toLowerCase().includes('dev')) return 'Development';
-    if (customerName.toLowerCase().includes('test')) return 'Testing';
-    if (customerName.toLowerCase().includes('staging')) return 'Staging';
-
-    // Default based on assessment maturity
-    if (assessment.overallScore >= 80) return 'Production';
-    if (assessment.overallScore >= 60) return 'Staging';
-    return 'Development';
-};
-
-// Authentication API class
+// Auth API class - ENHANCED for MFA support
 export class AuthApi {
+    // CRITICAL: This method is required for MFA functionality
     static setAuthToken(token) {
         if (token) {
             apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -185,9 +139,9 @@ export class AuthApi {
 
     static async login(email, password, mfaToken = null, isBackupCode = false) {
         try {
-            console.log('[AuthApi] Attempting login with:', {
+            console.log('[AuthApi] Login attempt:', {
                 email,
-                passwordLength: password.length,
+                password: '***',
                 hasMfaToken: !!mfaToken,
                 isBackupCode
             });
@@ -279,106 +233,95 @@ export class MfaApi {
     }
 }
 
-// Enhanced Assessments API with proper naming
-export const assessmentApi = {
-    // Get all assessments for a customer with enhanced naming
-    getAllAssessments: async (customerId = '9bc034b0-852f-4618-9434-c040d13de712') => {
+// Team Management API - FIXED property casing to match backend
+export const teamApi = {
+    getTeamMembers: async () => {
         try {
-            console.log('[assessmentApi] getAllAssessments called with customerId:', customerId);
-            const response = await apiClient.get(`/assessments/customer/${customerId}`);
-            console.log('[assessmentApi] Raw API response:', response.data);
-
-            if (!response.data || !Array.isArray(response.data)) {
-                console.log('[assessmentApi] No assessments found, returning empty array');
-                return [];
-            }
-
-            // Enhanced transformation with proper naming
-            return response.data.map(assessment => {
-                const assessmentName = generateAssessmentName(assessment);
-                const environmentName = generateEnvironmentName(assessment);
-                const timeAgo = formatTimeAgo(assessment.startedDate);
-                const duration = calculateDuration(assessment.startedDate, assessment.completedDate);
-
-                return {
-                    id: assessment.assessmentId || assessment.id,
-                    name: assessmentName,
-                    environment: environmentName,
-                    status: assessment.status || 'Completed',
-                    score: assessment.overallScore ? Math.round(assessment.overallScore) : null,
-                    resourceCount: assessment.totalResourcesAnalyzed || 0,
-                    issuesCount: assessment.issuesFound || 0,
-                    duration: duration,
-                    date: timeAgo,
-                    type: assessment.assessmentType || 'Full',
-                    rawData: assessment // Include raw data for debugging
-                };
-            });
-        } catch (error) {
-            console.error('[assessmentApi] getAllAssessments error:', error);
-            return [];
-        }
-    },
-
-    // Create new assessment
-    startAssessment: async (assessmentData) => {
-        try {
-            console.log('[assessmentApi] startAssessment called with:', assessmentData);
-
-            const payload = {
-                environmentId: assessmentData.environmentId || '3fa85f64-5717-4562-b3fc-2c963f66afa6',
-                name: assessmentData.name, // ✅ FIXED: Add the user-entered assessment name
-                subscriptionIds: Array.isArray(assessmentData.subscriptions)
-                    ? assessmentData.subscriptions
-                    : assessmentData.subscriptions.split('\n').filter(id => id.trim()),
-                type: getAssessmentTypeNumber(assessmentData.type),
-                options: {
-                    analyzeNamingConventions: true,
-                    analyzeTagging: true,
-                    includeRecommendations: true
-                }
-            };
-
-            console.log('[assessmentApi] Sending payload:', payload);
-            const response = await apiClient.post('/assessments', payload);
-            console.log('[assessmentApi] startAssessment response:', response.data);
+            console.log('[teamApi] Getting team members...');
+            const response = await apiClient.get('/team/members');
+            console.log('[teamApi] Team members response:', response.data);
             return response.data;
         } catch (error) {
-            console.error('[assessmentApi] startAssessment error:', error);
+            console.error('[teamApi] getTeamMembers error:', error);
             throw error;
         }
     },
 
-    // Get assessment by ID
-    getAssessment: async (assessmentId) => {
-        const response = await apiClient.get(`/assessments/${assessmentId}`);
-        return response.data;
+    // FIXED: Transform property names to match backend expectations (PascalCase)
+    inviteTeamMember: async (inviteData) => {
+        try {
+            console.log('[teamApi] Inviting team member:', inviteData);
+
+            // Transform to match backend InviteTeamMemberRequest model
+            const requestData = {
+                Email: inviteData.email,      // PascalCase for backend
+                Role: inviteData.role,        // PascalCase for backend  
+                Message: inviteData.message || "" // PascalCase for backend
+            };
+
+            console.log('[teamApi] Sending request data:', requestData);
+            const response = await apiClient.post('/team/invite', requestData);
+            console.log('[teamApi] Invite response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[teamApi] inviteTeamMember error:', error);
+            console.error('[teamApi] Error details:', error.response?.data);
+            throw error;
+        }
     },
 
-    // Get assessment findings
-    getAssessmentFindings: async (assessmentId) => {
-        const response = await apiClient.get(`/assessments/${assessmentId}/findings`);
-        return response.data;
+    // FIXED: Transform property names to match backend expectations  
+    updateTeamMember: async (memberId, updateData) => {
+        try {
+            console.log('[teamApi] Updating team member:', { memberId, updateData });
+
+            // Transform to match backend UpdateTeamMemberRequest model
+            const requestData = {
+                Role: updateData.role  // PascalCase for backend
+            };
+
+            const response = await apiClient.put(`/team/members/${memberId}`, requestData);
+            console.log('[teamApi] Update response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[teamApi] updateTeamMember error:', error);
+            throw error;
+        }
     },
 
-    // Delete assessment
-    deleteAssessment: async (assessmentId) => {
-        const response = await apiClient.delete(`/assessments/${assessmentId}`);
-        return response.data;
+    removeTeamMember: async (memberId) => {
+        try {
+            console.log('[teamApi] Removing team member:', memberId);
+            const response = await apiClient.delete(`/team/members/${memberId}`);
+            console.log('[teamApi] Remove response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[teamApi] removeTeamMember error:', error);
+            throw error;
+        }
+    },
+
+    getTeamStats: async () => {
+        try {
+            console.log('[teamApi] Getting team stats...');
+            const response = await apiClient.get('/team/stats');
+            console.log('[teamApi] Team stats response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[teamApi] getTeamStats error:', error);
+            throw error;
+        }
     }
 };
 
-// Also export as assessmentsApi for consistency
-export const assessmentsApi = assessmentApi;
-
 // Azure Environments API
 export const azureEnvironmentsApi = {
-    getCustomerEnvironments: async (customerId) => {
-        const response = await apiClient.get(`/azure-environments/customer/${customerId}`);
+    getEnvironments: async () => {
+        const response = await apiClient.get('/azure-environments');
         return response.data;
     },
 
-    addEnvironment: async (environmentData) => {
+    createEnvironment: async (environmentData) => {
         const response = await apiClient.post('/azure-environments', environmentData);
         return response.data;
     },
@@ -493,6 +436,7 @@ export const apiUtils = {
 export default {
     AuthApi,
     MfaApi,
+    teamApi,
     assessmentApi,
     assessmentsApi,
     azureEnvironmentsApi,

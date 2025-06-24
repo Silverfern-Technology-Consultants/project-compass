@@ -17,6 +17,26 @@ const decodeJWT = (token) => {
     }
 };
 
+// Extract user data from JWT token
+const extractUserFromJWT = (token) => {
+    const decoded = decodeJWT(token);
+    if (!decoded) return null;
+
+    console.log('[Auth] Decoded JWT claims:', decoded);
+
+    return {
+        customerId: decoded.nameid || decoded.sub,
+        email: decoded.email,
+        firstName: decoded.given_name || decoded.name?.split(' ')[0] || '',
+        lastName: decoded.family_name || decoded.name?.split(' ').slice(1).join(' ') || '',
+        role: decoded.role,
+        organizationId: decoded.organization_id,
+        emailVerified: decoded.email_verified === 'true' || decoded.email_verified === true,
+        companyName: decoded.company_name || decoded.organization_name || '',
+        name: decoded.name || `${decoded.given_name || ''} ${decoded.family_name || ''}`.trim()
+    };
+};
+
 const getEmailVerifiedFromToken = (token) => {
     try {
         const decoded = decodeJWT(token);
@@ -119,16 +139,40 @@ export const AuthProvider = ({ children }) => {
                     // Set token in API service first
                     AuthApi.setAuthToken(token);
 
-                    // Verify token and get user info
-                    console.log('[Auth] Verifying token with backend');
-                    const userResponse = await AuthApi.getCurrentUser();
+                    // Extract user data from JWT token first
+                    const userFromJWT = extractUserFromJWT(token);
+                    console.log('[Auth] User data from JWT:', userFromJWT);
 
-                    console.log('[Auth] Token verified successfully:', userResponse);
-                    console.log('[Auth] User subscription status:', userResponse.subscriptionStatus);
-                    console.log('[Auth] User trial end date:', userResponse.trialEndDate);
+                    if (userFromJWT) {
+                        dispatch({ type: 'SET_TOKEN', payload: token });
+                        dispatch({ type: 'SET_USER', payload: userFromJWT });
+                    }
 
-                    dispatch({ type: 'SET_TOKEN', payload: token });
-                    dispatch({ type: 'SET_USER', payload: userResponse });
+                    // Try to verify token and get additional user info from backend
+                    try {
+                        console.log('[Auth] Verifying token with backend');
+                        const userResponse = await AuthApi.getCurrentUser();
+                        console.log('[Auth] Backend user response:', userResponse);
+
+                        // Merge JWT data with backend response, preferring backend data
+                        const mergedUser = {
+                            ...userFromJWT,
+                            ...userResponse,
+                            // Ensure these critical fields come from JWT if missing from backend
+                            customerId: userResponse.customerId || userFromJWT?.customerId,
+                            role: userResponse.role || userFromJWT?.role,
+                            organizationId: userResponse.organizationId || userFromJWT?.organizationId
+                        };
+
+                        console.log('[Auth] Merged user data:', mergedUser);
+                        dispatch({ type: 'SET_USER', payload: mergedUser });
+                    } catch (backendError) {
+                        console.warn('[Auth] Backend verification failed, using JWT data only:', backendError);
+                        // Continue with JWT data if backend call fails
+                        if (!userFromJWT) {
+                            throw backendError;
+                        }
+                    }
                 } catch (error) {
                     console.error('[Auth] Token verification failed:', error);
                     console.error('[Auth] Error details:', {
@@ -200,9 +244,11 @@ export const AuthProvider = ({ children }) => {
                 if (token) {
                     AuthApi.setAuthToken(token);
                     dispatch({ type: 'SET_TOKEN', payload: token });
-                }
-                if (customer) {
-                    dispatch({ type: 'SET_USER', payload: customer });
+
+                    // Extract user data from JWT
+                    const userFromJWT = extractUserFromJWT(token);
+                    const mergedUser = { ...userFromJWT, ...customer };
+                    dispatch({ type: 'SET_USER', payload: mergedUser });
                 }
                 dispatch({ type: 'SET_MFA_SETUP_REQUIRED', payload: true });
                 return { requiresMfaSetup: true, customer, token };
@@ -215,17 +261,29 @@ export const AuthProvider = ({ children }) => {
             }
 
             console.log('[Auth] Login successful, storing token and user data');
-            console.log('[Auth] Customer email verified status:', customer.emailVerified);
+
+            // Extract user data from JWT and merge with customer data
+            const userFromJWT = extractUserFromJWT(token);
+            const mergedUser = {
+                ...userFromJWT,
+                ...customer,
+                // Ensure critical fields from JWT are preserved
+                customerId: customer.customerId || userFromJWT?.customerId,
+                role: customer.role || userFromJWT?.role,
+                organizationId: customer.organizationId || userFromJWT?.organizationId
+            };
+
+            console.log('[Auth] Final user object:', mergedUser);
 
             // Store token
             localStorage.setItem('compass_token', token);
             AuthApi.setAuthToken(token);
 
             // Update state
-            dispatch({ type: 'LOGIN_SUCCESS', payload: { user: customer, token } });
+            dispatch({ type: 'LOGIN_SUCCESS', payload: { user: mergedUser, token } });
 
             console.log('[Auth] Login completed successfully');
-            return { success: true, customer, token };
+            return { success: true, customer: mergedUser, token };
         } catch (error) {
             console.error('[Auth] Login failed:', error);
             console.error('[Auth] Error response:', error.response?.data);
@@ -257,15 +315,19 @@ export const AuthProvider = ({ children }) => {
                 throw new Error('MFA verification failed');
             }
 
+            // Extract user data from JWT and merge
+            const userFromJWT = extractUserFromJWT(token);
+            const mergedUser = { ...userFromJWT, ...customer };
+
             // Store token and complete login
             localStorage.setItem('compass_token', token);
             AuthApi.setAuthToken(token);
 
             // Update state
-            dispatch({ type: 'LOGIN_SUCCESS', payload: { user: customer, token } });
+            dispatch({ type: 'LOGIN_SUCCESS', payload: { user: mergedUser, token } });
 
             console.log('[Auth] MFA verification completed successfully');
-            return { success: true, customer, token };
+            return { success: true, customer: mergedUser, token };
         } catch (error) {
             console.error('[Auth] MFA verification failed:', error);
             const errorMessage = error.response?.data?.message || error.message || 'MFA verification failed';
@@ -282,7 +344,10 @@ export const AuthProvider = ({ children }) => {
             dispatch({ type: 'SET_TOKEN', payload: response.token });
         }
         if (response.customer || response.user) {
-            dispatch({ type: 'SET_USER', payload: response.customer || response.user });
+            const customer = response.customer || response.user;
+            const userFromJWT = extractUserFromJWT(response.token);
+            const mergedUser = { ...userFromJWT, ...customer };
+            dispatch({ type: 'SET_USER', payload: mergedUser });
         }
         dispatch({ type: 'SET_MFA_REQUIRED', payload: false });
     };

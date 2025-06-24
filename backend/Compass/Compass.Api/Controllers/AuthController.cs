@@ -1,8 +1,11 @@
 ﻿using Compass.Core.Models;
 using Compass.Core.Services;
+using Compass.Data; // Add this for direct context access
+using Compass.Data.Entities;
 using Compass.Data.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore; // Add this for Entity Framework
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using System.Text.Json;
@@ -16,17 +19,20 @@ public class AuthController : ControllerBase
     private readonly IAuthService _authService;
     private readonly IMfaService _mfaService;
     private readonly ICustomerRepository _customerRepository;
+    private readonly CompassDbContext _context; // Add this for direct database access
     private readonly ILogger<AuthController> _logger;
 
     public AuthController(
         IAuthService authService,
         IMfaService mfaService,
         ICustomerRepository customerRepository,
+        CompassDbContext context, // Add this parameter
         ILogger<AuthController> logger)
     {
         _authService = authService;
         _mfaService = mfaService;
         _customerRepository = customerRepository;
+        _context = context; // Add this assignment
         _logger = logger;
     }
 
@@ -35,23 +41,89 @@ public class AuthController : ControllerBase
     {
         try
         {
+            _logger.LogInformation("Registration attempt for email: {Email}", request.Email);
+
+            TeamInvitation? invitation = null;
+
+            // If invitation token is provided, validate it first
+            if (!string.IsNullOrEmpty(request.InvitationToken))
+            {
+                invitation = await _context.TeamInvitations
+                    .Include(ti => ti.Organization) // Include organization data
+                    .FirstOrDefaultAsync(ti => ti.InvitationToken == request.InvitationToken &&
+                                              ti.Status == "Pending" &&
+                                              ti.InvitedEmail.ToLower() == request.Email.ToLower());
+
+                if (invitation == null)
+                {
+                    return BadRequest(new AuthResponse
+                    {
+                        Success = false,
+                        Message = "Invalid or expired invitation"
+                    });
+                }
+
+                if (invitation.ExpirationDate < DateTime.UtcNow)
+                {
+                    return BadRequest(new AuthResponse
+                    {
+                        Success = false,
+                        Message = "Invitation has expired"
+                    });
+                }
+
+                _logger.LogInformation("Valid invitation found for {Email} to join organization {OrganizationId} as {Role}",
+                    request.Email, invitation.OrganizationId, invitation.InvitedRole);
+            }
+
             var ipAddress = GetClientIpAddress();
             var result = await _authService.RegisterAsync(request, ipAddress);
 
-            if (!result.Success)
+            if (result.Success)
             {
-                return BadRequest(result);
+                // If registration with invitation token, complete the invitation process
+                if (invitation != null)
+                {
+                    // Find the newly created customer
+                    var newCustomer = await _context.Customers
+                        .FirstOrDefaultAsync(c => c.Email.ToLower() == request.Email.ToLower());
+
+                    if (newCustomer != null)
+                    {
+                        // CRITICAL FIX: Set the organization and role from the invitation
+                        newCustomer.OrganizationId = invitation.OrganizationId;
+                        newCustomer.Role = invitation.InvitedRole;
+
+                        // Mark invitation as accepted
+                        invitation.Status = "Accepted";
+                        invitation.AcceptedDate = DateTime.UtcNow;
+                        invitation.AcceptedByCustomerId = newCustomer.CustomerId;
+
+                        // Save all changes
+                        await _context.SaveChangesAsync();
+
+                        _logger.LogInformation("User {Email} successfully joined organization {OrganizationId} as {Role}",
+                            request.Email, invitation.OrganizationId, invitation.InvitedRole);
+                    }
+                    else
+                    {
+                        _logger.LogError("Could not find newly created customer {Email} to assign to organization", request.Email);
+                    }
+                }
+
+                _logger.LogInformation("User registration successful: {Email}", request.Email);
+                return Ok(result);
             }
 
-            return Ok(result);
+            return BadRequest(result);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Registration error");
+            _logger.LogError(ex, "Registration failed for email: {Email}", request.Email);
             return StatusCode(500, new AuthResponse
             {
                 Success = false,
-                Message = "Internal server error"
+                Message = "Registration failed. Please try again."
             });
         }
     }

@@ -11,6 +11,7 @@ import AssessmentsPage from './components/pages/AssessmentsPage';
 import LoginPage from './components/pages/LoginPage';
 import RegisterPage from './components/pages/RegisterPage';
 import VerifyEmailPage from './components/pages/VerifyEmailPage';
+import AcceptInvitePage from './components/pages/AcceptInvitePage'; // NEW IMPORT
 // Other page components
 import ReportsPage from './components/pages/ReportsPage';
 import TeamManagementPage from './components/pages/TeamManagementPage';
@@ -81,6 +82,7 @@ const AppContent = () => {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/verify-email" element={<VerifyEmailPage />} />
+                <Route path="/accept-invite" element={<AcceptInvitePage />} /> {/* NEW ROUTE */}
 
                 {/* Protected routes */}
                 <Route

@@ -3,6 +3,11 @@ namespace Compass.Data.Entities;
 public class Customer
 {
     public Guid CustomerId { get; set; } = Guid.NewGuid();
+
+    // Organization relationship
+    public Guid? OrganizationId { get; set; } // Nullable during migration
+    public virtual Organization? Organization { get; set; }
+
     [Required]
     [StringLength(100)]
     public string CompanyName { get; set; } = string.Empty;
@@ -27,11 +32,16 @@ public class Customer
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
     public DateTime? LastLoginDate { get; set; }
     public bool IsActive { get; set; } = true;
+
+    // Team/Organization role
+    [StringLength(50)]
+    public string Role { get; set; } = "Owner"; // Owner, Admin, Member, Viewer
+
     // IP tracking for anti-abuse
     public string? RegistrationIP { get; set; }
     public string? LastLoginIP { get; set; }
 
-    // MFA Properties - NEW
+    // MFA Properties
     public bool IsMfaEnabled { get; set; } = false;
     public string? MfaSecret { get; set; }  // TOTP secret key
     public string? MfaBackupCodes { get; set; } // JSON array of backup codes
@@ -39,7 +49,7 @@ public class Customer
     public DateTime? LastMfaUsedDate { get; set; }
     public bool RequireMfaSetup { get; set; } = false; // Force MFA setup on next login
 
-    // WRITABLE PROPERTIES (changed from read-only)
+    // Contact info
     public string? ContactPhone { get; set; }
     public string? Address { get; set; }
     public string? City { get; set; }
@@ -53,17 +63,26 @@ public class Customer
     public bool IsTrialAccount { get; set; } = true;
     public DateTime? TrialStartDate { get; set; }
     public DateTime? TrialEndDate { get; set; }
+
     // COMPUTED PROPERTIES (read-only)
     public string Name => $"{FirstName} {LastName}";
     public string ContactEmail => Email;
     public string ContactName => $"{FirstName} {LastName}";
-    // Navigation properties
+
+    // Navigation properties - scoped to organization
     public virtual ICollection<Subscription> Subscriptions { get; set; } = new List<Subscription>();
     public virtual ICollection<Assessment> Assessments { get; set; } = new List<Assessment>();
     public virtual ICollection<AzureEnvironment> AzureEnvironments { get; set; } = new List<AzureEnvironment>();
     public virtual ICollection<UsageMetric> UsageMetrics { get; set; } = new List<UsageMetric>();
     public virtual ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
+
+    // Team invitations
+    public virtual ICollection<TeamInvitation> SentInvitations { get; set; } = new List<TeamInvitation>();
+    public virtual ICollection<TeamInvitation> AcceptedInvitations { get; set; } = new List<TeamInvitation>();
+
     // Helper properties
     public string FullName => $"{FirstName} {LastName}";
     public bool HasActiveSubscription => Subscriptions.Any(s => s.Status == "Active" || s.Status == "Trial");
+    public bool IsOrganizationOwner => Role == "Owner";
+    public bool CanManageTeam => Role == "Owner" || Role == "Admin";
 }

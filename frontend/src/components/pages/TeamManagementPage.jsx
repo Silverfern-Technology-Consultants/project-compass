@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { Users, Mail, Shield, Edit, Trash2, Plus, Search, UserPlus, Crown, Settings } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Users, Mail, Shield, Edit, Trash2, Plus, Search, UserPlus, Crown, Settings, AlertCircle, Check, X } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+import { teamApi, apiUtils } from '../../services/apiService';
 
-const TeamMemberCard = ({ member, onEdit, onDelete, currentUserId }) => {
+const TeamMemberCard = ({ member, onEdit, onDelete, currentUserId, isOwnerOrAdmin }) => {
     const getRoleColor = (role) => {
         switch (role) {
             case 'Owner': return 'bg-purple-600 text-white';
@@ -15,6 +17,7 @@ const TeamMemberCard = ({ member, onEdit, onDelete, currentUserId }) => {
     const getStatusColor = (status) => {
         switch (status) {
             case 'Active': return 'text-green-400';
+            case 'Pending': return 'text-yellow-400';
             case 'Invited': return 'text-yellow-400';
             case 'Inactive': return 'text-gray-400';
             default: return 'text-gray-400';
@@ -22,6 +25,8 @@ const TeamMemberCard = ({ member, onEdit, onDelete, currentUserId }) => {
     };
 
     const isCurrentUser = member.id === currentUserId;
+    const canEditMember = isOwnerOrAdmin && !isCurrentUser && member.role !== 'Owner';
+    const canDeleteMember = isOwnerOrAdmin && !isCurrentUser && member.role !== 'Owner';
 
     return (
         <div className="bg-gray-900 border border-gray-800 rounded p-6">
@@ -49,22 +54,26 @@ const TeamMemberCard = ({ member, onEdit, onDelete, currentUserId }) => {
                     <div className={`px-3 py-1 rounded text-sm font-medium ${getRoleColor(member.role)}`}>
                         {member.role}
                     </div>
-                    {!isCurrentUser && member.role !== 'Owner' && (
+                    {(canEditMember || canDeleteMember) && (
                         <div className="flex items-center space-x-1">
-                            <button
-                                onClick={() => onEdit(member)}
-                                className="p-2 rounded hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
-                                title="Edit member"
-                            >
-                                <Edit size={16} />
-                            </button>
-                            <button
-                                onClick={() => onDelete(member)}
-                                className="p-2 rounded hover:bg-gray-800 text-gray-400 hover:text-red-400 transition-colors"
-                                title="Remove member"
-                            >
-                                <Trash2 size={16} />
-                            </button>
+                            {canEditMember && (
+                                <button
+                                    onClick={() => onEdit(member)}
+                                    className="p-2 rounded hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
+                                    title="Edit member role"
+                                >
+                                    <Edit size={16} />
+                                </button>
+                            )}
+                            {canDeleteMember && (
+                                <button
+                                    onClick={() => onDelete(member)}
+                                    className="p-2 rounded hover:bg-gray-800 text-gray-400 hover:text-red-400 transition-colors"
+                                    title="Remove member"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>
@@ -84,35 +93,60 @@ const TeamMemberCard = ({ member, onEdit, onDelete, currentUserId }) => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div>
                     <p className="text-gray-400">Assessments Run</p>
-                    <p className="font-semibold text-white">{member.assessmentsRun}</p>
+                    <p className="font-semibold text-white">{member.assessmentsRun || 0}</p>
                 </div>
                 <div>
                     <p className="text-gray-400">Reports Generated</p>
-                    <p className="font-semibold text-white">{member.reportsGenerated}</p>
+                    <p className="font-semibold text-white">{member.reportsGenerated || 0}</p>
                 </div>
                 <div>
                     <p className="text-gray-400">Joined</p>
-                    <p className="font-semibold text-white">{member.joinedDate}</p>
+                    <p className="font-semibold text-white">{member.joinedDate || 'Unknown'}</p>
                 </div>
             </div>
         </div>
     );
 };
 
-const InviteMemberModal = ({ isOpen, onClose, onInvite }) => {
+const InviteMemberModal = ({ isOpen, onClose, onInvite, loading }) => {
     const [formData, setFormData] = useState({
         email: '',
         role: 'Member',
         message: ''
     });
+    const [errors, setErrors] = useState({});
+
+    useEffect(() => {
+        if (isOpen) {
+            setFormData({ email: '', role: 'Member', message: '' });
+            setErrors({});
+        }
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
+    const validateForm = () => {
+        const newErrors = {};
+
+        if (!formData.email.trim()) {
+            newErrors.email = 'Email is required';
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+            newErrors.email = 'Please enter a valid email address';
+        }
+
+        if (!formData.role) {
+            newErrors.role = 'Role is required';
+        }
+
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
-        onInvite(formData);
-        onClose();
-        setFormData({ email: '', role: 'Member', message: '' });
+        if (validateForm()) {
+            onInvite(formData);
+        }
     };
 
     return (
@@ -129,10 +163,14 @@ const InviteMemberModal = ({ isOpen, onClose, onInvite }) => {
                             type="email"
                             value={formData.email}
                             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-yellow-600"
+                            className={`w-full bg-gray-800 border rounded px-3 py-2 text-white focus:outline-none focus:border-yellow-600 ${errors.email ? 'border-red-500' : 'border-gray-700'
+                                }`}
                             placeholder="colleague@company.com"
-                            required
+                            disabled={loading}
                         />
+                        {errors.email && (
+                            <p className="text-red-400 text-sm mt-1">{errors.email}</p>
+                        )}
                     </div>
 
                     <div>
@@ -140,12 +178,17 @@ const InviteMemberModal = ({ isOpen, onClose, onInvite }) => {
                         <select
                             value={formData.role}
                             onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-yellow-600"
+                            className={`w-full bg-gray-800 border rounded px-3 py-2 text-white focus:outline-none focus:border-yellow-600 ${errors.role ? 'border-red-500' : 'border-gray-700'
+                                }`}
+                            disabled={loading}
                         >
                             <option value="Member">Member - Can run assessments and view reports</option>
                             <option value="Admin">Admin - Full access except team management</option>
                             <option value="Viewer">Viewer - Read-only access to reports</option>
                         </select>
+                        {errors.role && (
+                            <p className="text-red-400 text-sm mt-1">{errors.role}</p>
+                        )}
                     </div>
 
                     <div>
@@ -156,6 +199,7 @@ const InviteMemberModal = ({ isOpen, onClose, onInvite }) => {
                             className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-yellow-600"
                             placeholder="Welcome to our team!"
                             rows="3"
+                            disabled={loading}
                         />
                     </div>
 
@@ -164,15 +208,17 @@ const InviteMemberModal = ({ isOpen, onClose, onInvite }) => {
                             type="button"
                             onClick={onClose}
                             className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
+                            disabled={loading}
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
-                            className="flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
+                            disabled={loading}
+                            className="flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 text-black disabled:text-gray-400 px-4 py-2 rounded font-medium transition-colors"
                         >
                             <Mail size={16} />
-                            <span>Send Invitation</span>
+                            <span>{loading ? 'Sending...' : 'Send Invitation'}</span>
                         </button>
                     </div>
                 </form>
@@ -181,15 +227,27 @@ const InviteMemberModal = ({ isOpen, onClose, onInvite }) => {
     );
 };
 
-const EditMemberModal = ({ isOpen, onClose, onSave, member }) => {
+const EditMemberModal = ({ isOpen, onClose, onSave, member, loading }) => {
     const [role, setRole] = useState(member?.role || 'Member');
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        if (member) {
+            setRole(member.role);
+            setError('');
+        }
+    }, [member]);
 
     if (!isOpen || !member) return null;
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        if (!role) {
+            setError('Role is required');
+            return;
+        }
+        setError('');
         onSave({ ...member, role });
-        onClose();
     };
 
     return (
@@ -206,12 +264,17 @@ const EditMemberModal = ({ isOpen, onClose, onSave, member }) => {
                         <select
                             value={role}
                             onChange={(e) => setRole(e.target.value)}
-                            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-yellow-600"
+                            className={`w-full bg-gray-800 border rounded px-3 py-2 text-white focus:outline-none focus:border-yellow-600 ${error ? 'border-red-500' : 'border-gray-700'
+                                }`}
+                            disabled={loading}
                         >
                             <option value="Member">Member - Can run assessments and view reports</option>
                             <option value="Admin">Admin - Full access except team management</option>
                             <option value="Viewer">Viewer - Read-only access to reports</option>
                         </select>
+                        {error && (
+                            <p className="text-red-400 text-sm mt-1">{error}</p>
+                        )}
                     </div>
 
                     <div className="bg-gray-800 border border-gray-700 rounded p-4">
@@ -255,14 +318,16 @@ const EditMemberModal = ({ isOpen, onClose, onSave, member }) => {
                             type="button"
                             onClick={onClose}
                             className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
+                            disabled={loading}
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
-                            className="bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
+                            disabled={loading}
+                            className="bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 text-black disabled:text-gray-400 px-4 py-2 rounded font-medium transition-colors"
                         >
-                            Save Changes
+                            {loading ? 'Saving...' : 'Save Changes'}
                         </button>
                     </div>
                 </form>
@@ -271,132 +336,365 @@ const EditMemberModal = ({ isOpen, onClose, onSave, member }) => {
     );
 };
 
+const RemoveConfirmationModal = ({ isOpen, onClose, onConfirm, member, loading }) => {
+    const [confirmText, setConfirmText] = useState('');
+    const expectedText = 'REMOVE';
+
+    if (!isOpen || !member) return null;
+
+    const isValid = confirmText === expectedText;
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (isValid) {
+            onConfirm();
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-gray-900 border border-red-800 rounded w-full max-w-md mx-4">
+                <div className="p-6 border-b border-red-800">
+                    <div className="flex items-center space-x-3">
+                        <AlertCircle className="text-red-400" size={24} />
+                        <h2 className="text-xl font-semibold text-white">Remove Team Member</h2>
+                    </div>
+                </div>
+
+                <div className="p-6">
+                    <div className="mb-6">
+                        <p className="text-gray-300 mb-2">
+                            You are about to remove <strong className="text-white">{member.name}</strong> from your team.
+                        </p>
+                        <p className="text-gray-400 text-sm mb-4">
+                            This action will:
+                        </p>
+                        <ul className="text-sm text-gray-400 space-y-1 mb-4">
+                            <li>• Remove their access to all assessments and reports</li>
+                            <li>• Revoke their login permissions</li>
+                            <li>• Cannot be undone automatically</li>
+                        </ul>
+                        {member.status === 'Pending' && (
+                            <div className="bg-yellow-900 border border-yellow-800 rounded p-3 mb-4">
+                                <p className="text-yellow-200 text-sm">
+                                    <strong>Note:</strong> This will cancel their pending invitation.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+
+                    <form onSubmit={handleSubmit}>
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                                Type <span className="font-bold text-red-400">{expectedText}</span> to confirm:
+                            </label>
+                            <input
+                                type="text"
+                                value={confirmText}
+                                onChange={(e) => setConfirmText(e.target.value)}
+                                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-red-600"
+                                placeholder={expectedText}
+                                disabled={loading}
+                                autoComplete="off"
+                            />
+                        </div>
+
+                        <div className="flex items-center justify-end space-x-3">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
+                                disabled={loading}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={loading || !isValid}
+                                className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white disabled:text-gray-400 px-4 py-2 rounded font-medium transition-colors"
+                            >
+                                <Trash2 size={16} />
+                                <span>{loading ? 'Removing...' : 'Remove Member'}</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const SuccessAlert = ({ message, onClose }) => {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 5000);
+        return () => clearTimeout(timer);
+    }, [onClose]);
+
+    return (
+        <div className="bg-green-900 border border-green-800 text-green-200 px-4 py-3 rounded flex items-center space-x-2">
+            <Check size={20} />
+            <span>{message}</span>
+            <button
+                onClick={onClose}
+                className="ml-auto text-green-400 hover:text-green-200"
+            >
+                <X size={16} />
+            </button>
+        </div>
+    );
+};
+
 const TeamManagementPage = () => {
-    const currentUserId = 1; // This would come from auth context
+    const { user, token } = useAuth();
+
+    // Helper function to decode JWT and extract claims
+    const decodeJWT = (token) => {
+        try {
+            if (!token) return null;
+            const parts = token.split('.');
+            if (parts.length !== 3) return null;
+            const payload = parts[1];
+            const paddedPayload = payload + '='.repeat((4 - payload.length % 4) % 4);
+            const decodedPayload = atob(paddedPayload);
+            return JSON.parse(decodedPayload);
+        } catch (error) {
+            console.error('Error decoding JWT token:', error);
+            return null;
+        }
+    };
+
+    // Extract user info from JWT token if user object is not available
+    const getFromJWTOrUser = (userField, jwtClaim) => {
+        if (user && user[userField] !== undefined) {
+            return user[userField];
+        }
+
+        const decoded = decodeJWT(token);
+        return decoded ? decoded[jwtClaim] : null;
+    };
+
+    const currentUserId = getFromJWTOrUser('customerId', 'nameid');
+    const userRole = getFromJWTOrUser('role', 'role');
+    const isOwnerOrAdmin = userRole === 'Owner' || userRole === 'Admin';
+
+    // State management
     const [searchTerm, setSearchTerm] = useState('');
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
+    const [showRemoveModal, setShowRemoveModal] = useState(false);
     const [selectedMember, setSelectedMember] = useState(null);
+    const [teamMembers, setTeamMembers] = useState([]);
+    const [teamStats, setTeamStats] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [success, setSuccess] = useState(null);
+    const [actionLoading, setActionLoading] = useState(false);
 
-    const [teamMembers, setTeamMembers] = useState([
-        {
-            id: 1,
-            name: 'John Smith',
-            email: 'john@safehaven.com',
-            role: 'Owner',
-            status: 'Active',
-            lastActive: '2 minutes ago',
-            assessmentsRun: 24,
-            reportsGenerated: 18,
-            joinedDate: 'Jan 2024'
-        },
-        {
-            id: 2,
-            name: 'Sarah Johnson',
-            email: 'sarah@safehaven.com',
-            role: 'Admin',
-            status: 'Active',
-            lastActive: '1 hour ago',
-            assessmentsRun: 15,
-            reportsGenerated: 12,
-            joinedDate: 'Feb 2024'
-        },
-        {
-            id: 3,
-            name: 'Mike Chen',
-            email: 'mike@safehaven.com',
-            role: 'Member',
-            status: 'Active',
-            lastActive: '3 hours ago',
-            assessmentsRun: 8,
-            reportsGenerated: 6,
-            joinedDate: 'Mar 2024'
-        },
-        {
-            id: 4,
-            name: 'Emily Davis',
-            email: 'emily@safehaven.com',
-            role: 'Member',
-            status: 'Invited',
-            lastActive: 'Never',
-            assessmentsRun: 0,
-            reportsGenerated: 0,
-            joinedDate: 'Pending'
-        },
-        {
-            id: 5,
-            name: 'Alex Wilson',
-            email: 'alex@safehaven.com',
-            role: 'Viewer',
-            status: 'Active',
-            lastActive: '2 days ago',
-            assessmentsRun: 0,
-            reportsGenerated: 0,
-            joinedDate: 'Apr 2024'
+    // Load team data
+    const loadTeamData = async () => {
+        try {
+            setLoading(true);
+            setError(null);
+
+            const [membersResponse, statsResponse] = await Promise.all([
+                teamApi.getTeamMembers(),
+                teamApi.getTeamStats()
+            ]);
+
+            setTeamMembers(membersResponse || []);
+            setTeamStats(statsResponse || {});
+        } catch (err) {
+            console.error('Error loading team data:', err);
+            const errorInfo = apiUtils.handleApiError(err);
+            setError(`Failed to load team data: ${errorInfo.message}`);
+        } finally {
+            setLoading(false);
         }
-    ]);
+    };
 
+    useEffect(() => {
+        loadTeamData();
+    }, []);
+
+    // Filter members based on search
     const filteredMembers = teamMembers.filter(member =>
         member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         member.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
         member.role.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const handleInviteMember = (formData) => {
-        const newMember = {
-            id: Date.now(),
-            name: formData.email.split('@')[0], // Temporary name
-            email: formData.email,
-            role: formData.role,
-            status: 'Invited',
-            lastActive: 'Never',
-            assessmentsRun: 0,
-            reportsGenerated: 0,
-            joinedDate: 'Pending'
-        };
-        setTeamMembers([...teamMembers, newMember]);
+    // Handle invite member
+    const handleInviteMember = async (formData) => {
+        try {
+            setActionLoading(true);
+            setError(null);
+
+            const newMember = await teamApi.inviteTeamMember({
+                email: formData.email,
+                role: formData.role,
+                message: formData.message
+            });
+
+            setTeamMembers(prev => [...prev, newMember]);
+            setShowInviteModal(false);
+            setSuccess(`Invitation sent successfully to ${formData.email}`);
+
+            // Reload stats
+            const statsResponse = await teamApi.getTeamStats();
+            setTeamStats(statsResponse);
+
+        } catch (err) {
+            console.error('Error inviting member:', err);
+            const errorInfo = apiUtils.handleApiError(err);
+
+            if (errorInfo.details?.includes?.('already exists')) {
+                setError('A user with this email is already part of your team or has a pending invitation.');
+            } else if (errorInfo.details?.includes?.('invalid email')) {
+                setError('Please enter a valid email address.');
+            } else {
+                setError(`Failed to send invitation: ${errorInfo.message}`);
+            }
+        } finally {
+            setActionLoading(false);
+        }
     };
 
+    // Handle edit member
     const handleEditMember = (member) => {
         setSelectedMember(member);
         setShowEditModal(true);
     };
 
-    const handleSaveMember = (updatedMember) => {
-        setTeamMembers(teamMembers.map(member =>
-            member.id === updatedMember.id ? updatedMember : member
-        ));
-    };
+    // Handle save member
+    const handleSaveMember = async (updatedMember) => {
+        try {
+            setActionLoading(true);
+            setError(null);
 
-    const handleDeleteMember = (memberToDelete) => {
-        if (window.confirm(`Are you sure you want to remove ${memberToDelete.name} from the team?`)) {
-            setTeamMembers(teamMembers.filter(member => member.id !== memberToDelete.id));
+            const savedMember = await teamApi.updateTeamMember(updatedMember.id, {
+                role: updatedMember.role
+            });
+
+            setTeamMembers(prev =>
+                prev.map(member =>
+                    member.id === updatedMember.id ? savedMember : member
+                )
+            );
+            setShowEditModal(false);
+            setSuccess(`${updatedMember.name}'s role has been updated to ${updatedMember.role}`);
+
+        } catch (err) {
+            console.error('Error updating member:', err);
+            const errorInfo = apiUtils.handleApiError(err);
+            setError(`Failed to update member role: ${errorInfo.message}`);
+        } finally {
+            setActionLoading(false);
         }
     };
 
-    const roleStats = {
+    // Handle delete member
+    const handleDeleteMember = (memberToDelete) => {
+        setSelectedMember(memberToDelete);
+        setShowRemoveModal(true);
+    };
+
+    // Handle confirm delete
+    const handleConfirmDelete = async () => {
+        if (!selectedMember) return;
+
+        try {
+            setActionLoading(true);
+            setError(null);
+
+            await teamApi.removeTeamMember(selectedMember.id);
+            setTeamMembers(prev => prev.filter(member => member.id !== selectedMember.id));
+            setShowRemoveModal(false);
+            setSelectedMember(null);
+
+            const actionType = selectedMember.status === 'Pending' ? 'Invitation cancelled' : 'Team member removed';
+            setSuccess(`${actionType} successfully`);
+
+            // Reload stats
+            const statsResponse = await teamApi.getTeamStats();
+            setTeamStats(statsResponse);
+
+        } catch (err) {
+            console.error('Error removing member:', err);
+            const errorInfo = apiUtils.handleApiError(err);
+            setError(`Failed to remove team member: ${errorInfo.message}`);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    // Calculate role stats from current data
+    const roleStats = teamStats?.roleDistribution || {
         Owner: teamMembers.filter(m => m.role === 'Owner').length,
         Admin: teamMembers.filter(m => m.role === 'Admin').length,
         Member: teamMembers.filter(m => m.role === 'Member').length,
         Viewer: teamMembers.filter(m => m.role === 'Viewer').length,
     };
 
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-96">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-600 mx-auto mb-4"></div>
+                    <p className="text-gray-400">Loading team data...</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6">
+            {/* Success Alert */}
+            {success && (
+                <SuccessAlert
+                    message={success}
+                    onClose={() => setSuccess(null)}
+                />
+            )}
+
+            {/* Error Alert */}
+            {error && (
+                <div className="bg-red-900 border border-red-800 text-red-200 px-4 py-3 rounded flex items-center space-x-2">
+                    <AlertCircle size={20} />
+                    <span>{error}</span>
+                    <button
+                        onClick={() => setError(null)}
+                        className="ml-auto text-red-400 hover:text-red-200"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+            )}
+
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-white">Team Management</h1>
                     <p className="text-gray-400">Manage your team members and their access permissions</p>
                 </div>
-                <button
-                    onClick={() => setShowInviteModal(true)}
-                    className="flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
-                >
-                    <UserPlus size={16} />
-                    <span>Invite Member</span>
-                </button>
+                {isOwnerOrAdmin && (
+                    <button
+                        onClick={() => setShowInviteModal(true)}
+                        disabled={actionLoading}
+                        className="flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 text-black disabled:text-gray-400 px-4 py-2 rounded font-medium transition-colors"
+                    >
+                        <UserPlus size={16} />
+                        <span>Invite Member</span>
+                    </button>
+                )}
             </div>
+
+            {/* Permission Warning for Non-Admins */}
+            {!isOwnerOrAdmin && (
+                <div className="bg-yellow-900 border border-yellow-800 text-yellow-200 px-4 py-3 rounded flex items-center space-x-2">
+                    <AlertCircle size={20} />
+                    <span>You have read-only access to team management. Contact an Owner or Admin to make changes.</span>
+                </div>
+            )}
 
             {/* Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -404,7 +702,7 @@ const TeamManagementPage = () => {
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm text-gray-400">Total Members</p>
-                            <p className="text-2xl font-bold text-white">{teamMembers.length}</p>
+                            <p className="text-2xl font-bold text-white">{(teamStats?.totalMembers || teamMembers.length || 0)}</p>
                         </div>
                         <Users size={24} className="text-yellow-600" />
                     </div>
@@ -414,7 +712,7 @@ const TeamManagementPage = () => {
                         <div>
                             <p className="text-sm text-gray-400">Active</p>
                             <p className="text-2xl font-bold text-green-400">
-                                {teamMembers.filter(m => m.status === 'Active').length}
+                                {(teamStats?.activeMembers || teamMembers.filter(m => m.status === 'Active').length || 0)}
                             </p>
                         </div>
                         <div className="w-3 h-3 bg-green-400 rounded-full"></div>
@@ -425,7 +723,7 @@ const TeamManagementPage = () => {
                         <div>
                             <p className="text-sm text-gray-400">Pending</p>
                             <p className="text-2xl font-bold text-yellow-400">
-                                {teamMembers.filter(m => m.status === 'Invited').length}
+                                {(teamStats?.pendingInvitations || teamMembers.filter(m => m.status === 'Pending').length || 0)}
                             </p>
                         </div>
                         <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
@@ -435,7 +733,9 @@ const TeamManagementPage = () => {
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm text-gray-400">Admins</p>
-                            <p className="text-2xl font-bold text-purple-400">{roleStats.Admin + roleStats.Owner}</p>
+                            <p className="text-2xl font-bold text-purple-400">
+                                {(teamStats?.adminCount || ((roleStats.Admin || 0) + (roleStats.Owner || 0)) || 0)}
+                            </p>
                         </div>
                         <Crown size={24} className="text-purple-400" />
                     </div>
@@ -463,23 +763,31 @@ const TeamManagementPage = () => {
                         key={member.id}
                         member={member}
                         currentUserId={currentUserId}
+                        isOwnerOrAdmin={isOwnerOrAdmin}
                         onEdit={handleEditMember}
                         onDelete={handleDeleteMember}
                     />
                 ))}
             </div>
 
-            {filteredMembers.length === 0 && (
+            {filteredMembers.length === 0 && !loading && (
                 <div className="bg-gray-900 border border-gray-800 rounded p-12 text-center">
                     <Users size={48} className="text-gray-600 mx-auto mb-4" />
                     <h3 className="text-lg font-semibold text-white mb-2">No team members found</h3>
-                    <p className="text-gray-400 mb-4">Try adjusting your search or invite new team members.</p>
-                    <button
-                        onClick={() => setShowInviteModal(true)}
-                        className="bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
-                    >
-                        Invite Your First Team Member
-                    </button>
+                    <p className="text-gray-400 mb-4">
+                        {teamMembers.length === 0
+                            ? "Get started by inviting your first team member."
+                            : "Try adjusting your search or invite new team members."
+                        }
+                    </p>
+                    {isOwnerOrAdmin && (
+                        <button
+                            onClick={() => setShowInviteModal(true)}
+                            className="bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
+                        >
+                            {teamMembers.length === 0 ? "Invite Your First Team Member" : "Invite Team Member"}
+                        </button>
+                    )}
                 </div>
             )}
 
@@ -492,28 +800,28 @@ const TeamManagementPage = () => {
                             <Crown size={24} className="text-white" />
                         </div>
                         <p className="text-sm text-gray-400">Owner</p>
-                        <p className="text-lg font-bold text-white">{roleStats.Owner}</p>
+                        <p className="text-lg font-bold text-white">{roleStats.Owner || 0}</p>
                     </div>
                     <div className="text-center">
                         <div className="w-12 h-12 bg-yellow-600 rounded mx-auto mb-2 flex items-center justify-center">
                             <Shield size={24} className="text-black" />
                         </div>
                         <p className="text-sm text-gray-400">Admin</p>
-                        <p className="text-lg font-bold text-white">{roleStats.Admin}</p>
+                        <p className="text-lg font-bold text-white">{roleStats.Admin || 0}</p>
                     </div>
                     <div className="text-center">
                         <div className="w-12 h-12 bg-blue-600 rounded mx-auto mb-2 flex items-center justify-center">
                             <Users size={24} className="text-white" />
                         </div>
                         <p className="text-sm text-gray-400">Member</p>
-                        <p className="text-lg font-bold text-white">{roleStats.Member}</p>
+                        <p className="text-lg font-bold text-white">{roleStats.Member || 0}</p>
                     </div>
                     <div className="text-center">
                         <div className="w-12 h-12 bg-gray-600 rounded mx-auto mb-2 flex items-center justify-center">
                             <Settings size={24} className="text-white" />
                         </div>
                         <p className="text-sm text-gray-400">Viewer</p>
-                        <p className="text-lg font-bold text-white">{roleStats.Viewer}</p>
+                        <p className="text-lg font-bold text-white">{roleStats.Viewer || 0}</p>
                     </div>
                 </div>
             </div>
@@ -523,6 +831,7 @@ const TeamManagementPage = () => {
                 isOpen={showInviteModal}
                 onClose={() => setShowInviteModal(false)}
                 onInvite={handleInviteMember}
+                loading={actionLoading}
             />
 
             <EditMemberModal
@@ -530,6 +839,18 @@ const TeamManagementPage = () => {
                 onClose={() => setShowEditModal(false)}
                 onSave={handleSaveMember}
                 member={selectedMember}
+                loading={actionLoading}
+            />
+
+            <RemoveConfirmationModal
+                isOpen={showRemoveModal}
+                onClose={() => {
+                    setShowRemoveModal(false);
+                    setSelectedMember(null);
+                }}
+                onConfirm={handleConfirmDelete}
+                member={selectedMember}
+                loading={actionLoading}
             />
         </div>
     );
