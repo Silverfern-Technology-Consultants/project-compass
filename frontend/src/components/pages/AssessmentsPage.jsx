@@ -24,9 +24,12 @@ const AssessmentCard = ({ assessment, onView, onDelete }) => {
 
     // Enhanced display format: "User Name - Assessment ID"
     const formatAssessmentTitle = (assessment) => {
-        const shortId = assessment.id.substring(0, 8).toUpperCase();
+        // Handle both id and assessmentId fields from API
+        const assessmentId = assessment.id || assessment.assessmentId;
+        const shortId = assessmentId ? assessmentId.substring(0, 8).toUpperCase() : 'UNKNOWN';
+
         // Try to get the user-entered name, fall back to generated name
-        const userEnteredName = assessment.rawData?.name || assessment.userEnteredName || assessment.name;
+        const userEnteredName = assessment.rawData?.name || assessment.userEnteredName || assessment.name || 'Untitled Assessment';
         return `${userEnteredName} - ${shortId}`;
     };
 
@@ -358,11 +361,25 @@ const AssessmentsPage = () => {
     }, []);
 
     const filteredAssessments = assessments.filter(assessment => {
-        const matchesSearch = assessment.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            assessment.environment.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesStatus = statusFilter === 'All' || assessment.status === statusFilter;
+        const name = assessment.name || '';
+        const environment = assessment.environment || '';
+        const status = assessment.status || '';
+
+        const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            environment.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesStatus = statusFilter === 'All' || status === statusFilter;
         return matchesSearch && matchesStatus;
     });
+
+    // Helper function to convert assessment type string to number (matching backend enum)
+    const getAssessmentTypeNumber = (typeString) => {
+        const types = {
+            'NamingConvention': 0,
+            'Tagging': 1,
+            'Full': 2
+        };
+        return types[typeString] ?? 2; // Default to Full
+    };
 
     const handleStartAssessment = async (formData) => {
         try {
@@ -379,16 +396,26 @@ const AssessmentsPage = () => {
                 return;
             }
 
+            // Transform data to match backend AssessmentRequest model
+            const assessmentRequest = {
+                customerId: '9bc034b0-852f-4618-9434-c040d13de712', // Will be set by backend anyway
+                environmentId: '00000000-0000-0000-0000-000000000000', // Mock environment ID
+                name: formData.name,
+                subscriptionIds: subscriptionIds, // Array of strings (required by backend)
+                type: getAssessmentTypeNumber(formData.type), // Convert to number
+                options: {
+                    includeRecommendations: true
+                }
+            };
+
+            console.log('Sending assessment request:', assessmentRequest);
+
             // Test connection first
             setTestSubscriptions(subscriptionIds);
             setShowConnectionTest(true);
 
-            // Start the assessment
-            const result = await startAssessment({
-                ...formData,
-                environmentId: '00000000-0000-0000-0000-000000000000', // Mock environment ID
-                subscriptions: formData.subscriptions
-            });
+            // Start the assessment using the correct API call
+            const result = await startAssessment(assessmentRequest);
 
             console.log('Assessment started:', result);
 
@@ -414,8 +441,9 @@ const AssessmentsPage = () => {
 
     const confirmDeleteAssessment = async (assessment) => {
         try {
-            console.log('Deleting assessment:', assessment.id);
-            await deleteAssessment(assessment.id);
+            const assessmentId = assessment.id || assessment.assessmentId;
+            console.log('Deleting assessment:', assessmentId);
+            await deleteAssessment(assessmentId);
 
             // Show success message
             console.log('Assessment deleted successfully');
@@ -502,7 +530,7 @@ const AssessmentsPage = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {filteredAssessments.map((assessment) => (
                         <AssessmentCard
-                            key={assessment.id}
+                            key={assessment.id || assessment.assessmentId || Math.random()}
                             assessment={assessment}
                             onView={handleViewAssessment}
                             onDelete={handleDeleteAssessment}

@@ -85,6 +85,49 @@ public class AssessmentsController : ControllerBase
         }
     }
 
+    // NEW: Simple GET endpoint for assessments
+    [HttpGet]
+    public async Task<ActionResult<List<AssessmentSummary>>> GetAssessments([FromQuery] int limit = 50)
+    {
+        try
+        {
+            // TODO: Remove this hardcoded customer ID after auth is working
+            var customerId = Guid.Parse("9bc034b0-852f-4618-9434-c040d13de712");
+
+            _logger.LogInformation("Getting assessments for customer {CustomerId}", customerId);
+
+            var assessments = await _assessmentRepository.GetByCustomerIdAsync(customerId, limit);
+
+            var summaries = new List<AssessmentSummary>();
+            foreach (var assessment in assessments)
+            {
+                var summary = new AssessmentSummary
+                {
+                    AssessmentId = assessment.Id,
+                    Name = assessment.Name,
+                    AssessmentType = assessment.AssessmentType,
+                    Status = assessment.Status,
+                    OverallScore = assessment.OverallScore,
+                    StartedDate = assessment.StartedDate,
+                    CompletedDate = assessment.CompletedDate,
+                    CustomerName = assessment.CustomerName,
+                    TotalResourcesAnalyzed = await GetResourceCountAsync(assessment.Id),
+                    IssuesFound = await GetIssuesCountAsync(assessment.Id)
+                };
+                summaries.Add(summary);
+            }
+
+            _logger.LogInformation("Found {AssessmentCount} assessments for customer {CustomerId}", summaries.Count, customerId);
+
+            return Ok(summaries);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get assessments");
+            return StatusCode(500, new { error = "Failed to retrieve assessments" });
+        }
+    }
+
     [HttpGet("{assessmentId}")]
     public async Task<ActionResult<AssessmentStatusResponse>> GetAssessmentStatus(Guid assessmentId)
     {

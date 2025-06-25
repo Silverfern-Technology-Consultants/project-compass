@@ -39,20 +39,38 @@ export const useAssessments = () => {
 
             console.log('Starting assessment with data:', assessmentData);
 
-            const result = await assessmentApi.startAssessment(assessmentData);
+            // Transform the assessment data to match backend expectations
+            const transformedData = {
+                customerId: assessmentData.customerId,
+                environmentId: assessmentData.environmentId,
+                name: assessmentData.name,
+                subscriptionIds: assessmentData.subscriptionIds, // Already an array
+                type: assessmentData.type, // Already a number
+                options: assessmentData.options
+            };
+
+            console.log('Transformed assessment data:', transformedData);
+
+            const result = await assessmentApi.startAssessment(transformedData);
+
+            // Transform the assessment type back to string for display
+            const typeMap = { 0: 'NamingConvention', 1: 'Tagging', 2: 'Full' };
+            const displayType = typeMap[assessmentData.type] || 'Full';
 
             // Add new assessment to list with "In Progress" status
             const newAssessment = {
                 id: result.assessmentId,
+                assessmentId: result.assessmentId,
                 name: assessmentData.name,
-                environment: assessmentData.environment,
+                environment: 'Azure', // Default since we don't have environment name
                 status: 'In Progress',
                 score: null,
                 resourceCount: 0,
                 issuesCount: 0,
                 duration: '0s',
                 date: 'Just now',
-                type: assessmentData.type
+                type: displayType,
+                rawData: result
             };
 
             setAssessments(prev => [newAssessment, ...prev]);
@@ -132,7 +150,24 @@ export const useAssessments = () => {
 
             console.log('Loaded assessments:', apiAssessments);
 
-            setAssessments(apiAssessments);
+            // Transform the API response to match frontend expectations
+            const transformedAssessments = apiAssessments.map(assessment => ({
+                id: assessment.assessmentId,
+                assessmentId: assessment.assessmentId,
+                name: assessment.name || 'Untitled Assessment',
+                environment: 'Production', // Default since API doesn't provide this
+                status: assessment.status || 'Unknown',
+                score: assessment.overallScore,
+                resourceCount: assessment.totalResourcesAnalyzed || 0,
+                issuesCount: assessment.issuesFound || 0,
+                duration: '5m 30s', // Default since API doesn't provide this
+                date: assessment.startedDate ? new Date(assessment.startedDate).toLocaleDateString() : 'Recent',
+                type: assessment.assessmentType || 'Full',
+                // Keep original data for debugging
+                rawData: assessment
+            }));
+
+            setAssessments(transformedAssessments);
         } catch (err) {
             console.error('Failed to load assessments:', err);
             const errorInfo = apiUtils.handleApiError(err);

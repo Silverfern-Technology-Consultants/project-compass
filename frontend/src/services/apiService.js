@@ -56,6 +56,19 @@ const getAssessmentTypeNumber = (typeString) => {
 
 // Assessment API
 export const assessmentApi = {
+    startAssessment: async (assessmentData) => {
+        try {
+            console.log('[assessmentApi] Starting assessment:', assessmentData);
+
+            const response = await apiClient.post('/assessments', assessmentData);
+            console.log('[assessmentApi] Assessment started:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[assessmentApi] Error starting assessment:', error);
+            throw error;
+        }
+    },
+
     createAssessment: async (customerId, assessmentData) => {
         try {
             console.log('[assessmentApi] Creating assessment:', { customerId, assessmentData });
@@ -83,6 +96,18 @@ export const assessmentApi = {
         }
     },
 
+    getAllAssessments: async () => {
+        try {
+            console.log('[assessmentApi] Getting all assessments...');
+            const response = await apiClient.get('/assessments');
+            console.log('[assessmentApi] All assessments response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[assessmentApi] Error getting all assessments:', error);
+            throw error;
+        }
+    },
+
     getAssessment: async (assessmentId) => {
         try {
             console.log('[assessmentApi] Getting assessment:', assessmentId);
@@ -91,6 +116,18 @@ export const assessmentApi = {
             return response.data;
         } catch (error) {
             console.error('[assessmentApi] Error getting assessment:', error);
+            throw error;
+        }
+    },
+
+    getAssessmentFindings: async (assessmentId) => {
+        try {
+            console.log('[assessmentApi] Getting assessment findings:', assessmentId);
+            const response = await apiClient.get(`/assessments/${assessmentId}/findings`);
+            console.log('[assessmentApi] Assessment findings response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[assessmentApi] Error getting assessment findings:', error);
             throw error;
         }
     },
