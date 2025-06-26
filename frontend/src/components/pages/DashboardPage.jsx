@@ -40,8 +40,10 @@ const RecentAssessment = ({ assessment, onClick }) => {
 
     // Enhanced display format: "ID-XXXX | Assessment Name"
     const formatAssessmentTitle = (assessment) => {
-        const shortId = assessment.id.substring(0, 8).toUpperCase();
-        return `${shortId} | ${assessment.name}`;
+        // Use AssessmentId (PascalCase) to match API response
+        const shortId = assessment.AssessmentId ? assessment.AssessmentId.substring(0, 8).toUpperCase() : 'UNKNOWN';
+        // Use Name (PascalCase) to match API response  
+        return `${shortId} | ${assessment.Name || 'Untitled Assessment'}`;
     };
 
     return (
@@ -50,18 +52,18 @@ const RecentAssessment = ({ assessment, onClick }) => {
             onClick={() => onClick(assessment)}
         >
             <div className="flex items-center space-x-3">
-                {getStatusIcon(assessment.status)}
+                {getStatusIcon(assessment.Status)}
                 <div>
                     <p className="text-white font-medium">{formatAssessmentTitle(assessment)}</p>
-                    <p className="text-gray-400 text-sm">{assessment.environment} • {assessment.date}</p>
+                    <p className="text-gray-400 text-sm">{assessment.Environment || 'Azure'} • {assessment.Date || 'Recent'}</p>
                 </div>
             </div>
             <div className="flex items-center space-x-4">
                 <div className="text-right">
-                    <p className={`font-semibold ${getScoreColor(assessment.score)}`}>
-                        {assessment.score ? `${assessment.score}%` : 'N/A'}
+                    <p className={`font-semibold ${getScoreColor(assessment.OverallScore)}`}>
+                        {assessment.OverallScore ? `${Math.round(assessment.OverallScore)}%` : 'N/A'}
                     </p>
-                    <p className="text-gray-400 text-sm">{assessment.issuesCount} issues</p>
+                    <p className="text-gray-400 text-sm">{assessment.IssuesCount || 0} issues</p>
                 </div>
                 <ArrowRight size={16} className="text-gray-400" />
             </div>
@@ -100,19 +102,19 @@ const DashboardPage = () => {
     // Calculate real stats from assessments
     useEffect(() => {
         if (assessments && assessments.length > 0) {
-            const completedAssessments = assessments.filter(a => a.status === 'Completed');
+            const completedAssessments = assessments.filter(a => a.Status === 'Completed');
             const totalAssessments = assessments.length;
 
-            // Calculate average score
+            // Calculate average score using OverallScore (PascalCase)
             const avgScore = completedAssessments.length > 0
-                ? Math.round(completedAssessments.reduce((sum, a) => sum + (a.score || 0), 0) / completedAssessments.length)
+                ? Math.round(completedAssessments.reduce((sum, a) => sum + (a.OverallScore || 0), 0) / completedAssessments.length)
                 : 0;
 
-            // Calculate total critical issues (assuming high severity issues)
-            const totalIssues = assessments.reduce((sum, a) => sum + (a.issuesCount || 0), 0);
+            // Calculate total critical issues using IssuesCount (PascalCase)
+            const totalIssues = assessments.reduce((sum, a) => sum + (a.IssuesCount || 0), 0);
 
             // Calculate compliance rate (assessments with score >= 80)
-            const compliantAssessments = completedAssessments.filter(a => (a.score || 0) >= 80).length;
+            const compliantAssessments = completedAssessments.filter(a => (a.OverallScore || 0) >= 80).length;
             const complianceRate = completedAssessments.length > 0
                 ? Math.round((compliantAssessments / completedAssessments.length) * 100)
                 : 0;

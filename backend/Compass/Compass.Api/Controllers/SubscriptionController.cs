@@ -4,6 +4,7 @@ using Compass.Core.Services;
 using Compass.Data.Entities;
 using Compass.Data.Repositories;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Compass.Api.Controllers;
 
@@ -33,24 +34,27 @@ public class SubscriptionController : ControllerBase
     {
         try
         {
-            // TODO: Get customer ID from authenticated user context
-            var customerId = GetCustomerIdFromContext();
-
-            var subscription = await _subscriptionRepository.GetActiveByCustomerIdAsync(customerId);
-            if (subscription == null)
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null)
             {
-                return NotFound("No active subscription found");
+                return BadRequest("Organization context not found");
             }
 
-            var limits = await _licenseService.GetCurrentLimits(customerId);
-            var usage = await _licenseService.GetUsageReport(customerId);
+            var subscription = await _subscriptionRepository.GetActiveByOrganizationIdAsync(organizationId.Value);
+            if (subscription == null)
+            {
+                return NotFound("No active subscription found for organization");
+            }
+
+            var limits = await _licenseService.GetCurrentLimits(organizationId.Value);
+            var usage = await _licenseService.GetUsageReport(organizationId.Value);
 
             var subscriptionDetails = new SubscriptionDetails
             {
                 SubscriptionId = subscription.SubscriptionId,
                 PlanType = subscription.PlanType,
                 Status = subscription.Status,
-                MonthlyPrice = subscription.MonthlyPrice, // Now non-nullable
+                MonthlyPrice = subscription.MonthlyPrice,
                 StartDate = subscription.StartDate,
                 NextBillingDate = subscription.NextBillingDate,
                 Limits = limits,
@@ -61,7 +65,7 @@ public class SubscriptionController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving subscription details");
+            _logger.LogError(ex, "Error retrieving subscription details for organization");
             return StatusCode(500, "Internal server error");
         }
     }
@@ -71,9 +75,20 @@ public class SubscriptionController : ControllerBase
     {
         try
         {
-            var customerId = GetCustomerIdFromContext();
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null)
+            {
+                return BadRequest("Organization context not found");
+            }
 
-            var currentSubscription = await _subscriptionRepository.GetActiveByCustomerIdAsync(customerId);
+            // Verify user has permission to upgrade (Owner/Admin only)
+            var userRole = GetUserRoleFromContext();
+            if (userRole != "Owner" && userRole != "Admin")
+            {
+                return Forbid("Only organization owners and admins can upgrade subscriptions");
+            }
+
+            var currentSubscription = await _subscriptionRepository.GetActiveByOrganizationIdAsync(organizationId.Value);
             if (currentSubscription == null)
             {
                 return BadRequest("No active subscription found to upgrade");
@@ -100,7 +115,8 @@ public class SubscriptionController : ControllerBase
 
             await _subscriptionRepository.UpdateAsync(currentSubscription);
 
-            _logger.LogInformation("Subscription upgraded for customer {CustomerId} to {PlanType}", customerId, request.NewPlanType);
+            _logger.LogInformation("Subscription upgraded for organization {OrganizationId} to {PlanType}",
+                organizationId, request.NewPlanType);
 
             return Ok(new { Message = "Subscription upgraded successfully" });
         }
@@ -116,9 +132,20 @@ public class SubscriptionController : ControllerBase
     {
         try
         {
-            var customerId = GetCustomerIdFromContext();
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null)
+            {
+                return BadRequest("Organization context not found");
+            }
 
-            var subscription = await _subscriptionRepository.GetActiveByCustomerIdAsync(customerId);
+            // Verify user has permission to cancel (Owner only)
+            var userRole = GetUserRoleFromContext();
+            if (userRole != "Owner")
+            {
+                return Forbid("Only organization owners can cancel subscriptions");
+            }
+
+            var subscription = await _subscriptionRepository.GetActiveByOrganizationIdAsync(organizationId.Value);
             if (subscription == null)
             {
                 return NotFound("No active subscription found");
@@ -130,7 +157,7 @@ public class SubscriptionController : ControllerBase
 
             await _subscriptionRepository.UpdateAsync(subscription);
 
-            _logger.LogInformation("Subscription cancelled for customer {CustomerId}", customerId);
+            _logger.LogInformation("Subscription cancelled for organization {OrganizationId}", organizationId);
 
             return Ok(new { Message = "Subscription cancelled successfully" });
         }
@@ -146,7 +173,11 @@ public class SubscriptionController : ControllerBase
     {
         try
         {
-            var customerId = GetCustomerIdFromContext();
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null)
+            {
+                return BadRequest("Organization context not found");
+            }
 
             string? billingPeriod = null;
             if (startDate.HasValue)
@@ -154,7 +185,7 @@ public class SubscriptionController : ControllerBase
                 billingPeriod = startDate.Value.ToString("yyyy-MM");
             }
 
-            var usage = await _licenseService.GetUsageReport(customerId, billingPeriod);
+            var usage = await _licenseService.GetUsageReport(organizationId.Value, billingPeriod);
             return Ok(usage);
         }
         catch (Exception ex)
@@ -169,10 +200,14 @@ public class SubscriptionController : ControllerBase
     {
         try
         {
-            var customerId = GetCustomerIdFromContext();
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null)
+            {
+                return BadRequest("Organization context not found");
+            }
 
-            // TODO: Implement invoice repository and get invoices
-            var invoices = new List<Compass.Data.Entities.Invoice>(); // Use fully qualified name
+            // TODO: Implement invoice repository and get invoices by organization
+            var invoices = new List<Compass.Data.Entities.Invoice>();
 
             return Ok(invoices);
         }
@@ -231,12 +266,33 @@ public class SubscriptionController : ControllerBase
         }
     }
 
-    private Guid GetCustomerIdFromContext()
+    /// <summary>
+    /// Extract organization ID from JWT claims
+    /// </summary>
+    private Guid? GetOrganizationIdFromContext()
     {
-        // TODO: Implement proper authentication and extract customer ID from JWT token or session
-        // For now, return a placeholder - this should be replaced with actual authentication
-        return Guid.Parse("9bc034b0-852f-4618-9434-c040d13de712");
+        var organizationIdClaim = User.FindFirst("organization_id")?.Value;
+        if (string.IsNullOrEmpty(organizationIdClaim))
+        {
+            _logger.LogWarning("Organization ID not found in JWT claims");
+            return null;
+        }
 
+        if (Guid.TryParse(organizationIdClaim, out var organizationId))
+        {
+            return organizationId;
+        }
+
+        _logger.LogWarning("Invalid organization ID format in JWT claims: {OrganizationId}", organizationIdClaim);
+        return null;
+    }
+
+    /// <summary>
+    /// Extract user role from JWT claims
+    /// </summary>
+    private string? GetUserRoleFromContext()
+    {
+        return User.FindFirst(ClaimTypes.Role)?.Value ?? User.FindFirst("role")?.Value;
     }
 
     private SubscriptionPlan? GetPlanConfiguration(string planType)

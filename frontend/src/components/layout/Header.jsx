@@ -46,20 +46,26 @@ const Header = () => {
 
     const getUserInitials = () => {
         if (!user) return 'U';
-        const firstName = user.firstName || '';
-        const lastName = user.lastName || '';
+        const firstName = user.FirstName || '';
+        const lastName = user.LastName || '';
         return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
     };
 
     const getUserDisplayName = () => {
         if (!user) return 'User';
-        return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'User';
+        // Use PascalCase properties
+        const firstName = user.FirstName || '';
+        const lastName = user.LastName || '';
+        return `${firstName} ${lastName}`.trim() || user.Email || 'User';
     };
 
     const getSubscriptionDisplay = () => {
         if (!user) return { text: 'Loading...', className: 'bg-gray-600 text-gray-300' };
 
-        switch (user.subscriptionStatus) {
+        // Use PascalCase property
+        const subscriptionStatus = user.SubscriptionStatus;
+
+        switch (subscriptionStatus) {
             case 'Active':
                 return { text: 'Active Subscription', className: 'bg-green-500 text-black' };
             case 'Trial':
@@ -106,7 +112,7 @@ const Header = () => {
                             </div>
                             <div className="hidden md:block text-left">
                                 <p className="text-sm font-medium text-white">{getUserDisplayName()}</p>
-                                <p className="text-xs text-gray-400">{user?.companyName || 'Company'}</p>
+                                <p className="text-xs text-gray-400">{user?.CompanyName || 'Company'}</p>
                             </div>
                             <ChevronDown size={16} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
                         </button>

@@ -6,10 +6,10 @@ const ProfilePage = () => {
     const { user, logout } = useAuth();
     const [isEditing, setIsEditing] = useState(false);
     const [formData, setFormData] = useState({
-        firstName: user?.firstName || '',
-        lastName: user?.lastName || '',
-        email: user?.email || '',
-        companyName: user?.companyName || ''
+        firstName: user?.FirstName || '',
+        lastName: user?.LastName || '',
+        email: user?.Email || '',
+        companyName: user?.CompanyName || ''
     });
 
     const handleInputChange = (e) => {
@@ -28,10 +28,10 @@ const ProfilePage = () => {
 
     const handleCancel = () => {
         setFormData({
-            firstName: user?.firstName || '',
-            lastName: user?.lastName || '',
-            email: user?.email || '',
-            companyName: user?.companyName || ''
+            firstName: user?.FirstName || '',
+            lastName: user?.LastName || '',
+            email: user?.Email || '',
+            companyName: user?.CompanyName || ''
         });
         setIsEditing(false);
     };

@@ -9,12 +9,15 @@ const SettingsPage = ({ defaultTab = 'profile' }) => {
 
     // Check for tab navigation from localStorage
     useEffect(() => {
-        const targetTab = localStorage.getItem('settingsTab');
-        if (targetTab) {
-            setActiveTab(targetTab);
-            localStorage.removeItem('settingsTab'); // Clean up
+        if (user) {
+            setFormData({
+                firstName: user.FirstName || '',
+                lastName: user.LastName || '',
+                email: user.Email || '',
+                companyName: user.CompanyName || ''
+            });
         }
-    }, []);
+    }, [user]);
 
     const [notifications, setNotifications] = useState({
         assessmentComplete: true,
@@ -23,10 +26,10 @@ const SettingsPage = ({ defaultTab = 'profile' }) => {
         teamInvites: false
     });
     const [formData, setFormData] = useState({
-        firstName: user?.firstName || '',
-        lastName: user?.lastName || '',
-        email: user?.email || '',
-        companyName: user?.companyName || ''
+        firstName: user?.FirstName || '',
+        lastName: user?.LastName || '',
+        email: user?.Email || '',
+        companyName: user?.CompanyName || ''
     });
     const [isEditing, setIsEditing] = useState(false);
 
@@ -54,10 +57,10 @@ const SettingsPage = ({ defaultTab = 'profile' }) => {
 
     const handleCancel = () => {
         setFormData({
-            firstName: user?.firstName || '',
-            lastName: user?.lastName || '',
-            email: user?.email || '',
-            companyName: user?.companyName || ''
+            firstName: user?.FirstName || '',
+            lastName: user?.LastName || '',
+            email: user?.Email || '',
+            companyName: user?.CompanyName || ''
         });
         setIsEditing(false);
     };
@@ -78,9 +81,9 @@ const SettingsPage = ({ defaultTab = 'profile' }) => {
                                 className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none focus:border-yellow-600"
                             />
                         ) : (
-                            <div className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
-                                {user?.firstName || 'Not provided'}
-                            </div>
+                                <div className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
+                                    {user?.FirstName || 'Not provided'}
+                                </div>
                         )}
                     </div>
                     <div>
@@ -95,7 +98,7 @@ const SettingsPage = ({ defaultTab = 'profile' }) => {
                             />
                         ) : (
                             <div className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
-                                {user?.lastName || 'Not provided'}
+                                {user?.LastName || 'Not provided'}
                             </div>
                         )}
                     </div>
@@ -130,7 +133,7 @@ const SettingsPage = ({ defaultTab = 'profile' }) => {
                             />
                         ) : (
                             <div className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
-                                {user?.companyName || 'Not provided'}
+                                {user?.CompanyName || 'Not provided'}
                             </div>
                         )}
                     </div>
@@ -169,13 +172,23 @@ const SettingsPage = ({ defaultTab = 'profile' }) => {
                 <div className="space-y-3">
                     <div className="flex justify-between items-center">
                         <span className="text-gray-300">Subscription Status</span>
-                        <span className={`px-2 py-1 rounded text-sm font-medium ${user?.subscriptionStatus === 'Active' ? 'bg-green-600 text-white' :
-                            user?.subscriptionStatus === 'Trial' ? 'bg-yellow-600 text-black' :
-                                'bg-gray-600 text-white'
+                        <span className={`px-2 py-1 rounded text-sm font-medium ${user?.SubscriptionStatus === 'Active' ? 'bg-green-600 text-white' :
+                                user?.SubscriptionStatus === 'Trial' ? 'bg-yellow-600 text-black' :
+                                    'bg-gray-600 text-gray-300'
                             }`}>
-                            {user?.subscriptionStatus || 'Unknown'}
+                            {user?.SubscriptionStatus === 'Active' ? 'Active' :
+                                user?.SubscriptionStatus === 'Trial' ? 'Free Trial' :
+                                    'Unknown'}
                         </span>
                     </div>
+                    {user?.SubscriptionStatus === 'Trial' && user?.TrialEndDate && (
+                        <div className="flex justify-between items-center mt-2">
+                            <span className="text-gray-300">Trial Expires</span>
+                            <span className="text-yellow-400 text-sm">
+                                {new Date(user.TrialEndDate).toLocaleDateString()}
+                            </span>
+                        </div>
+                    )}
                     <div className="flex justify-between items-center">
                         <span className="text-gray-300">Email Verified</span>
                         <span className={`px-2 py-1 rounded text-sm font-medium ${user?.emailVerified ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
@@ -263,12 +276,13 @@ const SettingsPage = ({ defaultTab = 'profile' }) => {
                     <div className="p-4 bg-gray-800 rounded">
                         <h4 className="font-medium text-white mb-2">Current Plan</h4>
                         <p className="text-gray-300">
-                            {user?.subscriptionStatus === 'Trial' ? 'Free Trial' :
-                                user?.subscriptionStatus === 'Active' ? 'Professional Plan' : 'No Active Plan'}
+                            {user?.SubscriptionStatus === 'Trial' ? 'Free Trial' :
+                                user?.SubscriptionStatus === 'Active' ? 'Professional Plan' :
+                                    'No Active Plan'}
                         </p>
-                        {user?.subscriptionStatus === 'Trial' && user?.trialEndDate && (
+                        {user?.SubscriptionStatus === 'Trial' && user?.TrialEndDate && (
                             <p className="text-sm text-yellow-400 mt-2">
-                                Trial expires on {new Date(user.trialEndDate).toLocaleDateString()}
+                                Trial expires on {new Date(user.TrialEndDate).toLocaleDateString()}
                             </p>
                         )}
                     </div>

@@ -11,7 +11,22 @@ using System.Text;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Enforce PascalCase for all JSON serialization/deserialization
+        options.JsonSerializerOptions.PropertyNamingPolicy = null; // null = PascalCase
+        options.JsonSerializerOptions.DictionaryKeyPolicy = null;
+
+        // Optional: Make property names case-insensitive for better compatibility
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+    });
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.PropertyNamingPolicy = null; // PascalCase
+    options.SerializerOptions.DictionaryKeyPolicy = null;
+    options.SerializerOptions.PropertyNameCaseInsensitive = true;
+});
 builder.Services.AddEndpointsApiExplorer();
 
 // Enhanced Swagger configuration with JWT support
@@ -59,6 +74,10 @@ builder.Services.AddScoped<TestDataSeeder>();
 // Organization Data Migration Service - NEW
 builder.Services.AddScoped<OrganizationDataMigrationService>();
 
+// Client Implementation
+
+
+
 // Add DbContext
 builder.Services.AddDbContext<CompassDbContext>(options =>
 {
@@ -99,6 +118,7 @@ builder.Services.AddScoped<IAssessmentRepository, AssessmentRepository>();
 builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
 builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
 builder.Services.AddScoped<IUsageMetricRepository, UsageMetricRepository>();
+builder.Services.AddScoped<IClientRepository, ClientRepository>();
 
 // Register services
 builder.Services.AddScoped<IAssessmentOrchestrator, AssessmentOrchestrator>();
@@ -108,6 +128,7 @@ builder.Services.AddScoped<ITaggingAnalyzer, TaggingAnalyzer>();
 builder.Services.AddScoped<IDependencyAnalyzer, DependencyAnalyzer>();
 builder.Services.AddScoped<ILicenseValidationService, LicenseValidationService>();
 builder.Services.AddScoped<IUsageTrackingService, UsageTrackingService>();
+builder.Services.AddScoped<IClientService, ClientService>();
 
 // Register authentication services
 builder.Services.AddScoped<IAuthService, AuthService>();

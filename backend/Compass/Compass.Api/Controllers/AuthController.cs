@@ -345,14 +345,30 @@ public class AuthController : ControllerBase
                 return Unauthorized();
             }
 
-            var customer = await _authService.GetCustomerByIdAsync(customerId.Value);
+            // Get customer with organization data
+            var customer = await _context.Customers
+                .Include(c => c.Organization)
+                    .ThenInclude(o => o.Subscriptions.Where(s => s.Status == "Active" || s.Status == "Trial"))
+                .FirstOrDefaultAsync(c => c.CustomerId == customerId.Value);
+
             if (customer == null)
             {
                 return NotFound();
             }
 
-            var activeSubscription = customer.Subscriptions
-                .FirstOrDefault(s => s.Status == "Active" || s.Status == "Trial");
+            // Get organization-level subscription instead of user-level
+            Subscription? activeSubscription = null;
+            if (customer.Organization != null)
+            {
+                // Get the organization's active subscription
+                activeSubscription = await _context.Subscriptions
+                    .Include(s => s.Customer)
+                    .Where(s => s.Customer.OrganizationId == customer.OrganizationId)
+                    .Where(s => s.Status == "Active" || s.Status == "Trial")
+                    .Where(s => s.EndDate == null || s.EndDate > DateTime.UtcNow)
+                    .OrderByDescending(s => s.CreatedDate)
+                    .FirstOrDefaultAsync();
+            }
 
             return Ok(new CustomerInfo
             {
@@ -362,6 +378,10 @@ public class AuthController : ControllerBase
                 LastName = customer.LastName,
                 CompanyName = customer.CompanyName,
                 EmailVerified = customer.EmailVerified,
+                Role = customer.Role,
+                OrganizationId = customer.OrganizationId,
+                OrganizationName = customer.Organization?.Name,
+                // ✅ CRITICAL FIX: Use organization-level subscription
                 SubscriptionStatus = activeSubscription?.Status ?? "None",
                 TrialEndDate = activeSubscription?.TrialEndDate
             });

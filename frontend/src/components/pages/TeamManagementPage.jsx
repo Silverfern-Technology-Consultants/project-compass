@@ -25,9 +25,10 @@ const TeamMemberCard = ({ member, onEdit, onDelete, currentUserId, isOwnerOrAdmi
         }
     };
 
-    const isCurrentUser = member.id === currentUserId;
-    const canEditMember = isOwnerOrAdmin && !isCurrentUser && member.role !== 'Owner';
-    const canDeleteMember = isOwnerOrAdmin && !isCurrentUser && member.role !== 'Owner';
+    // Use PascalCase Id to match API response
+    const isCurrentUser = member.Id === currentUserId;
+    const canEditMember = isOwnerOrAdmin && !isCurrentUser && member.Role !== 'Owner';
+    const canDeleteMember = isOwnerOrAdmin && !isCurrentUser && member.Role !== 'Owner';
 
     return (
         <div className="bg-gray-900 border border-gray-800 rounded p-6">
@@ -35,33 +36,38 @@ const TeamMemberCard = ({ member, onEdit, onDelete, currentUserId, isOwnerOrAdmi
                 <div className="flex items-center space-x-4">
                     <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded flex items-center justify-center">
                         <span className="text-black font-bold text-lg">
-                            {member.name.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                            {/* Use PascalCase Name */}
+                            {(member.Name || '').split(' ').map(n => n[0]).join('').substring(0, 2)}
                         </span>
                     </div>
                     <div>
                         <div className="flex items-center space-x-2">
-                            <h3 className="text-lg font-semibold text-white">{member.name}</h3>
+                            {/* Use PascalCase Name */}
+                            <h3 className="text-lg font-semibold text-white">{member.Name}</h3>
                             {isCurrentUser && (
                                 <span className="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded">You</span>
                             )}
-                            {member.role === 'Owner' && (
+                            {/* Use PascalCase Role */}
+                            {member.Role === 'Owner' && (
                                 <Crown size={16} className="text-yellow-400" />
                             )}
                         </div>
-                        <p className="text-gray-400">{member.email}</p>
+                        {/* Use PascalCase Email */}
+                        <p className="text-gray-400">{member.Email}</p>
                     </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                    <div className={`px-3 py-1 rounded text-sm font-medium ${getRoleColor(member.role)}`}>
-                        {member.role}
+                    {/* Use PascalCase Role */}
+                    <div className={`px-3 py-1 rounded text-sm font-medium ${getRoleColor(member.Role)}`}>
+                        {member.Role}
                     </div>
                     {(canEditMember || canDeleteMember) && (
                         <div className="flex items-center space-x-1">
                             {canEditMember && (
                                 <button
                                     onClick={() => onEdit(member)}
-                                    className="p-2 rounded hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
-                                    title="Edit member role"
+                                    className="text-blue-400 hover:text-blue-300 p-1"
+                                    title="Edit member"
                                 >
                                     <Edit size={16} />
                                 </button>
@@ -69,7 +75,7 @@ const TeamMemberCard = ({ member, onEdit, onDelete, currentUserId, isOwnerOrAdmi
                             {canDeleteMember && (
                                 <button
                                     onClick={() => onDelete(member)}
-                                    className="p-2 rounded hover:bg-gray-800 text-gray-400 hover:text-red-400 transition-colors"
+                                    className="text-red-400 hover:text-red-300 p-1"
                                     title="Remove member"
                                 >
                                     <Trash2 size={16} />
@@ -80,29 +86,16 @@ const TeamMemberCard = ({ member, onEdit, onDelete, currentUserId, isOwnerOrAdmi
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                    <p className="text-xs text-gray-400 uppercase tracking-wide">Status</p>
-                    <p className={`font-medium ${getStatusColor(member.status)}`}>{member.status}</p>
-                </div>
-                <div>
-                    <p className="text-xs text-gray-400 uppercase tracking-wide">Last Active</p>
-                    <p className="font-medium text-white">{member.lastActive}</p>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                <div>
-                    <p className="text-gray-400">Assessments Run</p>
-                    <p className="font-semibold text-white">{member.assessmentsRun || 0}</p>
-                </div>
-                <div>
-                    <p className="text-gray-400">Reports Generated</p>
-                    <p className="font-semibold text-white">{member.reportsGenerated || 0}</p>
+                    <p className="text-gray-400">Status</p>
+                    {/* Use PascalCase Status */}
+                    <p className={`font-medium ${getStatusColor(member.Status)}`}>{member.Status}</p>
                 </div>
                 <div>
                     <p className="text-gray-400">Joined</p>
-                    <p className="font-semibold text-white">{member.joinedDate || 'Unknown'}</p>
+                    {/* Use PascalCase JoinedDate or fallback */}
+                    <p className="text-white">{member.JoinedDate || member.InvitedDate || 'Recently'}</p>
                 </div>
             </div>
         </div>
@@ -522,11 +515,10 @@ const TeamManagementPage = () => {
 
     // Filter members based on search
     const filteredMembers = teamMembers.filter(member =>
-        member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        member.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        member.role.toLowerCase().includes(searchTerm.toLowerCase())
+        (member.Name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (member.Email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (member.Role || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
-
     // Handle invite member
     const handleInviteMember = async (formData) => {
         try {
@@ -575,17 +567,19 @@ const TeamManagementPage = () => {
             setActionLoading(true);
             setError(null);
 
-            const savedMember = await teamApi.updateTeamMember(updatedMember.id, {
-                role: updatedMember.role
+            // Use PascalCase Id property
+            const savedMember = await teamApi.updateTeamMember(updatedMember.Id, {
+                role: updatedMember.Role
             });
 
             setTeamMembers(prev =>
                 prev.map(member =>
-                    member.id === updatedMember.id ? savedMember : member
+                    member.Id === updatedMember.Id ? savedMember : member
                 )
             );
             setShowEditModal(false);
-            setSuccess(`${updatedMember.name}'s role has been updated to ${updatedMember.role}`);
+            // Use PascalCase Name and Role properties
+            setSuccess(`${updatedMember.Name}'s role has been updated to ${updatedMember.Role}`);
 
         } catch (err) {
             console.error('Error updating member:', err);
@@ -610,12 +604,15 @@ const TeamManagementPage = () => {
             setActionLoading(true);
             setError(null);
 
-            await teamApi.removeTeamMember(selectedMember.id);
-            setTeamMembers(prev => prev.filter(member => member.id !== selectedMember.id));
+            // Use PascalCase Id property
+            await teamApi.removeTeamMember(selectedMember.Id);
+            setTeamMembers(prev => prev.filter(member => member.Id !== selectedMember.Id));
             setShowRemoveModal(false);
             setSelectedMember(null);
 
-            const actionType = selectedMember.status === 'Pending' ? 'Invitation cancelled' : 'Team member removed';
+            // Use PascalCase Status property
+            const actionType = selectedMember.Status === 'Pending' ?
+                'Invitation cancelled' : 'Team member removed';
             setSuccess(`${actionType} successfully`);
 
             // Reload stats
@@ -632,11 +629,11 @@ const TeamManagementPage = () => {
     };
 
     // Calculate role stats from current data
-    const roleStats = teamStats?.roleDistribution || {
-        Owner: teamMembers.filter(m => m.role === 'Owner').length,
-        Admin: teamMembers.filter(m => m.role === 'Admin').length,
-        Member: teamMembers.filter(m => m.role === 'Member').length,
-        Viewer: teamMembers.filter(m => m.role === 'Viewer').length,
+    const roleStats = teamStats?.RoleDistribution || {
+        Owner: teamMembers.filter(m => m.Role === 'Owner').length,
+        Admin: teamMembers.filter(m => m.Role === 'Admin').length,
+        Member: teamMembers.filter(m => m.Role === 'Member').length,
+        Viewer: teamMembers.filter(m => m.Role === 'Viewer').length,
     };
 
     if (loading) {
@@ -716,7 +713,7 @@ const TeamManagementPage = () => {
                         <div>
                             <p className="text-sm text-gray-400">Active</p>
                             <p className="text-2xl font-bold text-green-400">
-                                {(teamStats?.activeMembers || teamMembers.filter(m => m.status === 'Active').length || 0)}
+                                {(teamStats?.ActiveMembers || teamMembers.filter(m => m.status === 'Active').length || 0)}
                             </p>
                         </div>
                         <div className="w-3 h-3 bg-green-400 rounded-full"></div>
@@ -727,7 +724,7 @@ const TeamManagementPage = () => {
                         <div>
                             <p className="text-sm text-gray-400">Pending</p>
                             <p className="text-2xl font-bold text-yellow-400">
-                                {(teamStats?.pendingInvitations || teamMembers.filter(m => m.status === 'Pending').length || 0)}
+                                {(teamStats?.PendingInvitations || teamMembers.filter(m => m.status === 'Pending').length || 0)}
                             </p>
                         </div>
                         <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
@@ -738,7 +735,7 @@ const TeamManagementPage = () => {
                         <div>
                             <p className="text-sm text-gray-400">Admins</p>
                             <p className="text-2xl font-bold text-purple-400">
-                                {(teamStats?.adminCount || ((roleStats.Admin || 0) + (roleStats.Owner || 0)) || 0)}
+                                {(teamStats?.AdminCount || ((roleStats.Admin || 0) + (roleStats.Owner || 0)) || 0)}
                             </p>
                         </div>
                         <Crown size={24} className="text-purple-400" />

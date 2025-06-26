@@ -157,14 +157,14 @@ export const AuthProvider = ({ children }) => {
                         const userResponse = await AuthApi.getCurrentUser();
                         console.log('[Auth] Backend user response:', userResponse);
 
-                        // Merge JWT data with backend response, preferring backend data
+                        // Merge JWT data with backend response, preferring backend data (keeping PascalCase)
                         const mergedUser = {
                             ...userFromJWT,
                             ...userResponse,
                             // Ensure these critical fields come from JWT if missing from backend
-                            customerId: userResponse.customerId || userFromJWT?.customerId,
-                            role: userResponse.role || userFromJWT?.role,
-                            organizationId: userResponse.organizationId || userFromJWT?.organizationId
+                            CustomerId: userResponse.CustomerId || userFromJWT?.customerId,
+                            Role: userResponse.Role || userFromJWT?.role,
+                            OrganizationId: userResponse.OrganizationId || userFromJWT?.organizationId
                         };
 
                         console.log('[Auth] Merged user data:', mergedUser);
@@ -479,13 +479,13 @@ export const AuthProvider = ({ children }) => {
     const getMfaStatus = async () => {
         try {
             const response = await MfaApi.getMfaStatus();
-            // Map backend property names to frontend expectations
+            // Keep PascalCase properties to match backend response
             return {
-                isMfaEnabled: response.isEnabled,
-                mfaSetupDate: response.setupDate,
-                lastMfaUsedDate: response.lastUsedDate,
-                backupCodesRemaining: response.backupCodesRemaining,
-                requiresMfaSetup: response.requiresSetup
+                IsMfaEnabled: response.IsEnabled,
+                MfaSetupDate: response.SetupDate,
+                LastMfaUsedDate: response.LastUsedDate,
+                BackupCodesRemaining: response.BackupCodesRemaining,
+                RequiresMfaSetup: response.RequiresSetup
             };
         } catch (error) {
             throw error;

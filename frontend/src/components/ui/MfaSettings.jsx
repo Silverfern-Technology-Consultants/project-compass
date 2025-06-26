@@ -60,21 +60,21 @@ const MfaSettings = () => {
                 <div className="flex items-center justify-between">
                     <div>
                         <p className="text-sm font-medium text-white">
-                            Status: {mfaStatus?.isMfaEnabled ? (
+                            Status: {mfaStatus?.IsMfaEnabled ? (
                                 <span className="text-green-400">Enabled</span>
                             ) : (
                                 <span className="text-gray-400">Disabled</span>
                             )}
                         </p>
                         <p className="text-sm text-gray-400">
-                            {mfaStatus?.isMfaEnabled
+                            {mfaStatus?.IsMfaEnabled
                                 ? 'Two-factor authentication is protecting your account'
                                 : 'Add an extra layer of security to your account'
                             }
                         </p>
                     </div>
 
-                    {mfaStatus?.isMfaEnabled ? (
+                    {mfaStatus?.IsMfaEnabled ? (
                         <button
                             onClick={() => setShowDisableModal(true)}
                             className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-medium transition-colors"
@@ -91,14 +91,14 @@ const MfaSettings = () => {
                     )}
                 </div>
 
-                {mfaStatus?.isMfaEnabled && (
+                {mfaStatus?.IsMfaEnabled && (
                     <>
                         <div className="border-t border-gray-800 pt-6">
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-sm font-medium text-white">Backup Codes</p>
                                     <p className="text-sm text-gray-400">
-                                        {mfaStatus.backupCodesRemaining} of 10 codes remaining
+                                        {mfaStatus.BackupCodesRemaining || 0} of 10 codes remaining
                                     </p>
                                 </div>
                                 <button
@@ -109,9 +109,9 @@ const MfaSettings = () => {
                                 </button>
                             </div>
 
-                            {mfaStatus.backupCodesRemaining <= 3 && (
+                            {(mfaStatus.BackupCodesRemaining || 0) <= 3 && (
                                 <div className="mt-2 bg-yellow-900 border border-yellow-800 text-yellow-300 px-3 py-2 rounded text-sm">
-                                    ⚠️ You have {mfaStatus.backupCodesRemaining} backup codes remaining. Consider regenerating new codes.
+                                    ⚠️ You have {mfaStatus.BackupCodesRemaining || 0} backup codes remaining. Consider regenerating new codes.
                                 </div>
                             )}
                         </div>

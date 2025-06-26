@@ -9,6 +9,9 @@ public class AzureEnvironment
     [Required]
     public Guid CustomerId { get; set; }
 
+    // NEW: Client scoping for MSP isolation
+    public Guid? ClientId { get; set; }
+
     [Required]
     [StringLength(100)]
     public string Name { get; set; } = string.Empty;
@@ -39,5 +42,6 @@ public class AzureEnvironment
 
     // Navigation properties
     public virtual Customer Customer { get; set; } = null!;
+    public virtual Client? Client { get; set; } // NEW: Client navigation
     public virtual ICollection<Assessment> Assessments { get; set; } = new List<Assessment>();
 }

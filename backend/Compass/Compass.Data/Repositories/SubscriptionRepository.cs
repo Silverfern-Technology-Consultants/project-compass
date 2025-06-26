@@ -17,6 +17,7 @@ public class SubscriptionRepository : ISubscriptionRepository
     {
         return await _context.Subscriptions
             .Include(s => s.Customer)
+                .ThenInclude(c => c.Organization)
             .Include(s => s.UsageMetrics)
             .Include(s => s.Invoices)
             .FirstOrDefaultAsync(s => s.SubscriptionId == subscriptionId);
@@ -26,7 +27,20 @@ public class SubscriptionRepository : ISubscriptionRepository
     {
         return await _context.Subscriptions
             .Include(s => s.Customer)
+                .ThenInclude(c => c.Organization)
             .Where(s => s.CustomerId == customerId)
+            .Where(s => s.Status == "Active" || s.Status == "Trial")
+            .Where(s => s.EndDate == null || s.EndDate > DateTime.UtcNow)
+            .OrderByDescending(s => s.CreatedDate)
+            .FirstOrDefaultAsync();
+    }
+
+    public async Task<Subscription?> GetActiveByOrganizationIdAsync(Guid organizationId)
+    {
+        return await _context.Subscriptions
+            .Include(s => s.Customer)
+                .ThenInclude(c => c.Organization)
+            .Where(s => s.Customer.OrganizationId == organizationId)
             .Where(s => s.Status == "Active" || s.Status == "Trial")
             .Where(s => s.EndDate == null || s.EndDate > DateTime.UtcNow)
             .OrderByDescending(s => s.CreatedDate)
@@ -37,7 +51,18 @@ public class SubscriptionRepository : ISubscriptionRepository
     {
         return await _context.Subscriptions
             .Include(s => s.Customer)
+                .ThenInclude(c => c.Organization)
             .Where(s => s.CustomerId == customerId)
+            .OrderByDescending(s => s.CreatedDate)
+            .ToListAsync();
+    }
+
+    public async Task<IEnumerable<Subscription>> GetByOrganizationIdAsync(Guid organizationId)
+    {
+        return await _context.Subscriptions
+            .Include(s => s.Customer)
+                .ThenInclude(c => c.Organization)
+            .Where(s => s.Customer.OrganizationId == organizationId)
             .OrderByDescending(s => s.CreatedDate)
             .ToListAsync();
     }
@@ -75,6 +100,7 @@ public class SubscriptionRepository : ISubscriptionRepository
     {
         return await _context.Subscriptions
             .Include(s => s.Customer)
+                .ThenInclude(c => c.Organization)
             .Where(s => s.Status == "Active")
             .Where(s => s.NextBillingDate.HasValue && s.NextBillingDate.Value.Date == date.Date)
             .ToListAsync();
@@ -84,6 +110,7 @@ public class SubscriptionRepository : ISubscriptionRepository
     {
         return await _context.Subscriptions
             .Include(s => s.Customer)
+                .ThenInclude(c => c.Organization)
             .Where(s => s.Status == status)
             .OrderByDescending(s => s.CreatedDate)
             .ToListAsync();

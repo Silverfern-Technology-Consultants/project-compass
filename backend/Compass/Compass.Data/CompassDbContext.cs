@@ -1,5 +1,4 @@
-﻿// Compass.Data/CompassDbContext.cs
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Compass.Data.Entities;
 
 namespace Compass.Data;
@@ -10,8 +9,12 @@ public class CompassDbContext : DbContext
     {
     }
 
-    // ORGANIZATION DBSET - NEW
+    // ORGANIZATION DBSET
     public DbSet<Organization> Organizations { get; set; }
+
+    // NEW: CLIENT MANAGEMENT DBSETS
+    public DbSet<Client> Clients { get; set; }
+    public DbSet<ClientAccess> ClientAccess { get; set; }
 
     // EXISTING DBSETS
     public DbSet<Customer> Customers { get; set; }
@@ -33,7 +36,7 @@ public class CompassDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Organization configuration - NEW
+        // Organization configuration
         modelBuilder.Entity<Organization>(entity =>
         {
             entity.HasKey(e => e.OrganizationId);
@@ -41,16 +44,85 @@ public class CompassDbContext : DbContext
             entity.Property(e => e.Status).HasMaxLength(50).HasDefaultValue("Active");
             entity.Property(e => e.OrganizationType).HasMaxLength(50).HasDefaultValue("MSP");
 
-            // Organization owner relationship
             entity.HasOne(e => e.Owner)
                 .WithMany()
                 .HasForeignKey(e => e.OwnerId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Indexes
             entity.HasIndex(e => e.Name);
             entity.HasIndex(e => e.OwnerId);
             entity.HasIndex(e => new { e.Status, e.OrganizationType });
+        });
+
+        // NEW: Client configuration
+        modelBuilder.Entity<Client>(entity =>
+        {
+            entity.HasKey(e => e.ClientId);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Status).HasMaxLength(50).HasDefaultValue("Active");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+
+            // Organization relationship
+            entity.HasOne(e => e.Organization)
+                .WithMany(o => o.Clients)  // Add Clients to Organization entity
+                .HasForeignKey(e => e.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Created by relationship
+            entity.HasOne(e => e.CreatedBy)
+                .WithMany()
+                .HasForeignKey(e => e.CreatedByCustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Last modified by relationship
+            entity.HasOne(e => e.LastModifiedBy)
+                .WithMany()
+                .HasForeignKey(e => e.LastModifiedByCustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Indexes
+            entity.HasIndex(e => e.OrganizationId);
+            entity.HasIndex(e => new { e.Name, e.OrganizationId });
+            entity.HasIndex(e => new { e.Status, e.IsActive });
+            entity.HasIndex(e => e.CreatedByCustomerId);
+            entity.HasIndex(e => e.LastModifiedByCustomerId);
+        });
+
+        // NEW: ClientAccess configuration
+        modelBuilder.Entity<ClientAccess>(entity =>
+        {
+            entity.HasKey(e => e.ClientAccessId);
+            entity.Property(e => e.AccessLevel).IsRequired().HasMaxLength(50).HasDefaultValue("Read");
+            entity.Property(e => e.CanViewAssessments).HasDefaultValue(true);
+            entity.Property(e => e.CanCreateAssessments).HasDefaultValue(false);
+            entity.Property(e => e.CanDeleteAssessments).HasDefaultValue(false);
+            entity.Property(e => e.CanManageEnvironments).HasDefaultValue(false);
+            entity.Property(e => e.CanViewReports).HasDefaultValue(true);
+            entity.Property(e => e.CanExportData).HasDefaultValue(false);
+
+            // Customer relationship
+            entity.HasOne(e => e.Customer)
+                .WithMany()
+                .HasForeignKey(e => e.CustomerId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Client relationship
+            entity.HasOne(e => e.Client)
+                .WithMany(c => c.ClientAccess)
+                .HasForeignKey(e => e.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Granted by relationship
+            entity.HasOne(e => e.GrantedBy)
+                .WithMany()
+                .HasForeignKey(e => e.GrantedByCustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Unique constraint for customer-client combination
+            entity.HasIndex(e => new { e.CustomerId, e.ClientId }).IsUnique();
+            entity.HasIndex(e => e.CustomerId);
+            entity.HasIndex(e => e.ClientId);
+            entity.HasIndex(e => e.GrantedByCustomerId);
         });
 
         // Customer configuration - UPDATED
@@ -61,46 +133,50 @@ public class CompassDbContext : DbContext
             entity.Property(e => e.Email).IsRequired();
             entity.Property(e => e.Role).HasMaxLength(50).HasDefaultValue("Owner");
 
-            // Organization relationship
             entity.HasOne(e => e.Organization)
                 .WithMany(o => o.Members)
                 .HasForeignKey(e => e.OrganizationId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Navigation for sent invitations
             entity.HasMany(e => e.SentInvitations)
                 .WithOne(ti => ti.InvitedBy)
                 .HasForeignKey(ti => ti.InvitedByCustomerId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Navigation for accepted invitations
             entity.HasMany(e => e.AcceptedInvitations)
                 .WithOne(ti => ti.AcceptedBy)
                 .HasForeignKey(ti => ti.AcceptedByCustomerId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Indexes
             entity.HasIndex(e => e.Email);
             entity.HasIndex(e => e.CompanyName);
             entity.HasIndex(e => e.IsTrialAccount);
             entity.HasIndex(e => new { e.OrganizationId, e.Role });
         });
 
-        // Assessment configuration - UPDATED for Organization
+        // Assessment configuration - UPDATED for Client
         modelBuilder.Entity<Assessment>(entity =>
         {
             entity.HasKey(e => e.Id);
 
-            entity.HasOne<Customer>()
+            entity.HasOne(e => e.Customer)
                 .WithMany(p => p.Assessments)
                 .HasForeignKey(d => d.CustomerId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Organization relationship for assessments
-            entity.HasOne<Organization>()
+            entity.HasOne(e => e.Organization)
                 .WithMany(o => o.Assessments)
-                .HasForeignKey("OrganizationId") // Shadow property for now
+                .HasForeignKey(e => e.OrganizationId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // NEW: Client relationship
+            entity.HasOne(e => e.Client)
+                .WithMany(c => c.Assessments)
+                .HasForeignKey(e => e.ClientId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.OrganizationId);
+            entity.HasIndex(e => e.ClientId);  // NEW: Client index
         });
 
         // AssessmentFinding configuration
@@ -114,7 +190,7 @@ public class CompassDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // AzureEnvironment configuration - UPDATED for Organization
+        // AzureEnvironment configuration - UPDATED for Client
         modelBuilder.Entity<AzureEnvironment>(entity =>
         {
             entity.HasKey(e => e.AzureEnvironmentId);
@@ -126,17 +202,18 @@ public class CompassDbContext : DbContext
                 .HasForeignKey(d => d.CustomerId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Organization relationship for Azure environments
-            entity.HasOne<Organization>()
-                .WithMany(o => o.AzureEnvironments)
-                .HasForeignKey("OrganizationId") // Shadow property for now
+            // NEW: Client relationship
+            entity.HasOne(d => d.Client)
+                .WithMany(c => c.AzureEnvironments)
+                .HasForeignKey(d => d.ClientId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasIndex(e => e.CustomerId);
             entity.HasIndex(e => e.TenantId);
+            entity.HasIndex(e => e.ClientId);  // NEW: Client index
         });
 
-        // TeamInvitation configuration - UPDATED for Organization
+        // TeamInvitation configuration
         modelBuilder.Entity<TeamInvitation>(entity =>
         {
             entity.HasKey(e => e.InvitationId);
@@ -146,7 +223,6 @@ public class CompassDbContext : DbContext
             entity.Property(e => e.Status).HasMaxLength(50).HasDefaultValue("Pending");
             entity.Property(e => e.InvitationMessage).HasMaxLength(500);
 
-            // Organization relationship
             entity.HasOne(d => d.Organization)
                 .WithMany(o => o.TeamInvitations)
                 .HasForeignKey(d => d.OrganizationId)
@@ -162,14 +238,13 @@ public class CompassDbContext : DbContext
                 .HasForeignKey(d => d.AcceptedByCustomerId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Indexes for performance
             entity.HasIndex(e => e.InvitationToken).IsUnique();
             entity.HasIndex(e => e.InvitedEmail);
             entity.HasIndex(e => new { e.OrganizationId, e.Status });
             entity.HasIndex(e => e.ExpirationDate);
         });
 
-        // Subscription configuration - UPDATED for Organization
+        // Subscription configuration - UPDATED for Client
         modelBuilder.Entity<Subscription>(entity =>
         {
             entity.HasKey(e => e.SubscriptionId);
@@ -181,14 +256,21 @@ public class CompassDbContext : DbContext
                 .HasForeignKey(d => d.CustomerId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Organization relationship for subscriptions
-            entity.HasOne<Organization>()
+            entity.HasOne(d => d.Organization)
                 .WithMany(o => o.Subscriptions)
-                .HasForeignKey("OrganizationId") // Shadow property for now
+                .HasForeignKey(d => d.OrganizationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // NEW: Client relationship
+            entity.HasOne(d => d.Client)
+                .WithMany(c => c.Subscriptions)
+                .HasForeignKey(d => d.ClientId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasIndex(e => new { e.CustomerId, e.Status });
             entity.HasIndex(e => e.NextBillingDate);
+            entity.HasIndex(e => e.OrganizationId);
+            entity.HasIndex(e => e.ClientId);  // NEW: Client index
         });
 
         // UsageMetric configuration
@@ -294,88 +376,88 @@ public class CompassDbContext : DbContext
     {
         var features = new[]
         {
-                new LicenseFeature
-                {
-                    FeatureId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
-                    FeatureName = "unlimited-assessments",
-                    FeatureDescription = "Run unlimited governance assessments",
-                    FeatureType = "Toggle",
-                    DefaultValue = "false",
-                    IsActive = true
-                },
-                new LicenseFeature
-                {
-                    FeatureId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
-                    FeatureName = "api-access",
-                    FeatureDescription = "Access to REST API endpoints",
-                    FeatureType = "Toggle",
-                    DefaultValue = "false",
-                    IsActive = true
-                },
-                new LicenseFeature
-                {
-                    FeatureId = Guid.Parse("33333333-3333-3333-3333-333333333333"),
-                    FeatureName = "white-label",
-                    FeatureDescription = "White-label portal with custom branding",
-                    FeatureType = "Toggle",
-                    DefaultValue = "false",
-                    IsActive = true
-                },
-                new LicenseFeature
-                {
-                    FeatureId = Guid.Parse("44444444-4444-4444-4444-444444444444"),
-                    FeatureName = "custom-branding",
-                    FeatureDescription = "Custom company branding and logos",
-                    FeatureType = "Toggle",
-                    DefaultValue = "false",
-                    IsActive = true
-                },
-                new LicenseFeature
-                {
-                    FeatureId = Guid.Parse("55555555-5555-5555-5555-555555555555"),
-                    FeatureName = "advanced-analytics",
-                    FeatureDescription = "Advanced reporting and analytics",
-                    FeatureType = "Toggle",
-                    DefaultValue = "false",
-                    IsActive = true
-                },
-                new LicenseFeature
-                {
-                    FeatureId = Guid.Parse("66666666-6666-6666-6666-666666666666"),
-                    FeatureName = "priority-support",
-                    FeatureDescription = "Priority customer support",
-                    FeatureType = "Value",
-                    DefaultValue = "email",
-                    IsActive = true
-                },
-                new LicenseFeature
-                {
-                    FeatureId = Guid.Parse("77777777-7777-7777-7777-777777777777"),
-                    FeatureName = "multi-tenant",
-                    FeatureDescription = "Multi-tenant management capabilities",
-                    FeatureType = "Toggle",
-                    DefaultValue = "false",
-                    IsActive = true
-                },
-                new LicenseFeature
-                {
-                    FeatureId = Guid.Parse("88888888-8888-8888-8888-888888888888"),
-                    FeatureName = "max-subscriptions",
-                    FeatureDescription = "Maximum Azure subscriptions allowed",
-                    FeatureType = "Limit",
-                    DefaultValue = "3",
-                    IsActive = true
-                },
-                new LicenseFeature
-                {
-                    FeatureId = Guid.Parse("99999999-9999-9999-9999-999999999999"),
-                    FeatureName = "max-assessments-monthly",
-                    FeatureDescription = "Maximum assessments per month",
-                    FeatureType = "Limit",
-                    DefaultValue = "1",
-                    IsActive = true
-                }
-            };
+            new LicenseFeature
+            {
+                FeatureId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                FeatureName = "unlimited-assessments",
+                FeatureDescription = "Run unlimited governance assessments",
+                FeatureType = "Toggle",
+                DefaultValue = "false",
+                IsActive = true
+            },
+            new LicenseFeature
+            {
+                FeatureId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                FeatureName = "api-access",
+                FeatureDescription = "Access to REST API endpoints",
+                FeatureType = "Toggle",
+                DefaultValue = "false",
+                IsActive = true
+            },
+            new LicenseFeature
+            {
+                FeatureId = Guid.Parse("33333333-3333-3333-3333-333333333333"),
+                FeatureName = "white-label",
+                FeatureDescription = "White-label portal with custom branding",
+                FeatureType = "Toggle",
+                DefaultValue = "false",
+                IsActive = true
+            },
+            new LicenseFeature
+            {
+                FeatureId = Guid.Parse("44444444-4444-4444-4444-444444444444"),
+                FeatureName = "custom-branding",
+                FeatureDescription = "Custom company branding and logos",
+                FeatureType = "Toggle",
+                DefaultValue = "false",
+                IsActive = true
+            },
+            new LicenseFeature
+            {
+                FeatureId = Guid.Parse("55555555-5555-5555-5555-555555555555"),
+                FeatureName = "advanced-analytics",
+                FeatureDescription = "Advanced reporting and analytics",
+                FeatureType = "Toggle",
+                DefaultValue = "false",
+                IsActive = true
+            },
+            new LicenseFeature
+            {
+                FeatureId = Guid.Parse("66666666-6666-6666-6666-666666666666"),
+                FeatureName = "priority-support",
+                FeatureDescription = "Priority customer support",
+                FeatureType = "Value",
+                DefaultValue = "email",
+                IsActive = true
+            },
+            new LicenseFeature
+            {
+                FeatureId = Guid.Parse("77777777-7777-7777-7777-777777777777"),
+                FeatureName = "multi-tenant",
+                FeatureDescription = "Multi-tenant management capabilities",
+                FeatureType = "Toggle",
+                DefaultValue = "false",
+                IsActive = true
+            },
+            new LicenseFeature
+            {
+                FeatureId = Guid.Parse("88888888-8888-8888-8888-888888888888"),
+                FeatureName = "max-subscriptions",
+                FeatureDescription = "Maximum Azure subscriptions allowed",
+                FeatureType = "Limit",
+                DefaultValue = "3",
+                IsActive = true
+            },
+            new LicenseFeature
+            {
+                FeatureId = Guid.Parse("99999999-9999-9999-9999-999999999999"),
+                FeatureName = "max-assessments-monthly",
+                FeatureDescription = "Maximum assessments per month",
+                FeatureType = "Limit",
+                DefaultValue = "1",
+                IsActive = true
+            }
+        };
 
         modelBuilder.Entity<LicenseFeature>().HasData(features);
     }

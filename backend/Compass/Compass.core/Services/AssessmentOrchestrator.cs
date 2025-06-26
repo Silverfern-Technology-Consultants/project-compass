@@ -39,19 +39,20 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
 
     public async Task<Guid> StartAssessmentAsync(AssessmentRequest request, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Starting enhanced assessment for environment {EnvironmentId} with {SubscriptionCount} subscriptions",
-            request.EnvironmentId, request.SubscriptionIds.Length);
+        _logger.LogInformation("Starting enhanced assessment for organization {OrganizationId}, environment {EnvironmentId} with {SubscriptionCount} subscriptions",
+            request.OrganizationId, request.EnvironmentId, request.SubscriptionIds.Length);
 
         var assessment = new Assessment
         {
             Id = Guid.NewGuid(),
             EnvironmentId = request.EnvironmentId,
-            Name = request.Name, // ✅ FIXED: Store the user-entered assessment name
+            Name = request.Name,
             AssessmentType = request.Type.ToString(),
             Status = AssessmentStatus.Pending.ToString(),
             StartedDate = DateTime.UtcNow,
-            CustomerId = Guid.Parse("9bc034b0-852f-4618-9434-c040d13de712"), // Use the seeded test customer ID
-            CustomerName = "Test Company" // In real implementation, get from context
+            CustomerId = request.CustomerId,
+            OrganizationId = request.OrganizationId, // ✅ NEW: Set organization ID
+            CustomerName = "Organization Member" // Will be updated with actual customer name from context
         };
 
         await _assessmentRepository.CreateAsync(assessment);
@@ -63,7 +64,8 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to process assessment {AssessmentId}", assessment.Id);
+            _logger.LogError(ex, "Failed to process assessment {AssessmentId} for organization {OrganizationId}",
+                assessment.Id, request.OrganizationId);
             await MarkAssessmentAsFailed(assessment.Id, ex.Message);
         }
 

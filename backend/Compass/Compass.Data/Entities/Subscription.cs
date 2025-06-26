@@ -10,19 +10,25 @@ public class Subscription
     [Required]
     public Guid CustomerId { get; set; }
 
-    [Required]
-    [StringLength(50)]
-    public string PlanType { get; set; } = string.Empty; // "Trial", "Basic", "Professional", "Enterprise"
+    // Organization scoping (existing)
+    public Guid? OrganizationId { get; set; }
+
+    // NEW: Client scoping for MSP isolation
+    public Guid? ClientId { get; set; }
 
     [Required]
     [StringLength(50)]
-    public string Status { get; set; } = string.Empty; // "Active", "Cancelled", "Expired", "Trial"
+    public string PlanType { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(50)]
+    public string Status { get; set; } = string.Empty;
 
     [StringLength(20)]
-    public string? BillingCycle { get; set; } // "Monthly", "Yearly"
+    public string? BillingCycle { get; set; }
 
     [Column(TypeName = "decimal(10,2)")]
-    public decimal MonthlyPrice { get; set; } = 0m; // Changed to non-nullable with default
+    public decimal MonthlyPrice { get; set; } = 0m;
 
     [Column(TypeName = "decimal(10,2)")]
     public decimal? AnnualPrice { get; set; }
@@ -39,7 +45,7 @@ public class Subscription
     public bool IncludesAPI { get; set; } = false;
     public bool IncludesWhiteLabel { get; set; } = false;
     public bool IncludesCustomBranding { get; set; } = false;
-    public bool AutoRenew { get; set; } = true; // ADDED MISSING PROPERTY
+    public bool AutoRenew { get; set; } = true;
 
     [StringLength(50)]
     public string SupportLevel { get; set; } = "Email";
@@ -55,6 +61,8 @@ public class Subscription
 
     // Navigation properties
     public virtual Customer Customer { get; set; } = null!;
+    public virtual Organization? Organization { get; set; }
+    public virtual Client? Client { get; set; } // NEW: Client navigation
     public virtual ICollection<UsageRecord> UsageRecords { get; set; } = new List<UsageRecord>();
     public virtual ICollection<UsageMetric> UsageMetrics { get; set; } = new List<UsageMetric>();
     public virtual ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();

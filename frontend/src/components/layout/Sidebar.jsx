@@ -38,20 +38,26 @@ const Sidebar = ({ currentPage }) => {
 
     const getUserInitials = () => {
         if (!user) return 'U';
-        const firstName = user.firstName || '';
-        const lastName = user.lastName || '';
+        // Use PascalCase properties
+        const firstName = user.FirstName || '';
+        const lastName = user.LastName || '';
         return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
     };
 
     const getUserDisplayName = () => {
         if (!user) return 'User';
-        return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'User';
+        // Use PascalCase properties
+        const firstName = user.FirstName || '';
+        const lastName = user.LastName || '';
+        return `${firstName} ${lastName}`.trim() || user.Email || 'User';
     };
 
     const getUserRole = () => {
         if (!user) return 'User';
-        if (user.subscriptionStatus === 'Active') return 'Admin';
-        if (user.subscriptionStatus === 'Trial') return 'Trial User';
+        // Use PascalCase property
+        const subscriptionStatus = user.SubscriptionStatus;
+        if (subscriptionStatus === 'Active') return 'Admin';
+        if (subscriptionStatus === 'Trial') return 'Trial User';
         return 'User';
     };
 

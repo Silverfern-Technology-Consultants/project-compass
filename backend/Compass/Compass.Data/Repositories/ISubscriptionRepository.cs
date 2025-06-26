@@ -7,7 +7,9 @@ public interface ISubscriptionRepository
 {
     Task<Subscription> GetByIdAsync(Guid subscriptionId);
     Task<Subscription> GetActiveByCustomerIdAsync(Guid customerId);
+    Task<Subscription?> GetActiveByOrganizationIdAsync(Guid organizationId);
     Task<IEnumerable<Subscription>> GetByCustomerIdAsync(Guid customerId);
+    Task<IEnumerable<Subscription>> GetByOrganizationIdAsync(Guid organizationId);
     Task<Subscription> CreateAsync(Subscription subscription);
     Task<Subscription> UpdateAsync(Subscription subscription);
     Task DeleteAsync(Guid subscriptionId);

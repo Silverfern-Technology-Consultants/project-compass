@@ -56,6 +56,13 @@ public class CustomerInfo
     public string LastName { get; set; } = string.Empty;
     public string CompanyName { get; set; } = string.Empty;
     public bool EmailVerified { get; set; }
+
+    // NEW: Organization-related properties
+    public string Role { get; set; } = string.Empty;
+    public Guid? OrganizationId { get; set; }
+    public string? OrganizationName { get; set; }
+
+    // UPDATED: Now organization-scoped instead of user-scoped
     public string SubscriptionStatus { get; set; } = string.Empty;
     public DateTime? TrialEndDate { get; set; }
 }

@@ -44,7 +44,11 @@ public class Organization
     public virtual ICollection<AzureEnvironment> AzureEnvironments { get; set; } = new List<AzureEnvironment>();
     public virtual ICollection<Subscription> Subscriptions { get; set; } = new List<Subscription>();
 
+    // NEW: Client management for MSPs
+    public virtual ICollection<Client> Clients { get; set; } = new List<Client>();
+
     // Helper properties
     public int MemberCount => Members?.Count ?? 0;
+    public int ClientCount => Clients?.Count ?? 0; // NEW: Client count helper
     public bool IsActive => Status == "Active";
 }

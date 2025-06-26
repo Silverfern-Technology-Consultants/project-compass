@@ -6,17 +6,18 @@ namespace Compass.Core.Services;
 
 public interface ILicenseValidationService
 {
-    Task<bool> HasActiveSubscription(Guid customerId);
-    Task<AccessLevel> GetFeatureAccess(Guid customerId, string featureName);
-    Task<LicenseLimits> GetCurrentLimits(Guid customerId);
-    Task<bool> CanCreateAssessment(Guid customerId);
-    Task<bool> CanAddAzureSubscription(Guid customerId);
-    Task<UsageReport> GetUsageReport(Guid customerId, string? billingPeriod = null);
-    Task<ValidationResult> CanCreateAssessmentAsync(Guid customerId);
-    Task<ValidationResult> CanCreateEnvironmentAsync(Guid customerId);
-    Task<ValidationResult> CanAddUserAsync(Guid customerId, Guid environmentId);
-    Task<ValidationResult> ValidateFeatureAccessAsync(Guid customerId, string featureName);
-    Task<SubscriptionInfo> GetSubscriptionInfoAsync(Guid customerId);
+    // ✅ UPDATED: Organization-scoped methods
+    Task<bool> HasActiveSubscription(Guid organizationId);
+    Task<AccessLevel> GetFeatureAccess(Guid organizationId, string featureName);
+    Task<LicenseLimits> GetCurrentLimits(Guid organizationId);
+    Task<bool> CanCreateAssessment(Guid organizationId);
+    Task<bool> CanAddAzureSubscription(Guid organizationId);
+    Task<UsageReport> GetUsageReport(Guid organizationId, string? billingPeriod = null);
+    Task<ValidationResult> CanCreateAssessmentAsync(Guid organizationId);
+    Task<ValidationResult> CanCreateEnvironmentAsync(Guid organizationId);
+    Task<ValidationResult> CanAddUserAsync(Guid organizationId, Guid environmentId);
+    Task<ValidationResult> ValidateFeatureAccessAsync(Guid organizationId, string featureName);
+    Task<SubscriptionInfo> GetSubscriptionInfoAsync(Guid organizationId);
 }
 
 public class ValidationResult
@@ -48,21 +49,22 @@ public class LicenseValidationService : ILicenseValidationService
         _context = context;
     }
 
-    public async Task<bool> HasActiveSubscription(Guid customerId)
+    // ORGANIZATION-SCOPED METHODS
+
+    public async Task<bool> HasActiveSubscription(Guid organizationId)
     {
-        var subscription = await GetActiveSubscriptionAsync(customerId);
+        var subscription = await GetActiveSubscriptionByOrganizationAsync(organizationId);
         return subscription != null;
     }
 
-    public async Task<AccessLevel> GetFeatureAccess(Guid customerId, string featureName)
+    public async Task<AccessLevel> GetFeatureAccess(Guid organizationId, string featureName)
     {
-        var subscription = await GetActiveSubscriptionAsync(customerId);
+        var subscription = await GetActiveSubscriptionByOrganizationAsync(organizationId);
         if (subscription == null)
         {
             return new AccessLevel { HasAccess = false, LimitValue = "0", UsageCount = 0 };
         }
 
-        // Check feature access based on subscription plan
         var hasAccess = featureName switch
         {
             "unlimited-assessments" => subscription.MaxAssessmentsPerMonth == null,
@@ -70,7 +72,7 @@ public class LicenseValidationService : ILicenseValidationService
             "white-label" => subscription.IncludesWhiteLabel,
             "custom-branding" => subscription.IncludesCustomBranding,
             "priority-support" => subscription.PrioritySupport,
-            _ => true // Default features
+            _ => true
         };
 
         return new AccessLevel
@@ -81,9 +83,9 @@ public class LicenseValidationService : ILicenseValidationService
         };
     }
 
-    public async Task<LicenseLimits> GetCurrentLimits(Guid customerId)
+    public async Task<LicenseLimits> GetCurrentLimits(Guid organizationId)
     {
-        var subscription = await GetActiveSubscriptionAsync(customerId);
+        var subscription = await GetActiveSubscriptionByOrganizationAsync(organizationId);
         if (subscription == null)
         {
             return new LicenseLimits
@@ -108,33 +110,34 @@ public class LicenseValidationService : ILicenseValidationService
         };
     }
 
-    public async Task<bool> CanCreateAssessment(Guid customerId)
+    public async Task<bool> CanCreateAssessment(Guid organizationId)
     {
-        var result = await CanCreateAssessmentAsync(customerId);
+        var result = await CanCreateAssessmentAsync(organizationId);
         return result.HasAccess;
     }
 
-    public async Task<bool> CanAddAzureSubscription(Guid customerId)
+    public async Task<bool> CanAddAzureSubscription(Guid organizationId)
     {
-        var result = await CanCreateEnvironmentAsync(customerId);
+        var result = await CanCreateEnvironmentAsync(organizationId);
         return result.HasAccess;
     }
 
-    public async Task<UsageReport> GetUsageReport(Guid customerId, string? billingPeriod = null)
+    public async Task<UsageReport> GetUsageReport(Guid organizationId, string? billingPeriod = null)
     {
         var currentPeriod = billingPeriod ?? $"{DateTime.UtcNow:yyyy-MM}";
 
+        // FIXED: Organization-scoped usage query
         var usage = await _context.UsageMetrics
-            .Where(u => u.CustomerId == customerId && u.BillingPeriod == currentPeriod)
+            .Where(u => u.Customer.OrganizationId == organizationId && u.BillingPeriod == currentPeriod)
             .GroupBy(u => u.MetricType)
             .Select(g => new { MetricType = g.Key, Total = g.Sum(u => u.MetricValue) })
             .ToDictionaryAsync(x => x.MetricType, x => x.Total);
 
-        var limits = await GetCurrentLimits(customerId);
+        var limits = await GetCurrentLimits(organizationId);
 
         return new UsageReport
         {
-            CustomerId = customerId,
+            CustomerId = organizationId, // Using organization ID here
             BillingPeriod = currentPeriod,
             MetricCounts = usage,
             Limits = new Dictionary<string, int>
@@ -150,9 +153,9 @@ public class LicenseValidationService : ILicenseValidationService
         };
     }
 
-    public async Task<ValidationResult> CanCreateAssessmentAsync(Guid customerId)
+    public async Task<ValidationResult> CanCreateAssessmentAsync(Guid organizationId)
     {
-        var subscription = await GetActiveSubscriptionAsync(customerId);
+        var subscription = await GetActiveSubscriptionByOrganizationAsync(organizationId);
         if (subscription == null)
         {
             return new ValidationResult
@@ -163,7 +166,6 @@ public class LicenseValidationService : ILicenseValidationService
             };
         }
 
-        // Check if subscription is expired
         if (subscription.Status == "Expired" ||
             (subscription.TrialEndDate.HasValue && subscription.TrialEndDate < DateTime.UtcNow))
         {
@@ -175,18 +177,17 @@ public class LicenseValidationService : ILicenseValidationService
             };
         }
 
-        // If unlimited assessments (null), allow
         if (!subscription.MaxAssessmentsPerMonth.HasValue)
         {
             return new ValidationResult { HasAccess = true, Message = "Unlimited assessments" };
         }
 
-        // Count current month's assessments
+        // FIXED: Organization-scoped usage count
         var currentMonth = DateTime.UtcNow.Month;
         var currentYear = DateTime.UtcNow.Year;
 
         var monthlyUsage = await _context.UsageMetrics
-            .Where(u => u.CustomerId == customerId &&
+            .Where(u => u.Customer.OrganizationId == organizationId &&
                        u.MetricType == "AssessmentRun" &&
                        u.BillingPeriod == $"{currentYear}-{currentMonth:D2}")
             .SumAsync(u => u.MetricValue);
@@ -212,9 +213,9 @@ public class LicenseValidationService : ILicenseValidationService
         };
     }
 
-    public async Task<ValidationResult> CanCreateEnvironmentAsync(Guid customerId)
+    public async Task<ValidationResult> CanCreateEnvironmentAsync(Guid organizationId)
     {
-        var subscription = await GetActiveSubscriptionAsync(customerId);
+        var subscription = await GetActiveSubscriptionByOrganizationAsync(organizationId);
         if (subscription == null)
         {
             return new ValidationResult
@@ -230,9 +231,9 @@ public class LicenseValidationService : ILicenseValidationService
             return new ValidationResult { HasAccess = true, Message = "Unlimited environments" };
         }
 
-        // For now, just count assessments as environments aren't implemented yet
+        // FIXED: Organization-scoped environment count
         var currentEnvironments = await _context.Assessments
-            .Where(a => a.CustomerId == customerId)
+            .Where(a => a.OrganizationId == organizationId)
             .Select(a => a.EnvironmentId)
             .Distinct()
             .CountAsync();
@@ -258,9 +259,9 @@ public class LicenseValidationService : ILicenseValidationService
         };
     }
 
-    public async Task<ValidationResult> CanAddUserAsync(Guid customerId, Guid environmentId)
+    public async Task<ValidationResult> CanAddUserAsync(Guid organizationId, Guid environmentId)
     {
-        var subscription = await GetActiveSubscriptionAsync(customerId);
+        var subscription = await GetActiveSubscriptionByOrganizationAsync(organizationId);
         if (subscription == null)
         {
             return new ValidationResult
@@ -271,13 +272,12 @@ public class LicenseValidationService : ILicenseValidationService
             };
         }
 
-        // Implementation depends on your user management system
         return new ValidationResult { HasAccess = true, Message = "User addition allowed" };
     }
 
-    public async Task<ValidationResult> ValidateFeatureAccessAsync(Guid customerId, string featureName)
+    public async Task<ValidationResult> ValidateFeatureAccessAsync(Guid organizationId, string featureName)
     {
-        var subscription = await GetActiveSubscriptionAsync(customerId);
+        var subscription = await GetActiveSubscriptionByOrganizationAsync(organizationId);
         if (subscription == null)
         {
             return new ValidationResult
@@ -295,7 +295,7 @@ public class LicenseValidationService : ILicenseValidationService
             "PrioritySupport" => subscription.PrioritySupport,
             "WhiteLabel" => subscription.IncludesWhiteLabel,
             "CustomBranding" => subscription.IncludesCustomBranding,
-            _ => true // Default features available
+            _ => true
         };
 
         return new ValidationResult
@@ -305,9 +305,9 @@ public class LicenseValidationService : ILicenseValidationService
         };
     }
 
-    public async Task<SubscriptionInfo> GetSubscriptionInfoAsync(Guid customerId)
+    public async Task<SubscriptionInfo> GetSubscriptionInfoAsync(Guid organizationId)
     {
-        var subscription = await GetActiveSubscriptionAsync(customerId);
+        var subscription = await GetActiveSubscriptionByOrganizationAsync(organizationId);
 
         return new SubscriptionInfo
         {
@@ -321,10 +321,14 @@ public class LicenseValidationService : ILicenseValidationService
         };
     }
 
-    private async Task<Data.Entities.Subscription?> GetActiveSubscriptionAsync(Guid customerId)
+    // NEW: Organization-scoped subscription query
+    private async Task<Data.Entities.Subscription?> GetActiveSubscriptionByOrganizationAsync(Guid organizationId)
     {
         return await _context.Subscriptions
-            .FirstOrDefaultAsync(s => s.CustomerId == customerId &&
-                                    (s.Status == "Active" || s.Status == "Trial"));
+            .Include(s => s.Customer)
+            .Where(s => s.Customer.OrganizationId == organizationId &&
+                       (s.Status == "Active" || s.Status == "Trial"))
+            .OrderByDescending(s => s.CreatedDate)
+            .FirstOrDefaultAsync();
     }
 }

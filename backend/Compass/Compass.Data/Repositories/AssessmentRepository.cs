@@ -1,4 +1,4 @@
-﻿using Compass.Data.Entities;  // ← Changed from Compass.Core.Models
+﻿using Compass.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Compass.Data.Repositories;
@@ -12,10 +12,14 @@ public class AssessmentRepository : IAssessmentRepository
         _context = context;
     }
 
+    // Existing methods remain the same...
     public async Task<Assessment?> GetByIdAsync(Guid id)
     {
         return await _context.Assessments
             .Include(a => a.Findings)
+            .Include(a => a.Customer)
+            .Include(a => a.Organization)
+            .Include(a => a.Client) // Include client information
             .FirstOrDefaultAsync(a => a.Id == id);
     }
 
@@ -29,6 +33,9 @@ public class AssessmentRepository : IAssessmentRepository
     public async Task<List<Assessment>> GetByEnvironmentIdAsync(Guid environmentId, int limit = 10)
     {
         return await _context.Assessments
+            .Include(a => a.Customer)
+            .Include(a => a.Organization)
+            .Include(a => a.Client)
             .Where(a => a.EnvironmentId == environmentId)
             .OrderByDescending(a => a.StartedDate)
             .Take(limit)
@@ -38,12 +45,97 @@ public class AssessmentRepository : IAssessmentRepository
     public async Task<List<Assessment>> GetByCustomerIdAsync(Guid customerId, int limit = 10)
     {
         return await _context.Assessments
+            .Include(a => a.Customer)
+            .Include(a => a.Organization)
+            .Include(a => a.Client)
             .Where(a => a.CustomerId == customerId)
             .OrderByDescending(a => a.StartedDate)
             .Take(limit)
             .ToListAsync();
     }
 
+    public async Task<List<Assessment>> GetByOrganizationIdAsync(Guid organizationId, int limit = 10)
+    {
+        return await _context.Assessments
+            .Include(a => a.Customer)
+            .Include(a => a.Organization)
+            .Include(a => a.Client)
+            .Where(a => a.OrganizationId == organizationId)
+            .OrderByDescending(a => a.StartedDate)
+            .Take(limit)
+            .ToListAsync();
+    }
+
+    public async Task<Assessment?> GetByIdAndOrganizationAsync(Guid assessmentId, Guid organizationId)
+    {
+        return await _context.Assessments
+            .Include(a => a.Findings)
+            .Include(a => a.Customer)
+            .Include(a => a.Organization)
+            .Include(a => a.Client)
+            .Where(a => a.Id == assessmentId && a.OrganizationId == organizationId)
+            .FirstOrDefaultAsync();
+    }
+
+    // NEW: Client-scoped methods
+    public async Task<List<Assessment>> GetByClientIdAsync(Guid clientId, int limit = 10)
+    {
+        return await _context.Assessments
+            .Include(a => a.Customer)
+            .Include(a => a.Organization)
+            .Include(a => a.Client)
+            .Where(a => a.ClientId == clientId)
+            .OrderByDescending(a => a.StartedDate)
+            .Take(limit)
+            .ToListAsync();
+    }
+
+    public async Task<Assessment?> GetByIdAndClientAsync(Guid assessmentId, Guid clientId)
+    {
+        return await _context.Assessments
+            .Include(a => a.Findings)
+            .Include(a => a.Customer)
+            .Include(a => a.Organization)
+            .Include(a => a.Client)
+            .Where(a => a.Id == assessmentId && a.ClientId == clientId)
+            .FirstOrDefaultAsync();
+    }
+
+    public async Task<List<Assessment>> GetByClientAndOrganizationAsync(Guid clientId, Guid organizationId, int limit = 10)
+    {
+        return await _context.Assessments
+            .Include(a => a.Customer)
+            .Include(a => a.Organization)
+            .Include(a => a.Client)
+            .Where(a => a.ClientId == clientId && a.OrganizationId == organizationId)
+            .OrderByDescending(a => a.StartedDate)
+            .Take(limit)
+            .ToListAsync();
+    }
+
+    public async Task<int> GetAssessmentCountByClientAsync(Guid clientId)
+    {
+        return await _context.Assessments
+            .CountAsync(a => a.ClientId == clientId);
+    }
+
+    public async Task<int> GetCompletedAssessmentCountByClientAsync(Guid clientId)
+    {
+        return await _context.Assessments
+            .CountAsync(a => a.ClientId == clientId && a.Status == "Completed");
+    }
+
+    public async Task<List<Assessment>> GetRecentAssessmentsByClientAsync(Guid clientId, int limit = 5)
+    {
+        return await _context.Assessments
+            .Include(a => a.Customer)
+            .Where(a => a.ClientId == clientId)
+            .OrderByDescending(a => a.StartedDate)
+            .Take(limit)
+            .ToListAsync();
+    }
+
+    // Existing update/delete methods remain the same...
     public async Task UpdateAsync(Assessment assessment)
     {
         _context.Assessments.Update(assessment);
@@ -75,6 +167,9 @@ public class AssessmentRepository : IAssessmentRepository
     public async Task<List<Assessment>> GetPendingAssessmentsAsync()
     {
         return await _context.Assessments
+            .Include(a => a.Customer)
+            .Include(a => a.Organization)
+            .Include(a => a.Client)
             .Where(a => a.Status == "Pending" || a.Status == "InProgress")
             .OrderBy(a => a.StartedDate)
             .ToListAsync();
@@ -100,12 +195,10 @@ public class AssessmentRepository : IAssessmentRepository
         var finding = await _context.AssessmentFindings.FindAsync(findingId);
         if (finding != null)
         {
-            // For now, just update a property - we can add Status later if needed
             await _context.SaveChangesAsync();
         }
     }
 
-    // NEW: Delete assessment method
     public async Task DeleteAsync(Guid assessmentId)
     {
         var assessment = await _context.Assessments
@@ -114,13 +207,11 @@ public class AssessmentRepository : IAssessmentRepository
 
         if (assessment != null)
         {
-            // Delete associated findings first
             if (assessment.Findings.Any())
             {
                 _context.AssessmentFindings.RemoveRange(assessment.Findings);
             }
 
-            // Delete the assessment
             _context.Assessments.Remove(assessment);
             await _context.SaveChangesAsync();
         }
