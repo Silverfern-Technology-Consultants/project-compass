@@ -20,7 +20,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { useLayout } from '../../contexts/LayoutContext';
 
-const Sidebar = ({ currentPage }) => {
+const Sidebar = ({ currentPage, onSidebarClick }) => {
     const navigate = useNavigate();
     const { user, logout } = useAuth();
     const { sidebarOpen, toggleSidebar } = useLayout();
@@ -109,9 +109,20 @@ const Sidebar = ({ currentPage }) => {
         return orgName || 'My Company'; // Fallback to 'My Company' if no name found
     };
 
+    // Handle clicks on the sidebar to close header dropdown
+    const handleSidebarClick = (e) => {
+        // Call the parent's click handler to close header dropdown
+        if (onSidebarClick) {
+            onSidebarClick();
+        }
+    };
+
     return (
         <>
-            <div className={`bg-gray-900 border-r border-gray-800 transition-all duration-300 ${sidebarOpen ? 'w-64' : 'w-20'} flex flex-col fixed left-0 top-0 h-screen z-40`}>
+            <div
+                className={`bg-gray-900 border-r border-gray-800 transition-all duration-300 ${sidebarOpen ? 'w-64' : 'w-20'} flex flex-col fixed left-0 top-0 h-screen z-40`}
+                onClick={handleSidebarClick}
+            >
                 {/* Header */}
                 <div className="p-4 border-b border-gray-800">
                     <div className="flex items-center justify-between">
@@ -181,8 +192,8 @@ const Sidebar = ({ currentPage }) => {
                                                     <button
                                                         onClick={() => handleNavigation(item.path)}
                                                         className={`w-full flex items-center space-x-3 px-3 py-2 rounded transition-colors ${currentPage === item.id
-                                                                ? 'bg-yellow-600 text-black'
-                                                                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                                                            ? 'bg-yellow-600 text-black'
+                                                            : 'text-gray-400 hover:bg-gray-800 hover:text-white'
                                                             }`}
                                                     >
                                                         <item.icon size={16} />
@@ -257,48 +268,55 @@ const Sidebar = ({ currentPage }) => {
 
                             {/* User Submenu */}
                             {userMenuOpen && (
-                                <div className="absolute bottom-full left-0 right-0 mb-2 bg-gray-800 border border-gray-700 rounded-md shadow-lg">
-                                    <div className="py-1">
-                                        <div className="px-3 py-2 border-b border-gray-700">
-                                            <p className="text-xs font-medium text-white">{getUserDisplayName()}</p>
-                                            <p className="text-xs text-gray-400">{user?.email}</p>
-                                        </div>
+                                <>
+                                    {/* Backdrop for expanded sidebar user menu */}
+                                    <div
+                                        className="fixed inset-0 z-10"
+                                        onClick={() => setUserMenuOpen(false)}
+                                    />
+                                    <div className="absolute bottom-full left-0 right-0 mb-2 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-20">
+                                        <div className="py-1">
+                                            <div className="px-3 py-2 border-b border-gray-700">
+                                                <p className="text-xs font-medium text-white">{getUserDisplayName()}</p>
+                                                <p className="text-xs text-gray-400">{user?.email}</p>
+                                            </div>
 
-                                        <button
-                                            onClick={() => handleNavigation('/app/settings')}
-                                            className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
-                                        >
-                                            <User size={14} />
-                                            <span>Account Settings</span>
-                                        </button>
-
-                                        <button
-                                            onClick={() => handleNavigation('/app/settings', 'preferences')}
-                                            className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
-                                        >
-                                            <Settings size={14} />
-                                            <span>Preferences</span>
-                                        </button>
-
-                                        <button
-                                            onClick={toggleDarkMode}
-                                            className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
-                                        >
-                                            {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
-                                            <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
-                                        </button>
-
-                                        <div className="border-t border-gray-700 mt-1 pt-1">
                                             <button
-                                                onClick={handleLogout}
-                                                className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-gray-700 hover:text-red-300 flex items-center space-x-2"
+                                                onClick={() => handleNavigation('/app/settings')}
+                                                className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
                                             >
-                                                <LogOut size={14} />
-                                                <span>Sign Out</span>
+                                                <User size={14} />
+                                                <span>Account Settings</span>
                                             </button>
+
+                                            <button
+                                                onClick={() => handleNavigation('/app/settings', 'preferences')}
+                                                className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
+                                            >
+                                                <Settings size={14} />
+                                                <span>Preferences</span>
+                                            </button>
+
+                                            <button
+                                                onClick={toggleDarkMode}
+                                                className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
+                                            >
+                                                {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
+                                                <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
+                                            </button>
+
+                                            <div className="border-t border-gray-700 mt-1 pt-1">
+                                                <button
+                                                    onClick={handleLogout}
+                                                    className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-gray-700 hover:text-red-300 flex items-center space-x-2"
+                                                >
+                                                    <LogOut size={14} />
+                                                    <span>Sign Out</span>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                </>
                             )}
                         </div>
                     ) : (
@@ -319,48 +337,55 @@ const Sidebar = ({ currentPage }) => {
 
                             {/* Collapsed User Submenu */}
                             {userMenuOpen && (
-                                <div className="absolute bottom-full left-0 mb-2 w-48 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50">
-                                    <div className="py-1">
-                                        <div className="px-3 py-2 border-b border-gray-700">
-                                            <p className="text-xs font-medium text-white">{getUserDisplayName()}</p>
-                                            <p className="text-xs text-gray-400">{user?.email}</p>
-                                        </div>
+                                <>
+                                    {/* Backdrop for collapsed sidebar user menu */}
+                                    <div
+                                        className="fixed inset-0 z-10"
+                                        onClick={() => setUserMenuOpen(false)}
+                                    />
+                                    <div className="absolute bottom-full left-0 mb-2 w-48 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50">
+                                        <div className="py-1">
+                                            <div className="px-3 py-2 border-b border-gray-700">
+                                                <p className="text-xs font-medium text-white">{getUserDisplayName()}</p>
+                                                <p className="text-xs text-gray-400">{user?.email}</p>
+                                            </div>
 
-                                        <button
-                                            onClick={() => handleNavigation('/app/settings')}
-                                            className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
-                                        >
-                                            <User size={14} />
-                                            <span>Account Settings</span>
-                                        </button>
-
-                                        <button
-                                            onClick={() => handleNavigation('/app/settings', 'preferences')}
-                                            className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
-                                        >
-                                            <Settings size={14} />
-                                            <span>Preferences</span>
-                                        </button>
-
-                                        <button
-                                            onClick={toggleDarkMode}
-                                            className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
-                                        >
-                                            {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
-                                            <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
-                                        </button>
-
-                                        <div className="border-t border-gray-700 mt-1 pt-1">
                                             <button
-                                                onClick={handleLogout}
-                                                className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-gray-700 hover:text-red-300 flex items-center space-x-2"
+                                                onClick={() => handleNavigation('/app/settings')}
+                                                className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
                                             >
-                                                <LogOut size={14} />
-                                                <span>Sign Out</span>
+                                                <User size={14} />
+                                                <span>Account Settings</span>
                                             </button>
+
+                                            <button
+                                                onClick={() => handleNavigation('/app/settings', 'preferences')}
+                                                className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
+                                            >
+                                                <Settings size={14} />
+                                                <span>Preferences</span>
+                                            </button>
+
+                                            <button
+                                                onClick={toggleDarkMode}
+                                                className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
+                                            >
+                                                {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
+                                                <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
+                                            </button>
+
+                                            <div className="border-t border-gray-700 mt-1 pt-1">
+                                                <button
+                                                    onClick={handleLogout}
+                                                    className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-gray-700 hover:text-red-300 flex items-center space-x-2"
+                                                >
+                                                    <LogOut size={14} />
+                                                    <span>Sign Out</span>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                </>
                             )}
                         </div>
                     )}

@@ -2,29 +2,78 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Settings, LogOut, ChevronDown, User, Moon, Sun } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useClient } from '../../contexts/ClientContext';
 import { useLayout } from '../../contexts/LayoutContext';
+import ClientSelector from '../ui/ClientSelector';
 
-const Header = () => {
+const Header = ({ dropdownOpen, setDropdownOpen, clientDropdownOpen, setClientDropdownOpen, onOutsideClick }) => {
     const { user, logout } = useAuth();
+    const { selectedClient, getClientDisplayName, isInternalSelected } = useClient();
     const { sidebarOpen } = useLayout();
     const navigate = useNavigate();
     const location = useLocation();
-    const [dropdownOpen, setDropdownOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(true);
 
     // Extract current page from pathname
     const currentPage = location.pathname.split('/').pop() || 'dashboard';
 
     const getPageTitle = (page) => {
+        const clientSuffix = selectedClient ? ` - ${getClientDisplayName()}` : '';
+
         switch (page) {
-            case 'dashboard': return { title: 'Dashboard', subtitle: 'Azure Governance Assessment Portal' };
-            case 'assessments': return { title: 'Assessments', subtitle: 'Manage and monitor your Azure governance assessments' };
-            case 'reports': return { title: 'Reports', subtitle: 'View and manage your assessment reports and analytics' };
-            case 'compliance': return { title: 'Compliance', subtitle: 'Monitor compliance status and requirements' };
-            case 'team': return { title: 'Team Management', subtitle: 'Manage your team members and their access permissions' };
-            case 'settings': return { title: 'Settings', subtitle: 'Configure your account and preferences' };
-            case 'profile': return { title: 'Account Settings', subtitle: 'Manage your account information and preferences' };
-            default: return { title: 'Dashboard', subtitle: 'Azure Governance Assessment Portal' };
+            case 'dashboard':
+                return {
+                    title: `Dashboard${clientSuffix}`,
+                    subtitle: selectedClient
+                        ? `Azure governance assessment portal for ${getClientDisplayName()}`
+                        : 'Azure Governance Assessment Portal'
+                };
+            case 'assessments':
+                return {
+                    title: `Assessments${clientSuffix}`,
+                    subtitle: selectedClient
+                        ? `Manage and monitor assessments for ${getClientDisplayName()}`
+                        : 'Manage and monitor your Azure governance assessments'
+                };
+            case 'reports':
+                return {
+                    title: `Reports${clientSuffix}`,
+                    subtitle: selectedClient
+                        ? `View assessment reports and analytics for ${getClientDisplayName()}`
+                        : 'View and manage your assessment reports and analytics'
+                };
+            case 'compliance':
+                return {
+                    title: `Compliance${clientSuffix}`,
+                    subtitle: selectedClient
+                        ? `Monitor compliance status for ${getClientDisplayName()}`
+                        : 'Monitor compliance status and requirements'
+                };
+            case 'team':
+                return {
+                    title: 'Team Management',
+                    subtitle: 'Manage your team members and their access permissions'
+                };
+            case 'clients':
+                return {
+                    title: 'My Clients',
+                    subtitle: 'Manage your MSP clients and their assessments'
+                };
+            case 'settings':
+                return {
+                    title: 'Company Settings',
+                    subtitle: 'Configure your organization and preferences'
+                };
+            case 'profile':
+                return {
+                    title: 'My Settings',
+                    subtitle: 'Manage your account information and preferences'
+                };
+            default:
+                return {
+                    title: `Dashboard${clientSuffix}`,
+                    subtitle: 'Azure Governance Assessment Portal'
+                };
         }
     };
 
@@ -90,12 +139,21 @@ const Header = () => {
                 }`}
         >
             <div className="flex items-center justify-between">
-                <div>
+                <div className="flex-1">
                     <h1 className="text-xl font-semibold text-white">{pageInfo.title}</h1>
                     <p className="text-sm text-gray-400">{pageInfo.subtitle}</p>
                 </div>
 
                 <div className="flex items-center space-x-4">
+                    {/* Client Selector - Only show on relevant pages */}
+                    {!['team', 'clients', 'settings', 'profile'].includes(currentPage) && (
+                        <ClientSelector
+                            dropdownOpen={clientDropdownOpen}
+                            setDropdownOpen={setClientDropdownOpen}
+                            onOutsideClick={onOutsideClick}
+                        />
+                    )}
+
                     {/* Subscription Status */}
                     <div className={`px-3 py-1 rounded text-sm font-medium ${subscriptionDisplay.className}`}>
                         {subscriptionDisplay.text}
@@ -120,10 +178,10 @@ const Header = () => {
                         {/* Dropdown Menu */}
                         {dropdownOpen && (
                             <>
-                                {/* Backdrop */}
+                                {/* Backdrop - Closes on outside click */}
                                 <div
                                     className="fixed inset-0 z-10"
-                                    onClick={() => setDropdownOpen(false)}
+                                    onClick={onOutsideClick}
                                 />
 
                                 {/* Dropdown Content */}
@@ -135,15 +193,15 @@ const Header = () => {
                                         </div>
 
                                         <button
-                                            onClick={() => handleNavigation('settings')}
+                                            onClick={() => handleNavigation('profile')}
                                             className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
                                         >
                                             <User size={16} />
-                                            <span>Account Settings</span>
+                                            <span>My Settings</span>
                                         </button>
 
                                         <button
-                                            onClick={() => handleNavigation('settings', 'preferences')}
+                                            onClick={() => handleNavigation('profile', 'preferences')}
                                             className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
                                         >
                                             <Settings size={16} />

@@ -1,6 +1,7 @@
 ﻿import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ClientProvider } from './contexts/ClientContext';  // ADD THIS IMPORT
 import { LayoutProvider } from './contexts/LayoutContext';
 import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -144,9 +145,11 @@ const AppContent = () => {
 const App = () => {
     return (
         <AuthProvider>
-            <Router>
-                <AppContent />
-            </Router>
+            <ClientProvider>  {/* ADD THIS WRAPPER */}
+                <Router>
+                    <AppContent />
+                </Router>
+            </ClientProvider>  {/* ADD THIS CLOSING TAG */}
         </AuthProvider>
     );
 };

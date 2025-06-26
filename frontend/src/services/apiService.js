@@ -468,6 +468,103 @@ export const apiUtils = {
         }
     }
 };
+export const clientApi = {
+    getClients: async () => {
+        try {
+            console.log('[clientApi] Getting clients...');
+            const response = await apiClient.get('/client');
+            console.log('[clientApi] Clients response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[clientApi] getClients error:', error);
+            throw error;
+        }
+    },
+
+    getClient: async (clientId) => {
+        try {
+            console.log('[clientApi] Getting client:', clientId);
+            const response = await apiClient.get(`/client/${clientId}`);
+            console.log('[clientApi] Client response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[clientApi] getClient error:', error);
+            throw error;
+        }
+    },
+
+    createClient: async (clientData) => {
+        try {
+            console.log('[clientApi] Creating client:', clientData);
+
+            // Transform to match backend CreateClientRequest model (PascalCase)
+            const requestData = {
+                Name: clientData.name,
+                Description: clientData.description || "",
+                ContactEmail: clientData.contactEmail || "",
+                ContactPhone: clientData.contactPhone || "",
+                Address: clientData.address || "",
+                Industry: clientData.industry || "",
+                IsActive: clientData.isActive !== false // Default to true
+            };
+
+            const response = await apiClient.post('/client', requestData);
+            console.log('[clientApi] Create client response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[clientApi] createClient error:', error);
+            throw error;
+        }
+    },
+
+    updateClient: async (clientId, clientData) => {
+        try {
+            console.log('[clientApi] Updating client:', { clientId, clientData });
+
+            // Transform to match backend UpdateClientRequest model (PascalCase)
+            const requestData = {
+                Name: clientData.name,
+                Description: clientData.description || "",
+                ContactEmail: clientData.contactEmail || "",
+                ContactPhone: clientData.contactPhone || "",
+                Address: clientData.address || "",
+                Industry: clientData.industry || "",
+                IsActive: clientData.isActive !== false
+            };
+
+            const response = await apiClient.put(`/client/${clientId}`, requestData);
+            console.log('[clientApi] Update client response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[clientApi] updateClient error:', error);
+            throw error;
+        }
+    },
+
+    deleteClient: async (clientId) => {
+        try {
+            console.log('[clientApi] Deleting client:', clientId);
+            const response = await apiClient.delete(`/client/${clientId}`);
+            console.log('[clientApi] Delete client response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[clientApi] deleteClient error:', error);
+            throw error;
+        }
+    },
+
+    getClientStats: async (clientId) => {
+        try {
+            console.log('[clientApi] Getting client stats:', clientId);
+            const response = await apiClient.get(`/client/${clientId}/stats`);
+            console.log('[clientApi] Client stats response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[clientApi] getClientStats error:', error);
+            throw error;
+        }
+    }
+};
 
 // Default export
 export default {
@@ -477,6 +574,7 @@ export default {
     assessmentApi,
     assessmentsApi,
     azureEnvironmentsApi,
+    clientApi,  // Add this line
     testApi,
     apiUtils,
     apiClient
