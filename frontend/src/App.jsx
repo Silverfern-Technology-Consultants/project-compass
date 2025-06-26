@@ -11,13 +11,16 @@ import AssessmentsPage from './components/pages/AssessmentsPage';
 import LoginPage from './components/pages/LoginPage';
 import RegisterPage from './components/pages/RegisterPage';
 import VerifyEmailPage from './components/pages/VerifyEmailPage';
-import AcceptInvitePage from './components/pages/AcceptInvitePage'; // NEW IMPORT
+import AcceptInvitePage from './components/pages/AcceptInvitePage';
 // Other page components
 import ReportsPage from './components/pages/ReportsPage';
 import TeamManagementPage from './components/pages/TeamManagementPage';
 import CompliancePage from './components/pages/CompliancePage';
 import SettingsPage from './components/pages/SettingsPage';
 import ProfilePage from './components/pages/ProfilePage';
+// New Company pages
+import MyClientsPage from './components/pages/MyClientsPage';
+import CompanySettingsPage from './components/pages/CompanySettingsPage';
 // Landing page
 import LandingPage from './LandingPage';
 // MFA Components
@@ -32,10 +35,18 @@ const AuthenticatedRoutes = () => {
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/assessments" element={<AssessmentsPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
-                    <Route path="/team" element={<TeamManagementPage />} />
                     <Route path="/compliance" element={<CompliancePage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/profile" element={<ProfilePage />} />
+
+                    {/* Company routes */}
+                    <Route path="/company/clients" element={<MyClientsPage />} />
+                    <Route path="/company/team" element={<TeamManagementPage />} />
+                    <Route path="/company/settings" element={<CompanySettingsPage />} />
+
+                    {/* Legacy team route redirect */}
+                    <Route path="/team" element={<Navigate to="/company/team" replace />} />
+
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Routes>
@@ -82,7 +93,7 @@ const AppContent = () => {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/verify-email" element={<VerifyEmailPage />} />
-                <Route path="/accept-invite" element={<AcceptInvitePage />} /> {/* NEW ROUTE */}
+                <Route path="/accept-invite" element={<AcceptInvitePage />} />
 
                 {/* Protected routes */}
                 <Route

@@ -13,7 +13,9 @@ import {
     User,
     LogOut,
     Moon,
-    Sun
+    Sun,
+    Building2,
+    UserCheck
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLayout } from '../../contexts/LayoutContext';
@@ -23,6 +25,7 @@ const Sidebar = ({ currentPage }) => {
     const { user, logout } = useAuth();
     const { sidebarOpen, toggleSidebar } = useLayout();
     const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(true);
     const [activeTooltip, setActiveTooltip] = useState(null);
     const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
@@ -32,13 +35,17 @@ const Sidebar = ({ currentPage }) => {
         { id: 'assessments', label: 'Assessments', icon: FileText, path: '/app/assessments' },
         { id: 'reports', label: 'Reports', icon: BarChart3, path: '/app/reports' },
         { id: 'compliance', label: 'Compliance', icon: Shield, path: '/app/compliance' },
-        { id: 'team', label: 'Team', icon: Users, path: '/app/team' },
-        { id: 'settings', label: 'Settings', icon: Settings, path: '/app/settings' },
+        { id: 'settings', label: 'My Settings', icon: Settings, path: '/app/settings' },
+    ];
+
+    const companyMenuItems = [
+        { id: 'clients', label: 'My Clients', icon: Building2, path: '/app/company/clients' },
+        { id: 'team', label: 'My Team', icon: Users, path: '/app/company/team' },
+        { id: 'company-settings', label: 'Company Settings', icon: Settings, path: '/app/company/settings' },
     ];
 
     const getUserInitials = () => {
         if (!user) return 'U';
-        // Use PascalCase properties
         const firstName = user.FirstName || '';
         const lastName = user.LastName || '';
         return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
@@ -46,7 +53,6 @@ const Sidebar = ({ currentPage }) => {
 
     const getUserDisplayName = () => {
         if (!user) return 'User';
-        // Use PascalCase properties
         const firstName = user.FirstName || '';
         const lastName = user.LastName || '';
         return `${firstName} ${lastName}`.trim() || user.Email || 'User';
@@ -54,7 +60,6 @@ const Sidebar = ({ currentPage }) => {
 
     const getUserRole = () => {
         if (!user) return 'User';
-        // Use PascalCase property
         const subscriptionStatus = user.SubscriptionStatus;
         if (subscriptionStatus === 'Active') return 'Admin';
         if (subscriptionStatus === 'Trial') return 'Trial User';
@@ -68,7 +73,6 @@ const Sidebar = ({ currentPage }) => {
 
     const handleNavigation = (path, settingsTab = null) => {
         setUserMenuOpen(false);
-        // Store the settings tab for SettingsPage to read
         if (path.includes('settings') && settingsTab) {
             localStorage.setItem('settingsTab', settingsTab);
         }
@@ -80,7 +84,7 @@ const Sidebar = ({ currentPage }) => {
             const rect = event.currentTarget.getBoundingClientRect();
             setTooltipPosition({
                 top: rect.top + rect.height / 2,
-                left: 84 // 80px sidebar + 4px gap
+                left: 84
             });
             setActiveTooltip(label);
         }
@@ -93,6 +97,16 @@ const Sidebar = ({ currentPage }) => {
     const toggleDarkMode = () => {
         setIsDarkMode(!isDarkMode);
         console.log('Dark mode toggled:', !isDarkMode);
+    };
+
+    const isCompanyPageActive = () => {
+        return companyMenuItems.some(item => currentPage === item.id);
+    };
+
+    const getOrganizationName = () => {
+        // Try multiple possible sources for organization name
+        const orgName = user?.companyName || user?.CompanyName || user?.organizationName || user?.OrganizationName;
+        return orgName || 'My Company'; // Fallback to 'My Company' if no name found
     };
 
     return (
@@ -121,6 +135,7 @@ const Sidebar = ({ currentPage }) => {
                 {/* Navigation */}
                 <nav className="flex-1 p-4 overflow-y-auto">
                     <ul className="space-y-2">
+                        {/* Main menu items */}
                         {menuItems.map((item) => (
                             <li key={item.id} className="relative">
                                 <div className="relative">
@@ -139,6 +154,85 @@ const Sidebar = ({ currentPage }) => {
                                 </div>
                             </li>
                         ))}
+
+                        {/* My Company Section */}
+                        <li className="relative">
+                            {sidebarOpen ? (
+                                /* Expanded Company Menu */
+                                <div>
+                                    <button
+                                        onClick={() => setCompanyMenuOpen(!companyMenuOpen)}
+                                        className={`w-full flex items-center space-x-3 px-3 py-4 rounded transition-colors ${isCompanyPageActive() ? 'bg-yellow-600 text-black' : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                                            }`}
+                                    >
+                                        <Building2 size={20} />
+                                        <span className="flex-1 text-left">{getOrganizationName()}</span>
+                                        <ChevronDown
+                                            size={16}
+                                            className={`transition-transform ${companyMenuOpen ? 'rotate-180' : ''}`}
+                                        />
+                                    </button>
+
+                                    {/* Company Submenu */}
+                                    {companyMenuOpen && (
+                                        <ul className="mt-2 ml-6 space-y-1 border-l border-gray-700 pl-4">
+                                            {companyMenuItems.map((item) => (
+                                                <li key={item.id}>
+                                                    <button
+                                                        onClick={() => handleNavigation(item.path)}
+                                                        className={`w-full flex items-center space-x-3 px-3 py-2 rounded transition-colors ${currentPage === item.id
+                                                                ? 'bg-yellow-600 text-black'
+                                                                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                                                            }`}
+                                                    >
+                                                        <item.icon size={16} />
+                                                        <span className="text-sm">{item.label}</span>
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            ) : (
+                                /* Collapsed Company Menu */
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setCompanyMenuOpen(!companyMenuOpen)}
+                                        onMouseEnter={(e) => handleTooltipShow(e, getOrganizationName())}
+                                        onMouseLeave={handleTooltipHide}
+                                        className={`w-full flex justify-center px-2 py-4 rounded transition-colors ${isCompanyPageActive() ? 'bg-yellow-600 text-black' : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                                            }`}
+                                    >
+                                        <Building2 size={26} />
+                                    </button>
+
+                                    {/* Collapsed Company Submenu */}
+                                    {companyMenuOpen && (
+                                        <div className="absolute left-full top-0 ml-2 w-48 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50">
+                                            <div className="py-1">
+                                                <div className="px-3 py-2 border-b border-gray-700">
+                                                    <p className="text-xs font-medium text-white">{getOrganizationName()}</p>
+                                                </div>
+                                                {companyMenuItems.map((item) => (
+                                                    <button
+                                                        key={item.id}
+                                                        onClick={() => {
+                                                            handleNavigation(item.path);
+                                                            setCompanyMenuOpen(false);
+                                                        }}
+                                                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-700 flex items-center space-x-2 ${currentPage === item.id ? 'text-yellow-400 bg-gray-700' : 'text-gray-300 hover:text-white'
+                                                            }`}
+                                                    >
+                                                        <item.icon size={14} />
+                                                        <span>{item.label}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </li>
                     </ul>
                 </nav>
 
