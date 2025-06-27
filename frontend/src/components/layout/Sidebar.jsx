@@ -73,6 +73,7 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
 
     const handleNavigation = (path, settingsTab = null) => {
         setUserMenuOpen(false);
+        setCompanyMenuOpen(false); // Close company menu too
         if (path.includes('settings') && settingsTab) {
             localStorage.setItem('settingsTab', settingsTab);
         }
@@ -96,7 +97,6 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
 
     const toggleDarkMode = () => {
         setIsDarkMode(!isDarkMode);
-        console.log('Dark mode toggled:', !isDarkMode);
     };
 
     const isCompanyPageActive = () => {
@@ -117,26 +117,32 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
         }
     };
 
+    // Close dropdowns when sidebar toggle state changes
+    useEffect(() => {
+        setUserMenuOpen(false);
+        setCompanyMenuOpen(false);
+    }, [sidebarOpen]);
+
     return (
         <>
             <div
-                className={`bg-gray-900 border-r border-gray-800 transition-all duration-300 ${sidebarOpen ? 'w-64' : 'w-20'} flex flex-col fixed left-0 top-0 h-screen z-40`}
+                className={`bg-gray-900 border-r border-gray-800 transition-all duration-300 ${sidebarOpen ? 'w-64' : 'w-20'} flex flex-col fixed left-0 top-0 h-screen z-40 overflow-hidden`}
                 onClick={handleSidebarClick}
             >
                 {/* Header */}
-                <div className="p-4 border-b border-gray-800">
+                <div className="p-4 border-b border-gray-800 flex-shrink-0">
                     <div className="flex items-center justify-between">
                         {sidebarOpen && (
-                            <div className="flex items-center space-x-3">
-                                <div className="w-8 h-8 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded flex items-center justify-center">
+                            <div className="flex items-center space-x-3 min-w-0">
+                                <div className="w-8 h-8 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded flex items-center justify-center flex-shrink-0">
                                     <span className="text-black font-bold text-sm">C</span>
                                 </div>
-                                <span className="text-white font-semibold">Compass</span>
+                                <span className="text-white font-semibold truncate">Compass</span>
                             </div>
                         )}
                         <button
                             onClick={toggleSidebar}
-                            className="p-1 rounded hover:bg-gray-800 text-gray-400 hover:text-white"
+                            className="p-1 rounded hover:bg-gray-800 text-gray-400 hover:text-white flex-shrink-0"
                         >
                             {sidebarOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
                         </button>
@@ -159,8 +165,8 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
                                             : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                                             }`}
                                     >
-                                        <item.icon size={sidebarOpen ? 20 : 26} />
-                                        {sidebarOpen && <span>{item.label}</span>}
+                                        <item.icon size={sidebarOpen ? 20 : 26} className="flex-shrink-0" />
+                                        {sidebarOpen && <span className="truncate">{item.label}</span>}
                                     </button>
                                 </div>
                             </li>
@@ -176,11 +182,11 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
                                         className={`w-full flex items-center space-x-3 px-3 py-4 rounded transition-colors ${isCompanyPageActive() ? 'bg-yellow-600 text-black' : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                                             }`}
                                     >
-                                        <Building2 size={20} />
-                                        <span className="flex-1 text-left">{getOrganizationName()}</span>
+                                        <Building2 size={20} className="flex-shrink-0" />
+                                        <span className="flex-1 text-left truncate">{getOrganizationName()}</span>
                                         <ChevronDown
                                             size={16}
-                                            className={`transition-transform ${companyMenuOpen ? 'rotate-180' : ''}`}
+                                            className={`transition-transform flex-shrink-0 ${companyMenuOpen ? 'rotate-180' : ''}`}
                                         />
                                     </button>
 
@@ -196,8 +202,8 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
                                                             : 'text-gray-400 hover:bg-gray-800 hover:text-white'
                                                             }`}
                                                     >
-                                                        <item.icon size={16} />
-                                                        <span className="text-sm">{item.label}</span>
+                                                        <item.icon size={16} className="flex-shrink-0" />
+                                                        <span className="text-sm truncate">{item.label}</span>
                                                     </button>
                                                 </li>
                                             ))}
@@ -217,29 +223,36 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
                                         <Building2 size={26} />
                                     </button>
 
-                                    {/* Collapsed Company Submenu */}
+                                    {/* Collapsed Company Submenu - Fixed positioning */}
                                     {companyMenuOpen && (
-                                        <div className="absolute left-full top-0 ml-2 w-48 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50">
-                                            <div className="py-1">
-                                                <div className="px-3 py-2 border-b border-gray-700">
-                                                    <p className="text-xs font-medium text-white">{getOrganizationName()}</p>
+                                        <>
+                                            {/* Backdrop */}
+                                            <div
+                                                className="fixed inset-0 z-10"
+                                                onClick={() => setCompanyMenuOpen(false)}
+                                            />
+                                            <div className="absolute left-full top-0 ml-2 w-48 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50">
+                                                <div className="py-1">
+                                                    <div className="px-3 py-2 border-b border-gray-700">
+                                                        <p className="text-xs font-medium text-white truncate">{getOrganizationName()}</p>
+                                                    </div>
+                                                    {companyMenuItems.map((item) => (
+                                                        <button
+                                                            key={item.id}
+                                                            onClick={() => {
+                                                                handleNavigation(item.path);
+                                                                setCompanyMenuOpen(false);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-700 flex items-center space-x-2 ${currentPage === item.id ? 'text-yellow-400 bg-gray-700' : 'text-gray-300 hover:text-white'
+                                                                }`}
+                                                        >
+                                                            <item.icon size={14} className="flex-shrink-0" />
+                                                            <span className="truncate">{item.label}</span>
+                                                        </button>
+                                                    ))}
                                                 </div>
-                                                {companyMenuItems.map((item) => (
-                                                    <button
-                                                        key={item.id}
-                                                        onClick={() => {
-                                                            handleNavigation(item.path);
-                                                            setCompanyMenuOpen(false);
-                                                        }}
-                                                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-700 flex items-center space-x-2 ${currentPage === item.id ? 'text-yellow-400 bg-gray-700' : 'text-gray-300 hover:text-white'
-                                                            }`}
-                                                    >
-                                                        <item.icon size={14} />
-                                                        <span>{item.label}</span>
-                                                    </button>
-                                                ))}
                                             </div>
-                                        </div>
+                                        </>
                                     )}
                                 </div>
                             )}
@@ -248,7 +261,7 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
                 </nav>
 
                 {/* User Profile Section */}
-                <div className="p-4 border-t border-gray-800">
+                <div className="p-4 border-t border-gray-800 flex-shrink-0">
                     {sidebarOpen ? (
                         /* Expanded Profile Menu */
                         <div className="relative">
@@ -256,14 +269,14 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
                                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                                 className="w-full flex items-center space-x-3 p-2 rounded hover:bg-gray-800 transition-colors"
                             >
-                                <div className="w-8 h-8 bg-yellow-600 rounded flex items-center justify-center">
+                                <div className="w-8 h-8 bg-yellow-600 rounded flex items-center justify-center flex-shrink-0">
                                     <span className="text-black font-medium text-sm">{getUserInitials()}</span>
                                 </div>
                                 <div className="flex-1 min-w-0 text-left">
                                     <p className="text-sm font-medium text-white truncate">{getUserDisplayName()}</p>
                                     <p className="text-xs text-gray-400 truncate">{getUserRole()}</p>
                                 </div>
-                                <ChevronDown size={16} className={`text-gray-400 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
+                                <ChevronDown size={16} className={`text-gray-400 transition-transform flex-shrink-0 ${userMenuOpen ? 'rotate-180' : ''}`} />
                             </button>
 
                             {/* User Submenu */}
@@ -277,32 +290,32 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
                                     <div className="absolute bottom-full left-0 right-0 mb-2 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-20">
                                         <div className="py-1">
                                             <div className="px-3 py-2 border-b border-gray-700">
-                                                <p className="text-xs font-medium text-white">{getUserDisplayName()}</p>
-                                                <p className="text-xs text-gray-400">{user?.email}</p>
+                                                <p className="text-xs font-medium text-white truncate">{getUserDisplayName()}</p>
+                                                <p className="text-xs text-gray-400 truncate">{user?.email}</p>
                                             </div>
 
                                             <button
                                                 onClick={() => handleNavigation('/app/settings')}
                                                 className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
                                             >
-                                                <User size={14} />
-                                                <span>Account Settings</span>
+                                                <User size={14} className="flex-shrink-0" />
+                                                <span className="truncate">Account Settings</span>
                                             </button>
 
                                             <button
                                                 onClick={() => handleNavigation('/app/settings', 'preferences')}
                                                 className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
                                             >
-                                                <Settings size={14} />
-                                                <span>Preferences</span>
+                                                <Settings size={14} className="flex-shrink-0" />
+                                                <span className="truncate">Preferences</span>
                                             </button>
 
                                             <button
                                                 onClick={toggleDarkMode}
                                                 className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
                                             >
-                                                {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
-                                                <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
+                                                {isDarkMode ? <Sun size={14} className="flex-shrink-0" /> : <Moon size={14} className="flex-shrink-0" />}
+                                                <span className="truncate">{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
                                             </button>
 
                                             <div className="border-t border-gray-700 mt-1 pt-1">
@@ -310,8 +323,8 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
                                                     onClick={handleLogout}
                                                     className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-gray-700 hover:text-red-300 flex items-center space-x-2"
                                                 >
-                                                    <LogOut size={14} />
-                                                    <span>Sign Out</span>
+                                                    <LogOut size={14} className="flex-shrink-0" />
+                                                    <span className="truncate">Sign Out</span>
                                                 </button>
                                             </div>
                                         </div>
@@ -335,7 +348,7 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
                                 </button>
                             </div>
 
-                            {/* Collapsed User Submenu */}
+                            {/* Collapsed User Submenu - Positioned over main content */}
                             {userMenuOpen && (
                                 <>
                                     {/* Backdrop for collapsed sidebar user menu */}
@@ -343,35 +356,35 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
                                         className="fixed inset-0 z-10"
                                         onClick={() => setUserMenuOpen(false)}
                                     />
-                                    <div className="absolute bottom-full left-0 mb-2 w-48 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50">
+                                    <div className="fixed bottom-20 left-24 w-48 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50">
                                         <div className="py-1">
                                             <div className="px-3 py-2 border-b border-gray-700">
-                                                <p className="text-xs font-medium text-white">{getUserDisplayName()}</p>
-                                                <p className="text-xs text-gray-400">{user?.email}</p>
+                                                <p className="text-xs font-medium text-white truncate">{getUserDisplayName()}</p>
+                                                <p className="text-xs text-gray-400 truncate">{user?.email}</p>
                                             </div>
 
                                             <button
                                                 onClick={() => handleNavigation('/app/settings')}
                                                 className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
                                             >
-                                                <User size={14} />
-                                                <span>Account Settings</span>
+                                                <User size={14} className="flex-shrink-0" />
+                                                <span className="truncate">Account Settings</span>
                                             </button>
 
                                             <button
                                                 onClick={() => handleNavigation('/app/settings', 'preferences')}
                                                 className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
                                             >
-                                                <Settings size={14} />
-                                                <span>Preferences</span>
+                                                <Settings size={14} className="flex-shrink-0" />
+                                                <span className="truncate">Preferences</span>
                                             </button>
 
                                             <button
                                                 onClick={toggleDarkMode}
                                                 className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
                                             >
-                                                {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
-                                                <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
+                                                {isDarkMode ? <Sun size={14} className="flex-shrink-0" /> : <Moon size={14} className="flex-shrink-0" />}
+                                                <span className="truncate">{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
                                             </button>
 
                                             <div className="border-t border-gray-700 mt-1 pt-1">
@@ -379,8 +392,8 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
                                                     onClick={handleLogout}
                                                     className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-gray-700 hover:text-red-300 flex items-center space-x-2"
                                                 >
-                                                    <LogOut size={14} />
-                                                    <span>Sign Out</span>
+                                                    <LogOut size={14} className="flex-shrink-0" />
+                                                    <span className="truncate">Sign Out</span>
                                                 </button>
                                             </div>
                                         </div>

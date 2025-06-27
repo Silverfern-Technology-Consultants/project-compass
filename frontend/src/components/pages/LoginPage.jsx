@@ -13,7 +13,6 @@ const LoginPage = () => {
     // Watch for authentication changes and navigate when complete
     useEffect(() => {
         if (isAuthenticated && !mfaRequired && !mfaSetupRequired) {
-            console.log('[LoginPage] Authentication completed, navigating to dashboard');
             navigate('/app/dashboard');
         }
     }, [isAuthenticated, mfaRequired, mfaSetupRequired, navigate]);
@@ -27,11 +26,9 @@ const LoginPage = () => {
             const result = await login(email, password);
 
             // Debug: Log the full login result
-            console.log('[LoginPage] Full login result:', result);
 
             // Handle email verification requirement
             if (result.requiresEmailVerification || (result.customer && !result.customer.emailVerified)) {
-                console.log('[LoginPage] Email verification required');
                 navigate('/verify-email', { state: { email, fromLogin: true } });
                 setIsLoading(false);
                 return;
@@ -39,14 +36,12 @@ const LoginPage = () => {
 
             // Handle MFA requirements - modals will be shown automatically by App.jsx
             if (result.requiresMfa) {
-                console.log('[LoginPage] MFA verification required - waiting for modal completion');
                 // MFA modal will show, don't navigate yet - useEffect will handle navigation when auth completes
                 setIsLoading(false);
                 return;
             }
 
             if (result.requiresMfaSetup) {
-                console.log('[LoginPage] MFA setup required - waiting for setup completion');
                 // MFA setup modal will show, don't navigate yet - useEffect will handle navigation when setup completes
                 setIsLoading(false);
                 return;
@@ -54,7 +49,6 @@ const LoginPage = () => {
 
             // Normal login without MFA - check if user is properly authenticated
             if (result.success || result.token || result.customer) {
-                console.log('[LoginPage] Login successful, navigating to dashboard');
                 navigate('/app/dashboard');
             } else {
                 console.warn('[LoginPage] Unexpected login result format:', result);

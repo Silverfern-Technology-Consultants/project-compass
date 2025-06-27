@@ -52,13 +52,21 @@ public class ClientController : ControllerBase
             {
                 // Get client statistics
                 var assessmentCount = await _context.Assessments
-                    .CountAsync(a => a.ClientId == client.ClientId);
+                .CountAsync(a => a.ClientId == client.ClientId);
 
                 var environmentCount = await _context.AzureEnvironments
                     .CountAsync(e => e.ClientId == client.ClientId);
 
-                var subscriptionCount = await _context.Subscriptions
-                    .CountAsync(s => s.ClientId == client.ClientId);
+                // Count Azure subscription IDs from environments (stored as JSON string)
+                var subscriptionCount = 0;
+                var clientEnvironments = await _context.AzureEnvironments
+                    .Where(e => e.ClientId == client.ClientId)
+                    .ToListAsync();
+
+                foreach (var environment in clientEnvironments)
+                {
+                    subscriptionCount += environment.SubscriptionIds?.Count ?? 0;
+                }
 
                 clientSummaries.Add(new ClientSummaryDto
                 {
@@ -122,17 +130,20 @@ public class ClientController : ControllerBase
 
             // Get detailed statistics
             var assessments = await _context.Assessments
-                .Where(a => a.ClientId == clientId)
-                .Include(a => a.Customer)
-                .ToListAsync();
+            .Where(a => a.ClientId == clientId)
+            .Include(a => a.Customer)
+            .ToListAsync();
 
             var environments = await _context.AzureEnvironments
                 .Where(e => e.ClientId == clientId)
                 .ToListAsync();
 
-            var subscriptions = await _context.Subscriptions
-                .Where(s => s.ClientId == clientId)
-                .ToListAsync();
+            // Count Azure subscription IDs from environments
+            var subscriptionCount = 0;
+            foreach (var environment in environments)
+            {
+                subscriptionCount += environment.SubscriptionIds?.Count ?? 0;
+            }
 
             var clientAccess = await _clientRepository.GetClientAccessUsersAsync(clientId);
 
@@ -161,7 +172,7 @@ public class ClientController : ControllerBase
                 TotalAssessments = assessments.Count,
                 CompletedAssessments = assessments.Count(a => a.Status == "Completed"),
                 TotalEnvironments = environments.Count,
-                TotalSubscriptions = subscriptions.Count,
+                TotalSubscriptions = subscriptionCount,
 
                 // Recent activity
                 RecentAssessments = assessments

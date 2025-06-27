@@ -22,8 +22,6 @@ const extractUserFromJWT = (token) => {
     const decoded = decodeJWT(token);
     if (!decoded) return null;
 
-    console.log('[Auth] Decoded JWT claims:', decoded);
-
     return {
         customerId: decoded.nameid || decoded.sub,
         email: decoded.email,
@@ -137,14 +135,12 @@ export const AuthProvider = ({ children }) => {
 
             if (token) {
                 try {
-                    console.log('[Auth] Initializing with stored token');
 
                     // Set token in API service first
                     AuthApi.setAuthToken(token);
 
                     // Extract user data from JWT token first
                     const userFromJWT = extractUserFromJWT(token);
-                    console.log('[Auth] User data from JWT:', userFromJWT);
 
                     if (userFromJWT) {
                         dispatch({ type: 'SET_TOKEN', payload: token });
@@ -153,9 +149,7 @@ export const AuthProvider = ({ children }) => {
 
                     // Try to verify token and get additional user info from backend
                     try {
-                        console.log('[Auth] Verifying token with backend');
                         const userResponse = await AuthApi.getCurrentUser();
-                        console.log('[Auth] Backend user response:', userResponse);
 
                         // Merge JWT data with backend response, preferring backend data (keeping PascalCase)
                         const mergedUser = {
@@ -167,7 +161,6 @@ export const AuthProvider = ({ children }) => {
                             OrganizationId: userResponse.OrganizationId || userFromJWT?.organizationId
                         };
 
-                        console.log('[Auth] Merged user data:', mergedUser);
                         dispatch({ type: 'SET_USER', payload: mergedUser });
                     } catch (backendError) {
                         console.warn('[Auth] Backend verification failed, using JWT data only:', backendError);
@@ -190,7 +183,6 @@ export const AuthProvider = ({ children }) => {
                     dispatch({ type: 'LOGOUT' });
                 }
             } else {
-                console.log('[Auth] No stored token found');
                 dispatch({ type: 'SET_LOADING', payload: false });
             }
         };
@@ -206,10 +198,9 @@ export const AuthProvider = ({ children }) => {
 
         try {
             dispatch({ type: 'SET_VALIDATION_CHECKING', payload: true });
-            console.log('[Auth] Validating current user exists...');
+
 
             const userResponse = await AuthApi.getCurrentUser();
-            console.log('[Auth] User validation successful:', userResponse.email);
 
             dispatch({ type: 'SET_VALIDATION_CHECKING', payload: false });
             return true;
@@ -219,7 +210,6 @@ export const AuthProvider = ({ children }) => {
 
             // If user doesn't exist (404) or unauthorized (401), log them out
             if (error.response?.status === 404 || error.response?.status === 401) {
-                console.log('[Auth] User no longer exists or unauthorized - logging out');
                 logout();
                 return false;
             }
@@ -235,7 +225,6 @@ export const AuthProvider = ({ children }) => {
         const handleVisibilityChange = () => {
             // When user returns to the tab, validate they still exist
             if (document.visibilityState === 'visible' && state.isAuthenticated) {
-                console.log('[Auth] Page became visible, validating user...');
                 validateCurrentUser();
             }
         };
@@ -243,7 +232,7 @@ export const AuthProvider = ({ children }) => {
         const handleFocus = () => {
             // When window gets focus, validate user
             if (state.isAuthenticated) {
-                console.log('[Auth] Window focused, validating user...');
+
                 validateCurrentUser();
             }
         };
@@ -258,14 +247,12 @@ export const AuthProvider = ({ children }) => {
     }, [state.isAuthenticated, state.token]);
 
     const login = async (email, password) => {
-        console.log('[Auth] Starting login process for:', email);
 
         dispatch({ type: 'SET_LOADING', payload: true });
         dispatch({ type: 'CLEAR_ERROR' });
 
         try {
             const response = await AuthApi.login(email, password);
-            console.log('[Auth] Login API response:', response);
 
             // Handle different response structures
             const customer = response.customer || response.user || response;
@@ -276,13 +263,11 @@ export const AuthProvider = ({ children }) => {
                 const emailVerifiedFromToken = getEmailVerifiedFromToken(token);
                 if (emailVerifiedFromToken !== null) {
                     customer.emailVerified = emailVerifiedFromToken;
-                    console.log('[Auth] Email verified status from JWT token:', customer.emailVerified);
                 }
             }
 
             // Check email verification status
             if (customer && customer.emailVerified === false) {
-                console.log('[Auth] Email verification required for user');
                 dispatch({ type: 'SET_LOADING', payload: false });
                 return {
                     requiresEmailVerification: true,
@@ -293,7 +278,6 @@ export const AuthProvider = ({ children }) => {
 
             // Handle MFA requirements
             if (response.requiresMfa) {
-                console.log('[Auth] MFA verification required');
                 // Store login credentials for MFA verification
                 dispatch({ type: 'SET_PENDING_LOGIN', payload: { email, password } });
                 dispatch({ type: 'SET_MFA_REQUIRED', payload: true });
@@ -301,7 +285,6 @@ export const AuthProvider = ({ children }) => {
             }
 
             if (response.requiresMfaSetup) {
-                console.log('[Auth] MFA setup required');
                 // Store temporary token for MFA setup
                 if (token) {
                     AuthApi.setAuthToken(token);
@@ -322,7 +305,6 @@ export const AuthProvider = ({ children }) => {
                 throw new Error('Invalid response from server - missing authentication data');
             }
 
-            console.log('[Auth] Login successful, storing token and user data');
 
             // Extract user data from JWT and merge with customer data
             const userFromJWT = extractUserFromJWT(token);
@@ -335,7 +317,6 @@ export const AuthProvider = ({ children }) => {
                 organizationId: customer.organizationId || userFromJWT?.organizationId
             };
 
-            console.log('[Auth] Final user object:', mergedUser);
 
             // Store token
             localStorage.setItem('compass_token', token);
@@ -344,7 +325,6 @@ export const AuthProvider = ({ children }) => {
             // Update state
             dispatch({ type: 'LOGIN_SUCCESS', payload: { user: mergedUser, token } });
 
-            console.log('[Auth] Login completed successfully');
             return { success: true, customer: mergedUser, token };
         } catch (error) {
             console.error('[Auth] Login failed:', error);
@@ -357,7 +337,6 @@ export const AuthProvider = ({ children }) => {
     };
 
     const verifyMfa = async (mfaCode, isBackupCode = false) => {
-        console.log('[Auth] Verifying MFA code');
         dispatch({ type: 'SET_LOADING', payload: true });
         dispatch({ type: 'CLEAR_ERROR' });
 
@@ -369,8 +348,6 @@ export const AuthProvider = ({ children }) => {
 
             // Call login again with MFA code
             const response = await AuthApi.login(email, password, mfaCode, isBackupCode);
-            console.log('[Auth] MFA verification response:', response);
-
             const { success, token, customer } = response;
 
             if (!success || !token || !customer) {
@@ -388,7 +365,6 @@ export const AuthProvider = ({ children }) => {
             // Update state
             dispatch({ type: 'LOGIN_SUCCESS', payload: { user: mergedUser, token } });
 
-            console.log('[Auth] MFA verification completed successfully');
             return { success: true, customer: mergedUser, token };
         } catch (error) {
             console.error('[Auth] MFA verification failed:', error);
@@ -399,7 +375,6 @@ export const AuthProvider = ({ children }) => {
     };
 
     const completeMfaVerification = (response) => {
-        console.log('[Auth] Completing MFA verification');
         if (response.token) {
             localStorage.setItem('compass_token', response.token);
             AuthApi.setAuthToken(response.token);
@@ -415,7 +390,6 @@ export const AuthProvider = ({ children }) => {
     };
 
     const completeMfaSetup = () => {
-        console.log('[Auth] Completing MFA setup');
         dispatch({ type: 'SET_MFA_SETUP_REQUIRED', payload: false });
         // User is already logged in with the temp token
     };
@@ -439,7 +413,6 @@ export const AuthProvider = ({ children }) => {
     };
 
     const logout = () => {
-        console.log('[Auth] Logging out user');
         localStorage.removeItem('compass_token');
         AuthApi.setAuthToken(null);
         dispatch({ type: 'LOGOUT' });

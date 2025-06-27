@@ -15,7 +15,6 @@ const MfaSetupModal = ({ isOpen, onClose, onSetupComplete }) => {
             setLoading(true);
             setError('');
             const data = await setupMfa();
-            console.log('[MfaSetupModal] Setup data received:', data);
             setSetupData(data);
         } catch (err) {
             setError(err.message);
@@ -121,7 +120,6 @@ const MfaSetupModal = ({ isOpen, onClose, onSetupComplete }) => {
                                         setError('Failed to load QR code image');
                                     }}
                                     onLoad={() => {
-                                        console.log('[MfaSetupModal] QR Code loaded successfully');
                                     }}
                                 />
                                 <p className="text-xs text-gray-400 text-center">

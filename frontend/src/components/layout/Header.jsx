@@ -128,7 +128,6 @@ const Header = ({ dropdownOpen, setDropdownOpen, clientDropdownOpen, setClientDr
 
     const toggleDarkMode = () => {
         setIsDarkMode(!isDarkMode);
-        console.log('Dark mode toggled:', !isDarkMode);
     };
 
     const subscriptionDisplay = getSubscriptionDisplay();
@@ -139,11 +138,13 @@ const Header = ({ dropdownOpen, setDropdownOpen, clientDropdownOpen, setClientDr
                 }`}
         >
             <div className="flex items-center justify-between">
+                {/* Page Title Section - Simplified since breadcrumbs will show navigation */}
                 <div className="flex-1">
                     <h1 className="text-xl font-semibold text-white">{pageInfo.title}</h1>
                     <p className="text-sm text-gray-400">{pageInfo.subtitle}</p>
                 </div>
 
+                {/* Right Side Controls */}
                 <div className="flex items-center space-x-4">
                     {/* Client Selector - Only show on relevant pages */}
                     {!['team', 'clients', 'settings', 'profile'].includes(currentPage) && (
@@ -154,8 +155,8 @@ const Header = ({ dropdownOpen, setDropdownOpen, clientDropdownOpen, setClientDr
                         />
                     )}
 
-                    {/* Subscription Status */}
-                    <div className={`px-3 py-1 rounded text-sm font-medium ${subscriptionDisplay.className}`}>
+                    {/* Subscription Status Badge */}
+                    <div className={`px-2 py-1 rounded text-xs font-medium ${subscriptionDisplay.className}`}>
                         {subscriptionDisplay.text}
                     </div>
 
@@ -163,16 +164,16 @@ const Header = ({ dropdownOpen, setDropdownOpen, clientDropdownOpen, setClientDr
                     <div className="relative">
                         <button
                             onClick={() => setDropdownOpen(!dropdownOpen)}
-                            className="flex items-center space-x-3 p-2 rounded hover:bg-gray-800 text-gray-300 hover:text-white transition-colors"
+                            className="flex items-center space-x-2 p-2 rounded hover:bg-gray-800 text-gray-300 hover:text-white transition-colors"
                         >
-                            <div className="w-8 h-8 bg-yellow-600 rounded flex items-center justify-center">
-                                <span className="text-black font-medium text-sm">{getUserInitials()}</span>
+                            <div className="w-7 h-7 bg-yellow-600 rounded flex items-center justify-center">
+                                <span className="text-black font-medium text-xs">{getUserInitials()}</span>
                             </div>
                             <div className="hidden md:block text-left">
-                                <p className="text-sm font-medium text-white">{getUserDisplayName()}</p>
+                                <p className="text-xs font-medium text-white">{getUserDisplayName()}</p>
                                 <p className="text-xs text-gray-400">{user?.CompanyName || 'Company'}</p>
                             </div>
-                            <ChevronDown size={16} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+                            <ChevronDown size={14} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
                         </button>
 
                         {/* Dropdown Menu */}
@@ -193,7 +194,7 @@ const Header = ({ dropdownOpen, setDropdownOpen, clientDropdownOpen, setClientDr
                                         </div>
 
                                         <button
-                                            onClick={() => handleNavigation('profile')}
+                                            onClick={() => handleNavigation('settings')}
                                             className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
                                         >
                                             <User size={16} />
@@ -201,7 +202,7 @@ const Header = ({ dropdownOpen, setDropdownOpen, clientDropdownOpen, setClientDr
                                         </button>
 
                                         <button
-                                            onClick={() => handleNavigation('profile', 'preferences')}
+                                            onClick={() => handleNavigation('settings', 'preferences')}
                                             className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-2"
                                         >
                                             <Settings size={16} />

@@ -1,8 +1,41 @@
 ﻿import React, { useState, useEffect, useCallback } from 'react';
-import { Play, FileText, Calendar, Search, MoreVertical, Eye, Download, Trash2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Play, FileText, Calendar, Search, MoreVertical, Eye, Download, Trash2, CheckCircle, XCircle, AlertCircle, Building2 } from 'lucide-react';
 import { useAssessments, useAzureTest } from '../../hooks/useApi';
 import NewAssessmentModal from '../modals/NewAssessmentModal';
 import AssessmentDetailModal from '../modals/AssessmentDetailModal';
+import { useClient } from '../../contexts/ClientContext';
+
+// Helper function to calculate stats
+const calculateStats = (assessments, selectedClient, isInternalSelected) => {
+    // Get assessments for current context
+    let contextAssessments;
+    if (!selectedClient) {
+        contextAssessments = assessments;
+    } else if (isInternalSelected()) {
+        contextAssessments = assessments.filter(a => !a.clientId || a.clientId === 'internal');
+    } else {
+        contextAssessments = assessments.filter(a => a.clientId === selectedClient.ClientId);
+    }
+
+    const completedAssessments = contextAssessments.filter(a => a.status === 'Completed');
+    const avgScore = completedAssessments.length > 0
+        ? Math.round(completedAssessments.reduce((sum, a) => sum + (a.score || 0), 0) / completedAssessments.length)
+        : 0;
+
+    const totalIssues = contextAssessments.reduce((sum, a) => sum + (a.issuesCount || 0), 0);
+
+    const lastAssessment = contextAssessments.length > 0
+        ? contextAssessments.sort((a, b) => new Date(b.rawData?.startedDate || 0) - new Date(a.rawData?.startedDate || 0))[0]
+        : null;
+
+    return {
+        total: contextAssessments.length,
+        completed: completedAssessments.length,
+        avgScore,
+        totalIssues,
+        lastAssessmentDate: lastAssessment?.date || 'Never'
+    };
+};
 
 const AssessmentCard = ({ assessment, onView, onDelete }) => {
     const [showDropdown, setShowDropdown] = useState(false);
@@ -33,10 +66,21 @@ const AssessmentCard = ({ assessment, onView, onDelete }) => {
         return `${userEnteredName} - ${shortId}`;
     };
 
-    // Format company and type for subtitle
+    // Format company and type for subtitle - UPDATED with client context
     const formatAssessmentSubtitle = (assessment) => {
-        // Show environment info on second line
-        return `${assessment.environment} Environment`;
+        const parts = [];
+
+        // Add client information if available
+        if (assessment.clientName) {
+            parts.push(`Client: ${assessment.clientName}`);
+        } else if (assessment.clientId === 'internal' || !assessment.clientId) {
+            parts.push('Internal MSP');
+        }
+
+        // Add environment info
+        parts.push(`${assessment.environment} Environment`);
+
+        return parts.join(' • ');
     };
 
     return (
@@ -286,6 +330,7 @@ const ConnectionTestModal = ({ isOpen, onClose, subscriptionIds }) => {
 };
 
 const AssessmentsPage = () => {
+    const { selectedClient, isInternalSelected, getClientDisplayName } = useClient();
     const {
         assessments,
         loading: assessmentsLoading,
@@ -360,16 +405,62 @@ const AssessmentsPage = () => {
         };
     }, []);
 
-    const filteredAssessments = assessments.filter(assessment => {
-        const name = assessment.name || '';
-        const environment = assessment.environment || '';
-        const status = assessment.status || '';
+    // NEW: Client-aware filtering function
+    const getFilteredAssessments = () => {
+        if (!selectedClient) {
+            // No client selected - show all assessments
+            return assessments.filter(assessment => {
+                const name = assessment.name || '';
+                const environment = assessment.environment || '';
+                const status = assessment.status || '';
 
-        const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            environment.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesStatus = statusFilter === 'All' || status === statusFilter;
-        return matchesSearch && matchesStatus;
-    });
+                const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    environment.toLowerCase().includes(searchTerm.toLowerCase());
+                const matchesStatus = statusFilter === 'All' || status === statusFilter;
+                return matchesSearch && matchesStatus;
+            });
+        }
+
+        if (isInternalSelected()) {
+            // Internal selected - show assessments with no client (internal assessments)
+            return assessments.filter(assessment => {
+                const isInternalAssessment = !assessment.clientId || assessment.clientId === 'internal';
+
+                if (!isInternalAssessment) return false;
+
+                const name = assessment.name || '';
+                const environment = assessment.environment || '';
+                const status = assessment.status || '';
+
+                const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    environment.toLowerCase().includes(searchTerm.toLowerCase());
+                const matchesStatus = statusFilter === 'All' || status === statusFilter;
+                return matchesSearch && matchesStatus;
+            });
+        }
+
+        // Specific client selected - show only that client's assessments
+        return assessments.filter(assessment => {
+            const isClientAssessment = assessment.clientId === selectedClient.ClientId;
+
+            if (!isClientAssessment) return false;
+
+            const name = assessment.name || '';
+            const environment = assessment.environment || '';
+            const status = assessment.status || '';
+
+            const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                environment.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesStatus = statusFilter === 'All' || status === statusFilter;
+            return matchesSearch && matchesStatus;
+        });
+    };
+
+    // Use the new filtering function
+    const filteredAssessments = getFilteredAssessments();
+
+    // Calculate stats for current context
+    const stats = calculateStats(assessments, selectedClient, isInternalSelected);
 
     // Helper function to convert assessment type string to number (matching backend enum)
     const getAssessmentTypeNumber = (typeString) => {
@@ -383,49 +474,32 @@ const AssessmentsPage = () => {
 
     const handleStartAssessment = async (formData) => {
         try {
-            console.log('Starting assessment with form data:', formData);
-
-            // Parse subscription IDs
-            const subscriptionIds = formData.subscriptions
-                .split('\n')
-                .map(id => id.trim())
-                .filter(id => id.length > 0);
-
-            if (subscriptionIds.length === 0) {
-                alert('Please provide at least one subscription ID');
-                return;
-            }
-
-            // Transform data to match backend AssessmentRequest model
+            // Build the client-scoped assessment request matching backend model
             const assessmentRequest = {
-                customerId: '9bc034b0-852f-4618-9434-c040d13de712', // Will be set by backend anyway
-                environmentId: '00000000-0000-0000-0000-000000000000', // Mock environment ID
+                environmentId: formData.environmentId, // Environment ID from the selected environment
                 name: formData.name,
-                subscriptionIds: subscriptionIds, // Array of strings (required by backend)
-                type: getAssessmentTypeNumber(formData.type), // Convert to number
-                options: {
+                type: formData.type, // Already converted to number in NewAssessmentModal
+                options: formData.options || {
                     includeRecommendations: true
                 }
             };
 
-            console.log('Sending assessment request:', assessmentRequest);
-
-            // Test connection first
-            setTestSubscriptions(subscriptionIds);
-            setShowConnectionTest(true);
-
-            // Start the assessment using the correct API call
+            // Use the updated assessment API call
             const result = await startAssessment(assessmentRequest);
 
-            console.log('Assessment started:', result);
-
             // Close modals
-            setShowConnectionTest(false);
             setShowNewModal(false);
 
         } catch (error) {
             console.error('Failed to start assessment:', error);
-            alert(`Failed to start assessment: ${error.message}`);
+
+            // Extract meaningful error message
+            const errorMessage = error.response?.data?.message ||
+                error.response?.data?.error ||
+                error.message ||
+                'Unknown error occurred';
+
+            alert(`Failed to start assessment: ${errorMessage}`);
         }
     };
 
@@ -441,20 +515,20 @@ const AssessmentsPage = () => {
 
     const confirmDeleteAssessment = async (assessment) => {
         try {
-            const assessmentId = assessment.id || assessment.assessmentId;
-            console.log('Deleting assessment:', assessmentId);
+            // The API returns 'AssessmentId' in the JSON response
+            const assessmentId = assessment.AssessmentId || assessment.assessmentId || assessment.id;
+
+            if (!assessmentId) {
+                throw new Error('Assessment ID not found');
+            }
+
             await deleteAssessment(assessmentId);
-
-            // Show success message
-            console.log('Assessment deleted successfully');
-
-            // Optionally refresh the list (though the hook should handle this automatically)
             await refreshAssessments();
 
         } catch (error) {
             console.error('Failed to delete assessment:', error);
             alert(`Failed to delete assessment: ${error.message}`);
-            throw error; // Re-throw to let the modal handle the error state
+            throw error;
         }
     };
 
@@ -472,20 +546,98 @@ const AssessmentsPage = () => {
     }
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-white">Assessments</h1>
-                    <p className="text-gray-400">Manage and monitor your Azure governance assessments</p>
+        <div className="space-y-6 pt-6">
+            {/* Header with Stats Cards - UPDATED */}
+            <div className="space-y-4">
+                {/* Title and New Assessment Button */}
+                <div className="flex items-center justify-between">
+                    <h1 className="text-2xl font-bold text-white">
+                        Assessments {selectedClient ? `- ${getClientDisplayName()}` : ''}
+                    </h1>
+                    <button
+                        onClick={() => setShowNewModal(true)}
+                        className="flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
+                    >
+                        <Play size={16} />
+                        <span>New Assessment</span>
+                    </button>
                 </div>
-                <button
-                    onClick={() => setShowNewModal(true)}
-                    className="flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
-                >
-                    <Play size={16} />
-                    <span>New Assessment</span>
-                </button>
+
+                {/* Stats Cards Row */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-gray-900 border border-gray-800 rounded p-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm text-gray-400">Total Assessments</p>
+                                <p className="text-2xl font-bold text-white">{stats.total}</p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {stats.completed} completed
+                                </p>
+                            </div>
+                            <FileText size={24} className="text-blue-400" />
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-900 border border-gray-800 rounded p-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm text-gray-400">Average Score</p>
+                                <p className={`text-2xl font-bold ${stats.avgScore >= 90 ? 'text-green-400' :
+                                        stats.avgScore >= 70 ? 'text-yellow-400' :
+                                            stats.avgScore > 0 ? 'text-red-400' : 'text-gray-500'
+                                    }`}>
+                                    {stats.avgScore > 0 ? `${stats.avgScore}%` : 'N/A'}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {stats.completed > 0 ? `${stats.completed} assessments` : 'No data'}
+                                </p>
+                            </div>
+                            <div className={`text-2xl ${stats.avgScore >= 90 ? 'text-green-400' :
+                                    stats.avgScore >= 70 ? 'text-yellow-400' :
+                                        stats.avgScore > 0 ? 'text-red-400' : 'text-gray-500'
+                                }`}>
+                                📊
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-900 border border-gray-800 rounded p-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm text-gray-400">Active Issues</p>
+                                <p className={`text-2xl font-bold ${stats.totalIssues > 50 ? 'text-red-400' :
+                                        stats.totalIssues > 20 ? 'text-yellow-400' :
+                                            stats.totalIssues > 0 ? 'text-blue-400' : 'text-green-400'
+                                    }`}>
+                                    {stats.totalIssues}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Across all assessments
+                                </p>
+                            </div>
+                            <AlertCircle size={24} className={
+                                stats.totalIssues > 50 ? 'text-red-400' :
+                                    stats.totalIssues > 20 ? 'text-yellow-400' :
+                                        stats.totalIssues > 0 ? 'text-blue-400' : 'text-green-400'
+                            } />
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-900 border border-gray-800 rounded p-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm text-gray-400">Last Assessment</p>
+                                <p className="text-lg font-bold text-white">
+                                    {stats.lastAssessmentDate}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {stats.total > 0 ? 'Most recent' : 'No assessments yet'}
+                                </p>
+                            </div>
+                            <Calendar size={24} className="text-purple-400" />
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* Error Display */}
@@ -540,10 +692,14 @@ const AssessmentsPage = () => {
             ) : (
                 <div className="bg-gray-950 border border-gray-800 rounded p-12 text-center">
                     <FileText size={48} className="text-gray-600 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-white mb-2">No assessments found</h3>
+                    <h3 className="text-lg font-semibold text-white mb-2">
+                        {selectedClient ? `No assessments found for ${getClientDisplayName()}` : 'No assessments found'}
+                    </h3>
                     <p className="text-gray-400 mb-4">
                         {(assessments?.length || 0) === 0
-                            ? "Start your first assessment to begin monitoring Azure governance."
+                            ? selectedClient
+                                ? `Start your first assessment for ${getClientDisplayName()} to begin monitoring Azure governance.`
+                                : "Start your first assessment to begin monitoring Azure governance."
                             : "Try adjusting your search or filters."
                         }
                     </p>
@@ -551,7 +707,7 @@ const AssessmentsPage = () => {
                         onClick={() => setShowNewModal(true)}
                         className="bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
                     >
-                        Start Your First Assessment
+                        {selectedClient ? `Start Assessment for ${selectedClient.Name}` : 'Start Your First Assessment'}
                     </button>
                 </div>
             )}

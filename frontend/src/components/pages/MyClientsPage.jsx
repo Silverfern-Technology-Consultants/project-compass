@@ -1,12 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Clock, Users, Plus, AlertCircle, RefreshCw } from 'lucide-react';
+import { Building2, Plus, AlertCircle, RefreshCw, Search, Filter, Grid, List } from 'lucide-react';
 import { useClient } from '../../contexts/ClientContext';
 import { useAuth } from '../../contexts/AuthContext';
+import ClientCard from '../ui/ClientCard';
+import AddClientModal from '../modals/AddClientModal';
+import EditClientModal from '../modals/EditClientModal';
+import ManageSubscriptionsModal from '../modals/ManageSubscriptionsModal';
+import ClientDetailsModal from '../modals/ClientDetailsModal';
 
 const MyClientsPage = () => {
     const { clients, isLoading, error, loadClients } = useClient();
     const { user } = useAuth();
     const [localLoading, setLocalLoading] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterStatus, setFilterStatus] = useState('all');
+    const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [showSubscriptionsModal, setShowSubscriptionsModal] = useState(false);
+    const [showDetailsModal, setShowDetailsModal] = useState(false);
+    const [selectedClient, setSelectedClient] = useState(null);
 
     // Load clients on mount if not already loaded
     useEffect(() => {
@@ -25,11 +38,53 @@ const MyClientsPage = () => {
         }
     };
 
+    const handleAddClient = () => {
+        setShowAddModal(true);
+    };
+
+    const handleEditClient = (client) => {
+        setSelectedClient(client);
+        setShowEditModal(true);
+    };
+
+    const handleManageSubscriptions = (client) => {
+        setSelectedClient(client);
+        setShowSubscriptionsModal(true);
+    };
+
+    const handleViewDetails = (client) => {
+        setSelectedClient(client);
+        setShowDetailsModal(true);
+    };
+
+    const handleClientAdded = () => {
+        loadClients(); // Refresh the client list
+    };
+
+    const handleClientUpdated = () => {
+        loadClients(); // Refresh the client list
+    };
+
+    // Filter and search clients
+    const filteredClients = clients.filter(client => {
+        const matchesSearch = !searchTerm ||
+            client.Name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            client.Industry?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            client.ContactName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            client.ContactEmail?.toLowerCase().includes(searchTerm.toLowerCase());
+
+        const matchesFilter = filterStatus === 'all' ||
+            client.Status?.toLowerCase() === filterStatus.toLowerCase();
+
+        return matchesSearch && matchesFilter;
+    });
+
     const getClientStats = () => {
         return {
             totalClients: clients.length,
-            activeClients: clients.filter(c => c.IsActive).length,
-            inactiveClients: clients.filter(c => !c.IsActive).length
+            activeClients: clients.filter(c => c.Status?.toLowerCase() === 'active').length,
+            inactiveClients: clients.filter(c => c.Status?.toLowerCase() === 'inactive').length,
+            filteredCount: filteredClients.length
         };
     };
 
@@ -89,7 +144,12 @@ const MyClientsPage = () => {
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-white">My Clients</h1>
-                    <p className="text-gray-400">Manage your MSP clients and their assessments</p>
+                    <p className="text-gray-400">
+                        {stats.filteredCount === stats.totalClients
+                            ? `Managing ${stats.totalClients} client${stats.totalClients !== 1 ? 's' : ''}`
+                            : `Showing ${stats.filteredCount} of ${stats.totalClients} clients`
+                        }
+                    </p>
                 </div>
                 <div className="flex items-center space-x-3">
                     <button
@@ -100,7 +160,10 @@ const MyClientsPage = () => {
                         <RefreshCw size={16} className={localLoading ? 'animate-spin' : ''} />
                         <span>Refresh</span>
                     </button>
-                    <button className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-black rounded text-sm font-medium flex items-center space-x-2">
+                    <button
+                        onClick={handleAddClient}
+                        className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-black rounded text-sm font-medium flex items-center space-x-2"
+                    >
                         <Plus size={16} />
                         <span>Add Client</span>
                     </button>
@@ -108,15 +171,12 @@ const MyClientsPage = () => {
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-gray-900 border border-gray-800 rounded p-6">
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm text-gray-400">Total Clients</p>
                             <p className="text-2xl font-bold text-white">{stats.totalClients}</p>
-                            <p className="text-xs text-gray-500 mt-1">
-                                {stats.activeClients} active, {stats.inactiveClients} inactive
-                            </p>
                         </div>
                         <Building2 size={24} className="text-blue-400" />
                     </div>
@@ -125,92 +185,195 @@ const MyClientsPage = () => {
                 <div className="bg-gray-900 border border-gray-800 rounded p-6">
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="text-sm text-gray-400">Active Subscriptions</p>
-                            <p className="text-2xl font-bold text-white">-</p>
-                            <p className="text-xs text-gray-500 mt-1">Coming soon</p>
+                            <p className="text-sm text-gray-400">Active</p>
+                            <p className="text-2xl font-bold text-green-400">{stats.activeClients}</p>
                         </div>
-                        <Users size={24} className="text-green-400" />
+                        <div className="w-6 h-6 bg-green-600 rounded-full"></div>
                     </div>
                 </div>
 
                 <div className="bg-gray-900 border border-gray-800 rounded p-6">
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="text-sm text-gray-400">Recent Assessments</p>
-                            <p className="text-2xl font-bold text-white">-</p>
-                            <p className="text-xs text-gray-500 mt-1">Coming soon</p>
+                            <p className="text-sm text-gray-400">Inactive</p>
+                            <p className="text-2xl font-bold text-gray-400">{stats.inactiveClients}</p>
                         </div>
-                        <Clock size={24} className="text-yellow-400" />
+                        <div className="w-6 h-6 bg-gray-600 rounded-full"></div>
+                    </div>
+                </div>
+
+                <div className="bg-gray-900 border border-gray-800 rounded p-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-sm text-gray-400">Total Assessments</p>
+                            <p className="text-2xl font-bold text-yellow-400">
+                                {clients.reduce((sum, client) => sum + (client.AssessmentCount || 0), 0)}
+                            </p>
+                        </div>
+                        <div className="w-6 h-6 bg-yellow-600 rounded-full"></div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Search and Filter Bar */}
+            <div className="bg-gray-900 border border-gray-800 rounded p-4">
+                <div className="flex items-center justify-between space-x-4">
+                    <div className="flex items-center space-x-4 flex-1">
+                        {/* Search */}
+                        <div className="relative flex-1 max-w-md">
+                            <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="Search clients..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-600"
+                            />
+                        </div>
+
+                        {/* Status Filter */}
+                        <div className="flex items-center space-x-2">
+                            <Filter size={18} className="text-gray-400" />
+                            <select
+                                value={filterStatus}
+                                onChange={(e) => setFilterStatus(e.target.value)}
+                                className="px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-yellow-600"
+                            >
+                                <option value="all">All Status</option>
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                                <option value="pending">Pending</option>
+                                <option value="suspended">Suspended</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* View Mode Toggle */}
+                    <div className="flex items-center space-x-2 bg-gray-700 rounded p-1">
+                        <button
+                            onClick={() => setViewMode('grid')}
+                            className={`p-2 rounded transition-colors ${viewMode === 'grid'
+                                ? 'bg-yellow-600 text-black'
+                                : 'text-gray-400 hover:text-white'
+                                }`}
+                        >
+                            <Grid size={16} />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('list')}
+                            className={`p-2 rounded transition-colors ${viewMode === 'list'
+                                ? 'bg-yellow-600 text-black'
+                                : 'text-gray-400 hover:text-white'
+                                }`}
+                        >
+                            <List size={16} />
+                        </button>
                     </div>
                 </div>
             </div>
 
             {/* Client List */}
-            {clients.length === 0 ? (
+            {filteredClients.length === 0 ? (
                 <div className="bg-gray-900 border border-gray-800 rounded p-12 text-center">
                     <div className="max-w-md mx-auto">
-                        <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <Building2 size={32} className="text-white" />
-                        </div>
-
-                        <h2 className="text-xl font-semibold text-white mb-3">No Clients Yet</h2>
-                        <p className="text-gray-400 mb-6">
-                            Start by adding your first client to organize their Azure subscriptions and assessments.
-                        </p>
-
-                        <button className="px-6 py-3 bg-yellow-600 hover:bg-yellow-700 text-black rounded font-medium flex items-center space-x-2 mx-auto">
-                            <Plus size={20} />
-                            <span>Add Your First Client</span>
-                        </button>
+                        {searchTerm || filterStatus !== 'all' ? (
+                            <>
+                                <div className="w-16 h-16 bg-gray-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <Search size={32} className="text-gray-400" />
+                                </div>
+                                <h2 className="text-xl font-semibold text-white mb-3">No Clients Found</h2>
+                                <p className="text-gray-400 mb-6">
+                                    No clients match your current search criteria. Try adjusting your search terms or filters.
+                                </p>
+                                <div className="flex justify-center space-x-3">
+                                    <button
+                                        onClick={() => { setSearchTerm(''); setFilterStatus('all'); }}
+                                        className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded"
+                                    >
+                                        Clear Filters
+                                    </button>
+                                    <button
+                                        onClick={handleAddClient}
+                                        className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-black rounded font-medium"
+                                    >
+                                        Add New Client
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <Building2 size={32} className="text-white" />
+                                </div>
+                                <h2 className="text-xl font-semibold text-white mb-3">No Clients Yet</h2>
+                                <p className="text-gray-400 mb-6">
+                                    Start by adding your first client to organize their Azure subscriptions and assessments.
+                                </p>
+                                <button
+                                    onClick={handleAddClient}
+                                    className="px-6 py-3 bg-yellow-600 hover:bg-yellow-700 text-black rounded font-medium flex items-center space-x-2 mx-auto"
+                                >
+                                    <Plus size={20} />
+                                    <span>Add Your First Client</span>
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
             ) : (
-                <div className="bg-gray-900 border border-gray-800 rounded">
-                    <div className="p-6 border-b border-gray-800">
-                        <h2 className="text-lg font-semibold text-white">Client List</h2>
-                        <p className="text-sm text-gray-400">Manage your client accounts and their configurations</p>
-                    </div>
-
-                    <div className="divide-y divide-gray-800">
-                        {clients.map((client) => (
-                            <div key={client.ClientId} className="p-6 hover:bg-gray-800/50 transition-colors">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center space-x-4">
-                                        <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
-                                            <Building2 size={24} className="text-white" />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-white font-medium">{client.Name}</h3>
-                                            {client.Description && (
-                                                <p className="text-sm text-gray-400">{client.Description}</p>
-                                            )}
-                                            <div className="flex items-center space-x-4 mt-1">
-                                                {client.ContactEmail && (
-                                                    <span className="text-xs text-gray-500">{client.ContactEmail}</span>
-                                                )}
-                                                {client.Industry && (
-                                                    <span className="text-xs text-gray-500">{client.Industry}</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center space-x-3">
-                                        <div className={`px-2 py-1 rounded text-xs font-medium ${client.IsActive
-                                                ? 'bg-green-900/30 text-green-400 border border-green-800'
-                                                : 'bg-gray-900/30 text-gray-400 border border-gray-700'
-                                            }`}>
-                                            {client.IsActive ? 'Active' : 'Inactive'}
-                                        </div>
-                                        <button className="text-gray-400 hover:text-white p-2 rounded hover:bg-gray-700">
-                                            <Users size={16} />
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                <div className={
+                    viewMode === 'grid'
+                        ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6'
+                        : 'space-y-4'
+                }>
+                    {filteredClients.map((client) => (
+                        <ClientCard
+                            key={client.ClientId}
+                            client={client}
+                            onEdit={handleEditClient}
+                            onManageSubscriptions={handleManageSubscriptions}
+                            onViewDetails={handleViewDetails}
+                        />
+                    ))}
                 </div>
             )}
+
+            {/* Results Summary */}
+            {filteredClients.length > 0 && (searchTerm || filterStatus !== 'all') && (
+                <div className="text-center text-sm text-gray-400">
+                    Showing {filteredClients.length} of {clients.length} clients
+                    {searchTerm && ` matching "${searchTerm}"`}
+                    {filterStatus !== 'all' && ` with status "${filterStatus}"`}
+                </div>
+            )}
+
+            {/* Modals */}
+            <AddClientModal
+                isOpen={showAddModal}
+                onClose={() => setShowAddModal(false)}
+                onClientAdded={handleClientAdded}
+            />
+
+            <EditClientModal
+                isOpen={showEditModal}
+                onClose={() => setShowEditModal(false)}
+                client={selectedClient}
+                onClientUpdated={handleClientUpdated}
+            />
+
+            <ManageSubscriptionsModal
+                isOpen={showSubscriptionsModal}
+                onClose={() => setShowSubscriptionsModal(false)}
+                client={selectedClient}
+            />
+
+            <ClientDetailsModal
+                isOpen={showDetailsModal}
+                onClose={() => setShowDetailsModal(false)}
+                client={selectedClient}
+                onEdit={handleEditClient}
+                onManageSubscriptions={handleManageSubscriptions}
+            />
         </div>
     );
 };

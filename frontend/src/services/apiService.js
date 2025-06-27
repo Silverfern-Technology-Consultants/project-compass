@@ -58,10 +58,7 @@ const getAssessmentTypeNumber = (typeString) => {
 export const assessmentApi = {
     startAssessment: async (assessmentData) => {
         try {
-            console.log('[assessmentApi] Starting assessment:', assessmentData);
-
             const response = await apiClient.post('/assessments', assessmentData);
-            console.log('[assessmentApi] Assessment started:', response.data);
             return response.data;
         } catch (error) {
             console.error('[assessmentApi] Error starting assessment:', error);
@@ -71,8 +68,6 @@ export const assessmentApi = {
 
     createAssessment: async (customerId, assessmentData) => {
         try {
-            console.log('[assessmentApi] Creating assessment:', { customerId, assessmentData });
-
             const assessmentType = getAssessmentTypeNumber(assessmentData.type);
             const subscriptionIds = assessmentData.subscriptionIds.map(sub =>
                 typeof sub === 'string' ? sub : sub.subscriptionId || sub.id
@@ -85,10 +80,7 @@ export const assessmentApi = {
                 includeRecommendations: assessmentData.includeRecommendations || true
             };
 
-            console.log('[assessmentApi] Sending request:', requestData);
-
             const response = await apiClient.post(`/assessments/${customerId}`, requestData);
-            console.log('[assessmentApi] Assessment created:', response.data);
             return response.data;
         } catch (error) {
             console.error('[assessmentApi] Error creating assessment:', error);
@@ -98,9 +90,7 @@ export const assessmentApi = {
 
     getAllAssessments: async () => {
         try {
-            console.log('[assessmentApi] Getting all assessments...');
             const response = await apiClient.get('/assessments');
-            console.log('[assessmentApi] All assessments response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[assessmentApi] Error getting all assessments:', error);
@@ -110,9 +100,7 @@ export const assessmentApi = {
 
     getAssessment: async (assessmentId) => {
         try {
-            console.log('[assessmentApi] Getting assessment:', assessmentId);
             const response = await apiClient.get(`/assessments/${assessmentId}`);
-            console.log('[assessmentApi] Assessment response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[assessmentApi] Error getting assessment:', error);
@@ -122,9 +110,7 @@ export const assessmentApi = {
 
     getAssessmentFindings: async (assessmentId) => {
         try {
-            console.log('[assessmentApi] Getting assessment findings:', assessmentId);
             const response = await apiClient.get(`/assessments/${assessmentId}/findings`);
-            console.log('[assessmentApi] Assessment findings response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[assessmentApi] Error getting assessment findings:', error);
@@ -134,9 +120,7 @@ export const assessmentApi = {
 
     deleteAssessment: async (assessmentId) => {
         try {
-            console.log('[assessmentApi] Deleting assessment:', assessmentId);
             const response = await apiClient.delete(`/assessments/${assessmentId}`);
-            console.log('[assessmentApi] Assessment deleted:', response.data);
             return response.data;
         } catch (error) {
             console.error('[assessmentApi] Error deleting assessment:', error);
@@ -149,9 +133,7 @@ export const assessmentApi = {
 export const assessmentsApi = {
     getAssessments: async () => {
         try {
-            console.log('[assessmentsApi] Getting assessments...');
             const response = await apiClient.get('/assessments');
-            console.log('[assessmentsApi] Assessments response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[assessmentsApi] Error getting assessments:', error);
@@ -175,14 +157,6 @@ export class AuthApi {
     }
 
     static async login(email, password, mfaToken = null, isBackupCode = false) {
-        try {
-            console.log('[AuthApi] Login attempt:', {
-                email,
-                password: '***',
-                hasMfaToken: !!mfaToken,
-                isBackupCode
-            });
-
             const requestBody = {
                 email,
                 password,
@@ -190,7 +164,6 @@ export class AuthApi {
             };
 
             const response = await apiClient.post('/auth/login', requestBody);
-            console.log('[AuthApi] Login response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[AuthApi] Login error details:', {
@@ -200,7 +173,6 @@ export class AuthApi {
             });
             throw error;
         }
-    }
 
     static async register(userData) {
         const response = await apiClient.post('/auth/register', userData);
@@ -254,7 +226,6 @@ export class MfaApi {
     }
 
     static async disableMfa(password, mfaCode) {
-        console.log('[MfaApi] Disabling MFA with:', { password: '***', token: mfaCode });
         const response = await apiClient.post('/mfa/disable', {
             password,
             token: mfaCode  // FIXED: Use "token" field name, not "mfaCode"
@@ -274,9 +245,7 @@ export class MfaApi {
 export const teamApi = {
     getTeamMembers: async () => {
         try {
-            console.log('[teamApi] Getting team members...');
             const response = await apiClient.get('/team/members');
-            console.log('[teamApi] Team members response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[teamApi] getTeamMembers error:', error);
@@ -287,7 +256,6 @@ export const teamApi = {
     // FIXED: Transform property names to match backend expectations (PascalCase)
     inviteTeamMember: async (inviteData) => {
         try {
-            console.log('[teamApi] Inviting team member:', inviteData);
 
             // Transform to match backend InviteTeamMemberRequest model
             const requestData = {
@@ -296,9 +264,7 @@ export const teamApi = {
                 Message: inviteData.message || "" // PascalCase for backend
             };
 
-            console.log('[teamApi] Sending request data:', requestData);
             const response = await apiClient.post('/team/invite', requestData);
-            console.log('[teamApi] Invite response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[teamApi] inviteTeamMember error:', error);
@@ -310,7 +276,6 @@ export const teamApi = {
     // FIXED: Transform property names to match backend expectations  
     updateTeamMember: async (memberId, updateData) => {
         try {
-            console.log('[teamApi] Updating team member:', { memberId, updateData });
 
             // Transform to match backend UpdateTeamMemberRequest model
             const requestData = {
@@ -318,7 +283,6 @@ export const teamApi = {
             };
 
             const response = await apiClient.put(`/team/members/${memberId}`, requestData);
-            console.log('[teamApi] Update response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[teamApi] updateTeamMember error:', error);
@@ -328,9 +292,7 @@ export const teamApi = {
 
     removeTeamMember: async (memberId) => {
         try {
-            console.log('[teamApi] Removing team member:', memberId);
             const response = await apiClient.delete(`/team/members/${memberId}`);
-            console.log('[teamApi] Remove response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[teamApi] removeTeamMember error:', error);
@@ -340,9 +302,7 @@ export const teamApi = {
 
     getTeamStats: async () => {
         try {
-            console.log('[teamApi] Getting team stats...');
             const response = await apiClient.get('/team/stats');
-            console.log('[teamApi] Team stats response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[teamApi] getTeamStats error:', error);
@@ -353,29 +313,100 @@ export const teamApi = {
 
 // Azure Environments API
 export const azureEnvironmentsApi = {
+    // Get all environments (organization-scoped)
     getEnvironments: async () => {
-        const response = await apiClient.get('/azure-environments');
+        const response = await apiClient.get('/AzureEnvironment');
         return response.data;
     },
 
+    // Get environments for a specific client
+    getClientEnvironments: async (clientId) => {
+        try {
+            const response = await apiClient.get(`/AzureEnvironment/client/${clientId}`);
+            return response.data;
+        } catch (error) {
+            console.error('[azureEnvironmentsApi] getClientEnvironments error:', error);
+            throw error;
+        }
+    },
+
+    // Get a specific environment by ID
+    getEnvironment: async (environmentId) => {
+        try {
+            const response = await apiClient.get(`/AzureEnvironment/${environmentId}`);
+            return response.data;
+        } catch (error) {
+            console.error('[azureEnvironmentsApi] getEnvironment error:', error);
+            throw error;
+        }
+    },
+
+    // Create new environment for a client
     createEnvironment: async (environmentData) => {
-        const response = await apiClient.post('/azure-environments', environmentData);
-        return response.data;
+        try {
+
+            // Transform to match backend CreateAzureEnvironmentRequest model (PascalCase)
+            const requestData = {
+                ClientId: environmentData.clientId,
+                Name: environmentData.name,
+                Description: environmentData.description || "",
+                TenantId: environmentData.tenantId,
+                SubscriptionIds: environmentData.subscriptionIds || [],
+                ServicePrincipalId: environmentData.servicePrincipalId || "",
+                ServicePrincipalName: environmentData.servicePrincipalName || ""
+            };
+
+            const response = await apiClient.post('/AzureEnvironment', requestData);
+            return response.data;
+        } catch (error) {
+            console.error('[azureEnvironmentsApi] createEnvironment error:', error);
+            throw error;
+        }
     },
 
+    // Update existing environment
     updateEnvironment: async (environmentId, environmentData) => {
-        const response = await apiClient.put(`/azure-environments/${environmentId}`, environmentData);
-        return response.data;
+        try {
+
+            // Transform to match backend UpdateAzureEnvironmentRequest model (PascalCase)
+            const requestData = {
+                Name: environmentData.name,
+                Description: environmentData.description || "",
+                TenantId: environmentData.tenantId,
+                SubscriptionIds: environmentData.subscriptionIds || [],
+                ServicePrincipalId: environmentData.servicePrincipalId || "",
+                ServicePrincipalName: environmentData.servicePrincipalName || "",
+                IsActive: environmentData.isActive !== false
+            };
+
+            const response = await apiClient.put(`/AzureEnvironment/${environmentId}`, requestData);
+            return response.data;
+        } catch (error) {
+            console.error('[azureEnvironmentsApi] updateEnvironment error:', error);
+            throw error;
+        }
     },
 
+    // Delete environment
     deleteEnvironment: async (environmentId) => {
-        const response = await apiClient.delete(`/azure-environments/${environmentId}`);
-        return response.data;
+        try {
+            const response = await apiClient.delete(`/AzureEnvironment/${environmentId}`);
+            return response.data;
+        } catch (error) {
+            console.error('[azureEnvironmentsApi] deleteEnvironment error:', error);
+            throw error;
+        }
     },
 
+    // Test environment connection
     testConnection: async (environmentId) => {
-        const response = await apiClient.post(`/azure-environments/${environmentId}/test-connection`);
-        return response.data;
+        try {
+            const response = await apiClient.post(`/AzureEnvironment/${environmentId}/test-connection`);
+            return response.data;
+        } catch (error) {
+            console.error('[azureEnvironmentsApi] testConnection error:', error);
+            throw error;
+        }
     }
 };
 
@@ -471,9 +502,7 @@ export const apiUtils = {
 export const clientApi = {
     getClients: async () => {
         try {
-            console.log('[clientApi] Getting clients...');
             const response = await apiClient.get('/client');
-            console.log('[clientApi] Clients response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[clientApi] getClients error:', error);
@@ -483,9 +512,7 @@ export const clientApi = {
 
     getClient: async (clientId) => {
         try {
-            console.log('[clientApi] Getting client:', clientId);
             const response = await apiClient.get(`/client/${clientId}`);
-            console.log('[clientApi] Client response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[clientApi] getClient error:', error);
@@ -495,8 +522,6 @@ export const clientApi = {
 
     createClient: async (clientData) => {
         try {
-            console.log('[clientApi] Creating client:', clientData);
-
             // Transform to match backend CreateClientRequest model (PascalCase)
             const requestData = {
                 Name: clientData.name,
@@ -509,7 +534,6 @@ export const clientApi = {
             };
 
             const response = await apiClient.post('/client', requestData);
-            console.log('[clientApi] Create client response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[clientApi] createClient error:', error);
@@ -519,8 +543,6 @@ export const clientApi = {
 
     updateClient: async (clientId, clientData) => {
         try {
-            console.log('[clientApi] Updating client:', { clientId, clientData });
-
             // Transform to match backend UpdateClientRequest model (PascalCase)
             const requestData = {
                 Name: clientData.name,
@@ -533,7 +555,6 @@ export const clientApi = {
             };
 
             const response = await apiClient.put(`/client/${clientId}`, requestData);
-            console.log('[clientApi] Update client response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[clientApi] updateClient error:', error);
@@ -543,9 +564,7 @@ export const clientApi = {
 
     deleteClient: async (clientId) => {
         try {
-            console.log('[clientApi] Deleting client:', clientId);
             const response = await apiClient.delete(`/client/${clientId}`);
-            console.log('[clientApi] Delete client response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[clientApi] deleteClient error:', error);
@@ -555,9 +574,7 @@ export const clientApi = {
 
     getClientStats: async (clientId) => {
         try {
-            console.log('[clientApi] Getting client stats:', clientId);
             const response = await apiClient.get(`/client/${clientId}/stats`);
-            console.log('[clientApi] Client stats response:', response.data);
             return response.data;
         } catch (error) {
             console.error('[clientApi] getClientStats error:', error);

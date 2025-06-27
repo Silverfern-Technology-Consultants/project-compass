@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
+import Breadcrumb from '../ui/Breadcrumb';
 import { useLocation } from 'react-router-dom';
 import { useLayout } from '../../contexts/LayoutContext';
 
@@ -32,6 +33,12 @@ const Layout = ({ children }) => {
         setClientDropdownOpen(false);
     };
 
+    // Determine if we should show breadcrumbs (hide on login/register pages)
+    const shouldShowBreadcrumbs = () => {
+        const hideBreadcrumbPaths = ['/login', '/register', '/verify-email', '/accept-invitation'];
+        return !hideBreadcrumbPaths.some(path => location.pathname.includes(path));
+    };
+
     return (
         <div className="min-h-screen bg-gray-950">
             <Sidebar
@@ -46,10 +53,16 @@ const Layout = ({ children }) => {
                 onOutsideClick={closeAllDropdowns}
             />
             <main
-                className={`transition-all duration-300 pt-20 p-6 ${sidebarOpen ? 'ml-64' : 'ml-20'
+                className={`transition-all duration-300 pt-24 p-6 ${sidebarOpen ? 'ml-64' : 'ml-20'
                     }`}
             >
-                {children}
+                {/* Breadcrumb Navigation */}
+                {shouldShowBreadcrumbs() && <Breadcrumb />}
+
+                {/* Page Content */}
+                <div className="space-y-6">
+                    {children}
+                </div>
             </main>
         </div>
     );

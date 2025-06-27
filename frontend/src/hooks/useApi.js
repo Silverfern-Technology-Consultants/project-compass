@@ -37,21 +37,21 @@ export const useAssessments = () => {
             setLoading(true);
             setError(null);
 
-            console.log('Starting assessment with data:', assessmentData);
 
-            // Transform the assessment data to match backend expectations
-            const transformedData = {
-                customerId: assessmentData.customerId,
-                environmentId: assessmentData.environmentId,
+            // Use the new client-scoped assessment request format
+            // The backend now expects: { environmentId, name, type, options }
+            const clientScopedRequest = {
+                environmentId: assessmentData.environmentId, // Environment ID (backend resolves subscriptions)
                 name: assessmentData.name,
-                subscriptionIds: assessmentData.subscriptionIds, // Already an array
-                type: assessmentData.type, // Already a number
-                options: assessmentData.options
+                type: assessmentData.type, // Already a number (0=NamingConvention, 1=Tagging, 2=Full)
+                options: assessmentData.options || {
+                    includeRecommendations: true
+                }
             };
 
-            console.log('Transformed assessment data:', transformedData);
 
-            const result = await assessmentApi.startAssessment(transformedData);
+            const result = await assessmentApi.startAssessment(clientScopedRequest);
+
 
             // Transform the assessment type back to string for display
             const typeMap = { 0: 'NamingConvention', 1: 'Tagging', 2: 'Full' };
@@ -62,7 +62,7 @@ export const useAssessments = () => {
                 id: result.assessmentId,
                 assessmentId: result.assessmentId,
                 name: assessmentData.name,
-                environment: 'Azure', // Default since we don't have environment name
+                environment: result.environmentName || 'Azure', // Use environment name from response
                 status: 'In Progress',
                 score: null,
                 resourceCount: 0,
@@ -70,6 +70,9 @@ export const useAssessments = () => {
                 duration: '0s',
                 date: 'Just now',
                 type: displayType,
+                // NEW: Include client context from response
+                clientId: result.clientId,
+                clientName: result.clientName,
                 rawData: result
             };
 
@@ -82,6 +85,7 @@ export const useAssessments = () => {
 
             return result;
         } catch (err) {
+            console.error('[useAssessments] Error starting assessment:', err);
             const errorInfo = apiUtils.handleApiError(err);
             setError(errorInfo);
             throw errorInfo;
@@ -95,25 +99,30 @@ export const useAssessments = () => {
             setLoading(true);
             setError(null);
 
-            console.log('Deleting assessment:', assessmentId);
+
+            if (!assessmentId) {
+                throw new Error(`Invalid assessment ID: ${assessmentId}`);
+            }
 
             // Call API to delete assessment
             await assessmentApi.deleteAssessment(assessmentId);
 
-            // Remove from local state immediately for better UX
-            setAssessments(prev => prev.filter(assessment => assessment.id !== assessmentId));
-
-            console.log('Assessment deleted successfully from API and local state');
+            // Remove from local state - check all possible ID fields
+            setAssessments(prev => {
+                const updatedAssessments = prev.filter(assessment => {
+                    return assessment.AssessmentId !== assessmentId &&
+                        assessment.id !== assessmentId &&
+                        assessment.assessmentId !== assessmentId;
+                });
+                return updatedAssessments;
+            });
 
             return true;
         } catch (err) {
             const errorInfo = apiUtils.handleApiError(err);
             setError(errorInfo);
             console.error('Failed to delete assessment:', err);
-
-            // Reload assessments to ensure state consistency
             loadAssessments();
-
             throw errorInfo;
         } finally {
             setLoading(false);
@@ -143,29 +152,32 @@ export const useAssessments = () => {
             setLoading(true);
             setError(null);
 
-            console.log('Loading assessments from API...');
 
             // Load real assessments from API
             const apiAssessments = await assessmentApi.getAllAssessments();
 
-            console.log('Loaded assessments:', apiAssessments);
 
-            // Transform the API response to match frontend expectations
-            const transformedAssessments = apiAssessments.map(assessment => ({
-                id: assessment.assessmentId,
-                assessmentId: assessment.assessmentId,
-                name: assessment.name || 'Untitled Assessment',
-                environment: 'Production', // Default since API doesn't provide this
-                status: assessment.status || 'Unknown',
-                score: assessment.overallScore,
-                resourceCount: assessment.totalResourcesAnalyzed || 0,
-                issuesCount: assessment.issuesFound || 0,
-                duration: '5m 30s', // Default since API doesn't provide this
-                date: assessment.startedDate ? new Date(assessment.startedDate).toLocaleDateString() : 'Recent',
-                type: assessment.assessmentType || 'Full',
-                // Keep original data for debugging
-                rawData: assessment
-            }));
+            // Transform the API response to match frontend expectations with proper client context
+            const transformedAssessments = apiAssessments.map(assessment => {
+
+                return {
+                    id: assessment.AssessmentId,           // Map API 'AssessmentId' to frontend 'id'
+                    assessmentId: assessment.AssessmentId, // Also provide as assessmentId
+                    AssessmentId: assessment.AssessmentId, // Keep original for reference
+                    name: assessment.Name || 'Untitled Assessment',
+                    environment: 'Production',
+                    status: assessment.Status || 'Unknown',
+                    score: assessment.OverallScore,
+                    resourceCount: assessment.TotalResourcesAnalyzed || 0,
+                    issuesCount: assessment.IssuesFound || 0,
+                    duration: '5m 30s',
+                    date: assessment.StartedDate ? new Date(assessment.StartedDate).toLocaleDateString() : 'Recent',
+                    type: assessment.AssessmentType || 'Full',
+                    clientId: assessment.ClientId,
+                    clientName: assessment.ClientName,
+                    rawData: assessment
+                };
+            });
 
             setAssessments(transformedAssessments);
         } catch (err) {
@@ -195,7 +207,6 @@ export const useAssessments = () => {
 
     const refreshAssessments = async () => {
         try {
-            console.log('Refreshing assessments...');
             await loadAssessments();
         } catch (err) {
             console.error('Failed to refresh assessments:', err);
@@ -212,7 +223,6 @@ export const useAssessments = () => {
                 // Stop polling if assessment is completed or failed
                 if (status.status === 'Completed' || status.status === 'Failed') {
                     clearInterval(pollInterval);
-                    console.log(`Polling stopped for assessment ${assessmentId}: ${status.status}`);
                 }
             } catch (err) {
                 console.error('Polling error for assessment', assessmentId, err);
@@ -247,9 +257,6 @@ export const useAzureTest = () => {
         try {
             setLoading(true);
             setError(null);
-
-            console.log('Testing Azure connection for subscriptions:', subscriptionIds);
-
             const result = await testApi.testAzureConnection(subscriptionIds);
             setConnectionStatus(result);
             return result;
@@ -272,9 +279,6 @@ export const useAzureTest = () => {
         try {
             setLoading(true);
             setError(null);
-
-            console.log('Running test analysis for subscriptions:', subscriptionIds);
-
             const [resourcesResult, namingResult, taggingResult] = await Promise.allSettled([
                 testApi.getSampleResources(subscriptionIds),
                 testApi.testNamingAnalysis(subscriptionIds),

@@ -78,13 +78,11 @@ export const ClientProvider = ({ children }) => {
     const loadClients = async () => {
         try {
             dispatch({ type: 'SET_LOADING', payload: true });
-            console.log('[ClientContext] Loading clients for organization:', user?.OrganizationId);
 
             // Import dynamically to avoid circular dependency
             const { clientApi } = await import('../services/apiService');
             const clients = await clientApi.getClients();
 
-            console.log('[ClientContext] Loaded clients:', clients);
             dispatch({ type: 'SET_CLIENTS', payload: clients });
         } catch (error) {
             console.error('[ClientContext] Error loading clients:', error);
@@ -93,7 +91,6 @@ export const ClientProvider = ({ children }) => {
     };
 
     const selectClient = (client) => {
-        console.log('[ClientContext] Selecting client:', client);
         dispatch({ type: 'SET_SELECTED_CLIENT', payload: client });
 
         // Persist selection
@@ -105,7 +102,6 @@ export const ClientProvider = ({ children }) => {
     };
 
     const selectInternalClient = () => {
-        console.log('[ClientContext] Selecting internal/company client');
         const internalClient = {
             ClientId: 'internal',
             Name: user?.CompanyName || 'Internal',
@@ -115,7 +111,6 @@ export const ClientProvider = ({ children }) => {
     };
 
     const clearSelection = () => {
-        console.log('[ClientContext] Clearing client selection');
         selectClient(null);
     };
 

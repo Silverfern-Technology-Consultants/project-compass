@@ -22,7 +22,6 @@ const ProfilePage = () => {
 
     const handleSave = async () => {
         // TODO: Implement profile update API call
-        console.log('Saving profile:', formData);
         setIsEditing(false);
     };
 

@@ -102,7 +102,6 @@ const HeroSection = () => {
 
     const handleWatchDemo = () => {
         // You can add a demo modal or navigate to a demo page
-        console.log('Watch demo clicked');
     };
 
     return (
@@ -309,7 +308,6 @@ const PricingSection = () => {
 
     const handleContactSales = () => {
         // You can add a contact modal or navigate to a contact page
-        console.log('Contact sales clicked');
     };
 
     const plans = [
@@ -435,7 +433,6 @@ const CTASection = () => {
 
     const handleScheduleDemo = () => {
         // You can add a demo scheduling modal or navigate to a contact page
-        console.log('Schedule demo clicked');
     };
 
     return (
