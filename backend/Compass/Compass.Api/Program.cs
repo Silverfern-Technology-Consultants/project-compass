@@ -1,5 +1,9 @@
+using Azure.Extensions.AspNetCore.Configuration.Secrets;
+using Azure.Identity;
+using Azure.Security.KeyVault.Secrets;
 using Compass.Api.Services;
 using Compass.Core.Services;
+using Compass.Core.Interfaces;
 using Compass.Data;
 using Compass.Data.Repositories;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -9,6 +13,22 @@ using Microsoft.OpenApi.Models;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// AZURE KEY VAULT INTEGRATION - Add this FIRST before other configurations
+if (!builder.Environment.IsDevelopment() || !string.IsNullOrEmpty(builder.Configuration["AzureKeyVault:KeyVaultName"]))
+{
+    var keyVaultName = builder.Configuration["AzureKeyVault:KeyVaultName"];
+    if (!string.IsNullOrEmpty(keyVaultName))
+    {
+        var keyVaultUri = new Uri($"https://{keyVaultName}.vault.azure.net/");
+        builder.Configuration.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
+
+        // Log successful Key Vault integration (no secrets)
+        builder.Services.AddLogging(logging => logging.AddConsole());
+        var tempLogger = LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger("Startup");
+        tempLogger.LogInformation("Azure Key Vault integrated: {KeyVaultName}", keyVaultName);
+    }
+}
 
 // Add services to the container
 builder.Services.AddControllers()
@@ -74,20 +94,34 @@ builder.Services.AddScoped<TestDataSeeder>();
 // Organization Data Migration Service - NEW
 builder.Services.AddScoped<OrganizationDataMigrationService>();
 
-// Client Implementation
-
-
-
-// Add DbContext
+// Add DbContext - NOW SECURE (retrieves connection string from Key Vault)
 builder.Services.AddDbContext<CompassDbContext>(options =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    var connectionString = builder.Configuration["compass-database-connection"];
+    if (string.IsNullOrEmpty(connectionString))
+    {
+        throw new InvalidOperationException("Database connection string 'compass-database-connection' not found in Key Vault or configuration");
+    }
     options.UseSqlServer(connectionString);
 });
 
-// JWT Configuration - FIXED
+// Register OAuth services - SECURE (OAuth credentials from Key Vault)
+builder.Services.AddScoped<IOAuthService, OAuthService>();
+builder.Services.AddMemoryCache(); // For OAuth state management
+builder.Services.AddHttpClient(); // For OAuth token exchange
+
+// Register SecretClient for MSP Key Vault operations
+builder.Services.AddSingleton<SecretClient>(provider =>
+{
+    var configuration = provider.GetRequiredService<IConfiguration>();
+    var keyVaultName = configuration["AzureKeyVault:KeyVaultName"];
+    var keyVaultUri = new Uri($"https://{keyVaultName}.vault.azure.net/");
+    return new SecretClient(keyVaultUri, new DefaultAzureCredential());
+});
+
+// JWT Configuration - NOW SECURE (retrieves secret from Key Vault)
 var jwtSection = builder.Configuration.GetSection("Jwt");
-var secretKey = jwtSection["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey is required and must be configured in user secrets (development) or environment variables (production)");
+var secretKey = builder.Configuration["jwt-secret-key"] ?? throw new InvalidOperationException("JWT SecretKey 'jwt-secret-key' is required and must be configured in Key Vault");
 var issuer = jwtSection["Issuer"] ?? "compass-api";
 var audience = jwtSection["Audience"] ?? "compass-client";
 
@@ -109,9 +143,22 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-// Email Configuration  
-builder.Services.Configure<Compass.Core.Services.EmailOptions>(
-    builder.Configuration.GetSection("Email"));
+// Email Configuration - NOW SECURE (retrieves client secret from Key Vault)
+builder.Services.Configure<Compass.Core.Services.EmailOptions>(options =>
+{
+    var emailSection = builder.Configuration.GetSection("Email");
+
+    // Manually bind each property, resolving Key Vault references
+    options.TenantId = builder.Configuration["email-tenant-id"] ?? throw new InvalidOperationException("Email TenantId 'email-tenant-id' not found in Key Vault");
+    options.ClientId = builder.Configuration["email-client-id"] ?? throw new InvalidOperationException("Email ClientId 'email-client-id' not found in Key Vault");
+    options.ClientSecret = builder.Configuration["email-client-secret"] ?? throw new InvalidOperationException("Email ClientSecret 'email-client-secret' not found in Key Vault");
+
+    // Bind remaining properties normally
+    options.BaseUrl = emailSection["BaseUrl"] ?? "";
+    options.NoReplyAddress = emailSection["NoReplyAddress"] ?? "";
+    options.SupportAddress = emailSection["SupportAddress"] ?? "";
+    options.NotificationsAddress = emailSection["NotificationsAddress"] ?? "";
+});
 
 // Register repositories
 builder.Services.AddScoped<IAssessmentRepository, AssessmentRepository>();

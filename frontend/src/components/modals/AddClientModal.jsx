@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Building2, Plus, Loader2, AlertCircle } from 'lucide-react';
 import { clientApi } from '../../services/apiService';
 
@@ -124,7 +125,7 @@ const AddClientModal = ({ isOpen, onClose, onClientAdded }) => {
 
     if (!isOpen) return null;
 
-    return (
+    return createPortal(
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                 {/* Header */}
@@ -446,6 +447,7 @@ const AddClientModal = ({ isOpen, onClose, onClientAdded }) => {
                 </form>
             </div>
         </div>
+        ,document.body
     );
 };
 

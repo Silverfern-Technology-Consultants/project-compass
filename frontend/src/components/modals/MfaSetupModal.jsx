@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
 const MfaSetupModal = ({ isOpen, onClose, onSetupComplete }) => {
@@ -73,7 +74,7 @@ const MfaSetupModal = ({ isOpen, onClose, onSetupComplete }) => {
 
     if (!isOpen) return null;
 
-    return (
+    return createPortal(
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
                 <div className="flex justify-between items-center mb-6">
@@ -218,6 +219,7 @@ const MfaSetupModal = ({ isOpen, onClose, onSetupComplete }) => {
                 )}
             </div>
         </div>
+        ,document.body
     );
 };
 

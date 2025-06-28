@@ -5,8 +5,8 @@ namespace Compass.Data.Repositories;
 
 public interface ISubscriptionRepository
 {
-    Task<Subscription> GetByIdAsync(Guid subscriptionId);
-    Task<Subscription> GetActiveByCustomerIdAsync(Guid customerId);
+    Task<Subscription?> GetByIdAsync(Guid subscriptionId);
+    Task<Subscription?> GetActiveByCustomerIdAsync(Guid customerId);
     Task<Subscription?> GetActiveByOrganizationIdAsync(Guid organizationId);
     Task<IEnumerable<Subscription>> GetByCustomerIdAsync(Guid customerId);
     Task<IEnumerable<Subscription>> GetByOrganizationIdAsync(Guid organizationId);

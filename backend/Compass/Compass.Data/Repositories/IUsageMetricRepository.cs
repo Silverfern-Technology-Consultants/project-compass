@@ -5,7 +5,7 @@ namespace Compass.Data.Repositories;
 
 public interface IUsageMetricRepository
 {
-    Task<UsageMetric> GetByIdAsync(Guid usageId);
+    Task<UsageMetric?> GetByIdAsync(Guid usageId);
     Task<IEnumerable<UsageMetric>> GetByCustomerIdAsync(Guid customerId);
     Task<IEnumerable<UsageMetric>> GetByCustomerAndPeriodAsync(Guid customerId, string billingPeriod);
     Task<IEnumerable<UsageMetric>> GetBySubscriptionIdAsync(Guid subscriptionId);

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Mail } from 'lucide-react';
 
 const InviteMemberModal = ({ isOpen, onClose, onInvite }) => {
@@ -17,7 +18,7 @@ const InviteMemberModal = ({ isOpen, onClose, onInvite }) => {
         setFormData({ email: '', role: 'Member', message: '' });
     };
 
-    return (
+    return createPortal(
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-gray-900 border border-gray-800 rounded w-full max-w-md mx-4">
                 <div className="p-6 border-b border-gray-800">
@@ -80,6 +81,7 @@ const InviteMemberModal = ({ isOpen, onClose, onInvite }) => {
                 </form>
             </div>
         </div>
+        ,document.body
     );
 };
 

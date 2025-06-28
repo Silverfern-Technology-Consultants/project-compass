@@ -1,5 +1,6 @@
 ﻿using Compass.Core.Models;
 using Compass.Core.Services;
+using Compass.Core.Interfaces;
 using Compass.Data;
 using Compass.Data.Entities;
 using Compass.Data.Repositories;
@@ -20,19 +21,25 @@ public class AzureEnvironmentController : ControllerBase
     private readonly IClientRepository _clientRepository;
     private readonly IClientService _clientService;
     private readonly IAzureResourceGraphService _resourceGraphService;
+    private readonly IOAuthService _oauthService;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<AzureEnvironmentController> _logger;
 
     public AzureEnvironmentController(
-        CompassDbContext context,
-        IClientRepository clientRepository,
-        IClientService clientService,
-        IAzureResourceGraphService resourceGraphService,
-        ILogger<AzureEnvironmentController> logger)
+     CompassDbContext context,
+     IClientRepository clientRepository,
+     IClientService clientService,
+     IAzureResourceGraphService resourceGraphService,
+     IOAuthService oauthService,
+     IConfiguration configuration,
+     ILogger<AzureEnvironmentController> logger)
     {
         _context = context;
         _clientRepository = clientRepository;
         _clientService = clientService;
         _resourceGraphService = resourceGraphService;
+        _oauthService = oauthService;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -381,7 +388,199 @@ public class AzureEnvironmentController : ControllerBase
             return StatusCode(500, "Internal server error");
         }
     }
+    [HttpPost("oauth/initiate")]
+    [Authorize]
+    public async Task<ActionResult<OAuthInitiateResponse>> InitiateOAuth([FromBody] OAuthInitiateRequest request)
+    {
+        try
+        {
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null)
+            {
+                return BadRequest("Organization context not found");
+            }
 
+            var response = await _oauthService.InitiateOAuthFlowAsync(request, organizationId.Value);
+
+            _logger.LogInformation("OAuth flow initiated for client {ClientName} by user {UserId}",
+                request.ClientName, GetCurrentCustomerId());
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to initiate OAuth flow for client {ClientId}", request.ClientId);
+            return StatusCode(500, "Failed to initiate OAuth flow");
+        }
+    }
+
+    [HttpGet("oauth-callback")]
+    [AllowAnonymous] // OAuth callback doesn't include authorization header
+    public async Task<IActionResult> OAuthCallback([FromQuery] string code, [FromQuery] string state,
+        [FromQuery] string? error = null, [FromQuery] string? error_description = null)
+    {
+        try
+        {
+            var callbackRequest = new OAuthCallbackRequest
+            {
+                Code = code ?? string.Empty,
+                State = state ?? string.Empty,
+                Error = error,
+                ErrorDescription = error_description
+            };
+
+            var success = await _oauthService.HandleOAuthCallbackAsync(callbackRequest);
+
+            if (success)
+            {
+                // Redirect to frontend success page
+                var frontendUrl = _configuration["App:FrontendUrl"];
+                return Redirect($"{frontendUrl}/oauth/success?state={state}");
+            }
+            else
+            {
+                // Redirect to frontend error page
+                var frontendUrl = _configuration["App:FrontendUrl"];
+                var errorMessage = !string.IsNullOrEmpty(error) ? error : "OAuth authentication failed";
+                return Redirect($"{frontendUrl}/oauth/error?message={Uri.EscapeDataString(errorMessage)}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "OAuth callback failed");
+            var frontendUrl = _configuration["App:FrontendUrl"];
+            return Redirect($"{frontendUrl}/oauth/error?message={Uri.EscapeDataString("OAuth callback error")}");
+        }
+    }
+
+    [HttpPost("{environmentId}/test-oauth")]
+    [Authorize]
+    public async Task<ActionResult<bool>> TestOAuthCredentials(Guid environmentId)
+    {
+        try
+        {
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null)
+            {
+                return BadRequest("Organization context not found");
+            }
+
+            // Get environment details to find client ID
+            var environment = await _context.AzureEnvironments
+                .Include(e => e.Client)
+                .FirstOrDefaultAsync(e => e.AzureEnvironmentId == environmentId);
+
+            if (environment == null)
+            {
+                return NotFound("Environment not found");
+            }
+
+            if (!environment.ClientId.HasValue)
+            {
+                return BadRequest("Environment does not have an associated client");
+            }
+
+            var isValid = await _oauthService.TestCredentialsAsync(environment.ClientId.Value, organizationId.Value);
+
+            _logger.LogInformation("OAuth credentials test for environment {EnvironmentId}: {Result}",
+                environmentId, isValid ? "Valid" : "Invalid");
+
+            return Ok(isValid);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to test OAuth credentials for environment {EnvironmentId}", environmentId);
+            return StatusCode(500, "Failed to test OAuth credentials");
+        }
+    }
+
+    [HttpDelete("{environmentId}/oauth")]
+    [Authorize]
+    public async Task<IActionResult> RevokeOAuthCredentials(Guid environmentId)
+    {
+        try
+        {
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null)
+            {
+                return BadRequest("Organization context not found");
+            }
+
+            // Verify environment ownership
+            var environment = await _context.AzureEnvironments
+                .Include(e => e.Client)
+                .FirstOrDefaultAsync(e => e.AzureEnvironmentId == environmentId);
+
+            if (environment == null)
+            {
+                return NotFound("Environment not found");
+            }
+
+            if (!environment.ClientId.HasValue)
+            {
+                return BadRequest("Environment does not have an associated client");
+            }
+
+            var success = await _oauthService.RevokeCredentialsAsync(environment.ClientId.Value, organizationId.Value);
+
+            if (success)
+            {
+                _logger.LogInformation("OAuth credentials revoked for environment {EnvironmentId} by user {UserId}",
+                    environmentId, GetCurrentCustomerId());
+                return NoContent();
+            }
+            else
+            {
+                return StatusCode(500, "Failed to revoke OAuth credentials");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to revoke OAuth credentials for environment {EnvironmentId}", environmentId);
+            return StatusCode(500, "Failed to revoke OAuth credentials");
+        }
+    }
+
+    [HttpPost("{environmentId}/oauth/refresh")]
+    [Authorize]
+    public async Task<ActionResult<bool>> RefreshOAuthTokens(Guid environmentId)
+    {
+        try
+        {
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null)
+            {
+                return BadRequest("Organization context not found");
+            }
+
+            // Verify environment ownership
+            var environment = await _context.AzureEnvironments
+                .Include(e => e.Client)
+                .FirstOrDefaultAsync(e => e.AzureEnvironmentId == environmentId);
+
+            if (environment == null)
+            {
+                return NotFound("Environment not found");
+            }
+
+            if (!environment.ClientId.HasValue)
+            {
+                return BadRequest("Environment does not have an associated client");
+            }
+
+            var success = await _oauthService.RefreshTokensAsync(environment.ClientId.Value, organizationId.Value);
+
+            _logger.LogInformation("OAuth token refresh for environment {EnvironmentId}: {Result}",
+                environmentId, success ? "Success" : "Failed");
+
+            return Ok(success);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to refresh OAuth tokens for environment {EnvironmentId}", environmentId);
+            return StatusCode(500, "Failed to refresh OAuth tokens");
+        }
+    }
     [HttpPost("{environmentId}/test-connection")]
     public async Task<ActionResult<ConnectionTestResult>> TestEnvironmentConnection(Guid environmentId)
     {
@@ -413,12 +612,6 @@ public class AzureEnvironmentController : ControllerBase
                 }
             }
 
-            // DEBUG: Log the subscription IDs being retrieved from the database
-            _logger.LogInformation("Retrieved environment {EnvironmentId} with {Count} subscription IDs: {SubscriptionIds}",
-                environmentId,
-                environment.SubscriptionIds?.Count ?? 0,
-                environment.SubscriptionIds != null ? string.Join(", ", environment.SubscriptionIds) : "null");
-
             // Validate that we have subscription IDs
             if (environment.SubscriptionIds == null || !environment.SubscriptionIds.Any())
             {
@@ -446,36 +639,69 @@ public class AzureEnvironmentController : ControllerBase
                 });
             }
 
-            // Convert to array and test connection
             var subscriptionArray = environment.SubscriptionIds.ToArray();
             _logger.LogInformation("Testing connection with subscription array: {SubscriptionArray}",
                 string.Join(", ", subscriptionArray));
 
-            var canConnect = await _resourceGraphService.TestConnectionAsync(subscriptionArray);
+            bool canConnect;
+            string? connectionMethod = null;
+
+            // Try OAuth credentials first if environment has a client
+            if (environment.ClientId.HasValue)
+            {
+                _logger.LogInformation("Attempting OAuth connection test for environment {EnvironmentId} with client {ClientId}",
+                    environmentId, environment.ClientId);
+
+                canConnect = await _resourceGraphService.TestConnectionWithOAuthAsync(
+                    subscriptionArray, environment.ClientId.Value, organizationId.Value);
+
+                connectionMethod = canConnect ? "OAuth" : null;
+
+                if (!canConnect)
+                {
+                    _logger.LogWarning("OAuth connection failed for environment {EnvironmentId}, falling back to default credentials",
+                        environmentId);
+                }
+            }
+            else
+            {
+                canConnect = false;
+                _logger.LogInformation("Environment {EnvironmentId} has no associated client, skipping OAuth test", environmentId);
+            }
+
+            // Fallback to default credentials if OAuth failed or no client
+            if (!canConnect)
+            {
+                _logger.LogInformation("Testing connection with default credentials for environment {EnvironmentId}", environmentId);
+                canConnect = await _resourceGraphService.TestConnectionAsync(subscriptionArray);
+                connectionMethod = canConnect ? "DefaultCredentials" : "Failed";
+            }
 
             // Update environment with test results
             environment.LastConnectionTest = canConnect;
             environment.LastConnectionTestDate = DateTime.UtcNow;
-            environment.LastConnectionError = canConnect ? null : "Connection test failed";
+            environment.LastConnectionError = canConnect ? null : "Connection test failed with both OAuth and default credentials";
             environment.LastAccessDate = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Connection test for environment {EnvironmentId}: {Result}",
-                environmentId, canConnect ? "Success" : "Failed");
+            _logger.LogInformation("Connection test for environment {EnvironmentId}: {Result} using {Method}",
+                environmentId, canConnect ? "Success" : "Failed", connectionMethod);
 
             return Ok(new ConnectionTestResult
             {
                 Success = canConnect,
                 Message = canConnect
-                    ? "Successfully connected to all subscriptions"
+                    ? $"Successfully connected to all subscriptions using {connectionMethod}"
                     : "Failed to connect to one or more subscriptions",
                 Details = new Dictionary<string, object>
                 {
                     ["EnvironmentId"] = environmentId,
                     ["SubscriptionIds"] = environment.SubscriptionIds,
                     ["TestedAt"] = DateTime.UtcNow,
-                    ["SubscriptionCount"] = environment.SubscriptionIds.Count
+                    ["SubscriptionCount"] = environment.SubscriptionIds.Count,
+                    ["ConnectionMethod"] = connectionMethod ?? "Failed",
+                    ["HasOAuthCredentials"] = environment.ClientId.HasValue
                 }
             });
         }

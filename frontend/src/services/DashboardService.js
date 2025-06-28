@@ -1,16 +1,48 @@
+// Updated DashboardService.js - Fix field mapping and error handling
 import { apiClient } from './apiService';
 
 export const dashboardService = {
     // Get company/MSP overview metrics
     getCompanyMetrics: async () => {
         try {
+            console.log('[DashboardService] Fetching company metrics...');
             const response = await apiClient.get('/dashboard/company');
-            return response.data;
+            console.log('[DashboardService] Raw backend response:', response.data);
+
+            // Transform PascalCase backend response to camelCase for frontend
+            const transformedData = {
+                totalClients: response.data.TotalClients || 0,
+                totalAssessments: response.data.TotalAssessments || 0,
+                teamMembers: response.data.TeamMembers || 0,
+                averageClientScore: response.data.AverageClientScore || 0,
+                clientsGrowth: response.data.ClientsGrowth || { positive: true, value: 0 },
+                assessmentsGrowth: response.data.AssessmentsGrowth || { positive: true, value: 0 },
+                teamGrowth: response.data.TeamGrowth || { positive: true, value: 0 },
+                scoreImprovement: response.data.ScoreImprovement || { positive: true, value: 0 },
+                recentClients: (response.data.RecentClients || []).map(client => ({
+                    id: client.Id,
+                    name: client.Name,
+                    assessmentsCount: client.AssessmentsCount || 0,
+                    subscriptionsCount: client.SubscriptionsCount || 0,
+                    lastScore: client.LastScore || 0,
+                    lastAssessment: client.LastAssessment
+                }))
+            };
+
+            console.log('[DashboardService] Transformed data:', transformedData);
+            return transformedData;
         } catch (error) {
-            console.error('Failed to fetch company metrics:', error);
+            console.error('[DashboardService] API call failed:', error);
+            console.error('[DashboardService] Error details:', {
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                data: error.response?.data,
+                message: error.message
+            });
 
             // Return mock data for development if API fails
             if (process.env.NODE_ENV === 'development') {
+                console.warn('[DashboardService] Using fallback mock data due to API failure');
                 return {
                     totalClients: 12,
                     totalAssessments: 45,
@@ -55,10 +87,35 @@ export const dashboardService = {
     // Get client-specific metrics
     getClientMetrics: async (clientId) => {
         try {
+            console.log(`[DashboardService] Fetching client metrics for: ${clientId}`);
             const response = await apiClient.get(`/dashboard/client/${clientId}`);
-            return response.data;
+            console.log('[DashboardService] Client metrics response:', response.data);
+
+            // Transform PascalCase to camelCase
+            const transformedData = {
+                assessmentsCount: response.data.AssessmentsCount || 0,
+                currentScore: response.data.CurrentScore || 0,
+                activeIssues: response.data.ActiveIssues || 0,
+                subscriptionsCount: response.data.SubscriptionsCount || 0,
+                lastAssessmentDate: response.data.LastAssessmentDate || 'Never',
+                assessmentsGrowth: response.data.AssessmentsGrowth || { positive: true, value: 0 },
+                scoreChange: response.data.ScoreChange || { positive: true, value: 0 },
+                issuesChange: response.data.IssuesChange || { positive: false, value: 0 },
+                subscriptionsChange: response.data.SubscriptionsChange || { positive: true, value: 0 },
+                recentAssessments: (response.data.RecentAssessments || []).map(assessment => ({
+                    AssessmentId: assessment.AssessmentId,
+                    Name: assessment.Name,
+                    Status: assessment.Status,
+                    OverallScore: assessment.OverallScore,
+                    IssuesCount: assessment.IssuesCount || 0,
+                    Environment: assessment.Environment || 'Azure',
+                    Date: assessment.Date
+                }))
+            };
+
+            return transformedData;
         } catch (error) {
-            console.error('Failed to fetch client metrics:', error);
+            console.error(`[DashboardService] Failed to fetch client metrics for ${clientId}:`, error);
 
             // Return mock data for development if API fails
             if (process.env.NODE_ENV === 'development') {
@@ -110,10 +167,36 @@ export const dashboardService = {
     // Get internal/MSP infrastructure metrics
     getInternalMetrics: async () => {
         try {
+            console.log('[DashboardService] Fetching internal metrics...');
             const response = await apiClient.get('/dashboard/internal');
-            return response.data;
+            console.log('[DashboardService] Internal metrics response:', response.data);
+
+            // Transform PascalCase to camelCase
+            const transformedData = {
+                subscriptionsCount: response.data.SubscriptionsCount || 0,
+                infraScore: response.data.InfraScore || 0,
+                securityIssues: response.data.SecurityIssues || 0,
+                monthlyCost: response.data.MonthlyCost || 0,
+                lastAssessmentDate: response.data.LastAssessmentDate || 'Never',
+                subscriptionsGrowth: response.data.SubscriptionsGrowth || { positive: false, value: 0 },
+                scoreChange: response.data.ScoreChange || { positive: true, value: 0 },
+                securityIssuesChange: response.data.SecurityIssuesChange || { positive: false, value: 0 },
+                costChange: response.data.CostChange || { positive: false, value: 0 },
+                totalAssessments: response.data.TotalAssessments || 0,
+                recentAssessments: (response.data.RecentAssessments || []).map(assessment => ({
+                    AssessmentId: assessment.AssessmentId,
+                    Name: assessment.Name,
+                    Status: assessment.Status,
+                    OverallScore: assessment.OverallScore,
+                    IssuesCount: assessment.IssuesCount || 0,
+                    Environment: assessment.Environment || 'Internal Azure',
+                    Date: assessment.Date
+                }))
+            };
+
+            return transformedData;
         } catch (error) {
-            console.error('Failed to fetch internal metrics:', error);
+            console.error('[DashboardService] Failed to fetch internal metrics:', error);
 
             // Return mock data for development if API fails
             if (process.env.NODE_ENV === 'development') {

@@ -6,8 +6,8 @@ namespace Compass.Data.Repositories;
 public interface ICustomerRepository
 {
     // Existing methods
-    Task<Customer> GetByIdAsync(Guid customerId);
-    Task<Customer> GetByEmailAsync(string email);
+    Task<Customer?> GetByIdAsync(Guid customerId);
+    Task<Customer?> GetByEmailAsync(string email);
     Task<IEnumerable<Customer>> GetAllAsync();
     Task<Customer> CreateAsync(Customer customer);
     Task<Customer> UpdateAsync(Customer customer);
@@ -22,7 +22,7 @@ public interface ICustomerRepository
     Task<bool> HasOtherOrganizationTiesAsync(string email, Guid? excludeOrganizationId = null);
     Task<bool> HasCreatedContentAsync(Guid customerId);
     Task<bool> TransferOwnershipAsync(Guid fromCustomerId, Guid toCustomerId);
-    Task<CustomerAccountInfo> GetAccountInfoAsync(Guid customerId);
+    Task<CustomerAccountInfo?> GetAccountInfoAsync(Guid customerId);
     Task<List<Customer>> GetOrganizationMembersAsync(Guid organizationId);
     Task<bool> CanUserBeRemovedAsync(Guid customerId, Guid organizationId);
 }

@@ -196,25 +196,26 @@ public class SubscriptionController : ControllerBase
     }
 
     [HttpGet("invoices")]
-    public async Task<ActionResult<List<Compass.Data.Entities.Invoice>>> GetInvoices()
+    public Task<ActionResult<List<Compass.Data.Entities.Invoice>>> GetInvoices()
     {
         try
         {
             var organizationId = GetOrganizationIdFromContext();
             if (organizationId == null)
             {
-                return BadRequest("Organization context not found");
+                return Task.FromResult<ActionResult<List<Compass.Data.Entities.Invoice>>>(
+                    BadRequest("Organization context not found"));
             }
 
             // TODO: Implement invoice repository and get invoices by organization
             var invoices = new List<Compass.Data.Entities.Invoice>();
-
-            return Ok(invoices);
+            return Task.FromResult<ActionResult<List<Compass.Data.Entities.Invoice>>>(Ok(invoices));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving invoices");
-            return StatusCode(500, "Internal server error");
+            return Task.FromResult<ActionResult<List<Compass.Data.Entities.Invoice>>>(
+                StatusCode(500, "Internal server error"));
         }
     }
 

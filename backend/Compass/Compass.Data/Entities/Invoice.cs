@@ -11,7 +11,7 @@ public class Invoice
 
     [Required]
     [StringLength(50)]
-    public string InvoiceNumber { get; set; }
+    public string InvoiceNumber { get; set; } = string.Empty;
 
     public decimal Amount { get; set; }
 
@@ -30,15 +30,15 @@ public class Invoice
     public DateTime? PaidDate { get; set; }
 
     [StringLength(50)]
-    public string PaymentMethod { get; set; }
+    public string PaymentMethod { get; set; } = string.Empty;
 
     [StringLength(255)]
-    public string PaymentReference { get; set; }
+    public string PaymentReference { get; set; } = string.Empty;
 
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
     public DateTime ModifiedDate { get; set; } = DateTime.UtcNow;
 
     // Navigation properties
-    public Customer Customer { get; set; }
-    public Subscription Subscription { get; set; }
+    public Customer Customer { get; set; } = null!;
+    public Subscription Subscription { get; set; } = null!;
 }

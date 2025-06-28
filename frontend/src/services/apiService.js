@@ -1,4 +1,4 @@
-﻿// apiService.js - Enhanced with MFA support and Team Management
+﻿// apiService.js - Enhanced with MFA support, Team Management, and OAuth Integration
 import axios from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://localhost:7163/api';
@@ -157,6 +157,7 @@ export class AuthApi {
     }
 
     static async login(email, password, mfaToken = null, isBackupCode = false) {
+        try {
             const requestBody = {
                 email,
                 password,
@@ -164,7 +165,22 @@ export class AuthApi {
             };
 
             const response = await apiClient.post('/auth/login', requestBody);
-            return response.data;
+
+            // Backend returns PascalCase, frontend expects camelCase
+            // Transform the response to match frontend expectations
+            const data = response.data;
+
+            console.log('[AuthApi] Raw backend response:', data);
+
+            return {
+                success: data.Success,
+                token: data.Token,           // PascalCase → camelCase
+                customer: data.Customer,     // PascalCase → camelCase
+                requiresMfa: data.RequiresMfa,
+                requiresMfaSetup: data.RequiresMfaSetup,
+                requiresEmailVerification: data.RequiresEmailVerification,
+                message: data.Message
+            };
         } catch (error) {
             console.error('[AuthApi] Login error details:', {
                 status: error.response?.status,
@@ -173,6 +189,7 @@ export class AuthApi {
             });
             throw error;
         }
+    }
 
     static async register(userData) {
         const response = await apiClient.post('/auth/register', userData);
@@ -306,6 +323,101 @@ export const teamApi = {
             return response.data;
         } catch (error) {
             console.error('[teamApi] getTeamStats error:', error);
+            throw error;
+        }
+    }
+};
+
+// OAuth API - NEW for Sprint 3
+export const oauthApi = {
+    // Initiate OAuth flow for a client
+    initiateOAuth: async (clientId, clientName, description = null) => {
+        try {
+            const requestData = {
+                ClientId: clientId,
+                ClientName: clientName,
+                Description: description
+            };
+
+            console.log('[oauthApi] initiateOAuth request:', requestData);
+
+            const response = await apiClient.post('/AzureEnvironment/oauth/initiate', requestData);
+
+            console.log('[oauthApi] initiateOAuth raw response:', response);
+            console.log('[oauthApi] initiateOAuth response data:', response.data);
+            console.log('[oauthApi] initiateOAuth response data keys:', Object.keys(response.data));
+
+            // Log all possible field variations to debug the field name mismatch
+            const responseData = response.data;
+            console.log('[oauthApi] Checking authorization URL fields:');
+            console.log('  - authorizationUrl:', responseData.authorizationUrl);
+            console.log('  - AuthorizationUrl:', responseData.AuthorizationUrl);
+            console.log('  - authorization_url:', responseData.authorization_url);
+            console.log('  - url:', responseData.url);
+            console.log('  - Url:', responseData.Url);
+
+            // Try to find the authorization URL in different field name formats
+            const authUrl = responseData.authorizationUrl ||
+                responseData.AuthorizationUrl ||
+                responseData.authorization_url ||
+                responseData.url ||
+                responseData.Url;
+
+            if (authUrl) {
+                console.log('[oauthApi] Found authorization URL:', authUrl);
+                return {
+                    authorizationUrl: authUrl,
+                    state: responseData.state || responseData.State,
+                    expiresAt: responseData.expiresAt || responseData.ExpiresAt
+                };
+            } else {
+                console.error('[oauthApi] No authorization URL found in response:', responseData);
+                throw new Error('No authorization URL found in OAuth response');
+            }
+
+        } catch (error) {
+            console.error('[oauthApi] initiateOAuth error:', error);
+            console.error('[oauthApi] Error response:', error.response?.data);
+            throw error;
+        }
+    },
+
+    // Test OAuth credentials for an environment
+    testOAuthCredentials: async (environmentId) => {
+        try {
+            console.log('[oauthApi] testOAuthCredentials for environment:', environmentId);
+            const response = await apiClient.post(`/AzureEnvironment/${environmentId}/test-oauth`);
+            console.log('[oauthApi] testOAuthCredentials response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[oauthApi] testOAuthCredentials error:', error);
+            // Return false instead of throwing for OAuth status checks
+            return false;
+        }
+    },
+
+    // Revoke OAuth credentials for an environment
+    revokeOAuthCredentials: async (environmentId) => {
+        try {
+            console.log('[oauthApi] revokeOAuthCredentials for environment:', environmentId);
+            const response = await apiClient.delete(`/AzureEnvironment/${environmentId}/oauth`);
+            console.log('[oauthApi] revokeOAuthCredentials response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[oauthApi] revokeOAuthCredentials error:', error);
+            throw error;
+        }
+    },
+
+    // Refresh OAuth tokens for an environment
+    refreshOAuthTokens: async (environmentId) => {
+        try {
+            console.log('[oauthApi] refreshOAuthTokens for environment:', environmentId);
+            const response = await apiClient.post(`/AzureEnvironment/${environmentId}/oauth/refresh`);
+            console.log('[oauthApi] refreshOAuthTokens response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[oauthApi] refreshOAuthTokens error:', error);
             throw error;
         }
     }
@@ -499,6 +611,7 @@ export const apiUtils = {
         }
     }
 };
+
 export const clientApi = {
     getClients: async () => {
         try {
@@ -591,7 +704,8 @@ export default {
     assessmentApi,
     assessmentsApi,
     azureEnvironmentsApi,
-    clientApi,  // Add this line
+    oauthApi,  // NEW: OAuth API
+    clientApi,
     testApi,
     apiUtils,
     apiClient

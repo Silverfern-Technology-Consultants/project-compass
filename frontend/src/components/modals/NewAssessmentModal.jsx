@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Play, Building2, Cloud, AlertCircle, TestTube, Loader2, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useClient } from '../../contexts/ClientContext';
 import { azureEnvironmentsApi } from '../../services/apiService';
@@ -156,8 +157,8 @@ const NewAssessmentModal = ({ isOpen, onClose, onStart }) => {
 
     if (!isOpen) return null;
 
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    return createPortal (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
             <div className="bg-gray-900 border border-gray-800 rounded w-full max-w-lg mx-4">
                 <div className="p-6 border-b border-gray-800">
                     <h2 className="text-xl font-semibold text-white">Start New Assessment</h2>
@@ -382,6 +383,7 @@ const NewAssessmentModal = ({ isOpen, onClose, onStart }) => {
                 </form>
             </div>
         </div>
+        ,document.body
     );
 };
 

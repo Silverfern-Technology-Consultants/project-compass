@@ -159,6 +159,10 @@ public class CompassDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
 
+            // Fix the decimal precision warning
+            entity.Property(e => e.OverallScore)
+                .HasColumnType("decimal(5,2)");
+
             entity.HasOne(e => e.Customer)
                 .WithMany(p => p.Assessments)
                 .HasForeignKey(d => d.CustomerId)

@@ -174,8 +174,8 @@ public class TeamActivityLogger : ITeamActivityLogger
             {
                 Id = invitation.InvitationId,
                 Type = "member_invited",
-                Actor = $"{invitation.InvitedBy.FirstName} {invitation.InvitedBy.LastName}",
-                ActorEmail = invitation.InvitedBy.Email,
+                Actor = $"{invitation.InvitedBy?.FirstName} {invitation.InvitedBy?.LastName}",
+                ActorEmail = invitation.InvitedBy?.Email ?? "",
                 Target = invitation.InvitedEmail,
                 Description = $"Invited {invitation.InvitedEmail} as {invitation.InvitedRole}",
                 Timestamp = invitation.InvitedDate,
@@ -215,8 +215,8 @@ public class TeamActivityLogger : ITeamActivityLogger
                 {
                     Id = Guid.NewGuid(),
                     Type = "invitation_cancelled",
-                    Actor = $"{invitation.InvitedBy.FirstName} {invitation.InvitedBy.LastName}",
-                    ActorEmail = invitation.InvitedBy.Email,
+                    Actor = $"{invitation.InvitedBy?.FirstName} {invitation.InvitedBy?.LastName}",
+                    ActorEmail = invitation.InvitedBy?.Email ?? "",
                     Target = invitation.InvitedEmail,
                     Description = $"Cancelled invitation for {invitation.InvitedEmail}",
                     Timestamp = DateTime.UtcNow, // We don't track when it was cancelled
@@ -235,37 +235,25 @@ public class TeamActivityLogger : ITeamActivityLogger
             .ToList();
     }
 
-    private async Task CreateActivityEntry(
-        Guid organizationId,
-        string activityType,
-        Guid actorCustomerId,
-        Guid? targetCustomerId,
-        string description,
-        object metadata)
-    {
-        // In a production system, you would save this to a dedicated ActivityLog table
-        // For now, we'll just log it for audit purposes
+    private Task CreateActivityEntry(
+    Guid organizationId,
+    string activityType,
+    Guid actorCustomerId,
+    Guid? targetCustomerId,
+    string description,
+    object metadata)
+{
+    // In a production system, you would save this to a dedicated ActivityLog table
+    // For now, we'll just log it for audit purposes
 
-        var metadataJson = JsonSerializer.Serialize(metadata);
+    var metadataJson = JsonSerializer.Serialize(metadata);
 
-        _logger.LogInformation(
-            "Team Activity: {ActivityType} in Organization {OrganizationId} by Customer {ActorCustomerId} - {Description} | Metadata: {Metadata}",
-            activityType, organizationId, actorCustomerId, description, metadataJson);
+    _logger.LogInformation(
+        "Team Activity: {ActivityType} in Organization {OrganizationId} by Customer {ActorCustomerId} - {Description} | Metadata: {Metadata}",
+        activityType, organizationId, actorCustomerId, description, metadataJson);
 
-        // TODO: Save to ActivityLog table when implemented
-        // var activityLog = new ActivityLog
-        // {
-        //     OrganizationId = organizationId,
-        //     ActivityType = activityType,
-        //     ActorCustomerId = actorCustomerId,
-        //     TargetCustomerId = targetCustomerId,
-        //     Description = description,
-        //     Metadata = metadataJson,
-        //     Timestamp = DateTime.UtcNow
-        // };
-        // _context.ActivityLogs.Add(activityLog);
-        // await _context.SaveChangesAsync();
-    }
+    return Task.CompletedTask;
+}
 }
 
 // Activity entry model for API responses

@@ -13,7 +13,7 @@ public class SubscriptionRepository : ISubscriptionRepository
         _context = context;
     }
 
-    public async Task<Subscription> GetByIdAsync(Guid subscriptionId)
+    public async Task<Subscription?> GetByIdAsync(Guid subscriptionId)
     {
         return await _context.Subscriptions
             .Include(s => s.Customer)
@@ -23,7 +23,7 @@ public class SubscriptionRepository : ISubscriptionRepository
             .FirstOrDefaultAsync(s => s.SubscriptionId == subscriptionId);
     }
 
-    public async Task<Subscription> GetActiveByCustomerIdAsync(Guid customerId)
+    public async Task<Subscription?> GetActiveByCustomerIdAsync(Guid customerId)
     {
         return await _context.Subscriptions
             .Include(s => s.Customer)

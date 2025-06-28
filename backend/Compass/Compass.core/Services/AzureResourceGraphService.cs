@@ -4,6 +4,7 @@ using Azure.ResourceManager;
 using Azure.ResourceManager.ResourceGraph;
 using Azure.ResourceManager.ResourceGraph.Models;
 using Compass.Core.Models;
+using Compass.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -14,32 +15,100 @@ public interface IAzureResourceGraphService
     Task<List<AzureResource>> GetResourcesAsync(string[] subscriptionIds, CancellationToken cancellationToken = default);
     Task<List<AzureResource>> GetResourcesByTypeAsync(string[] subscriptionIds, string resourceType, CancellationToken cancellationToken = default);
     Task<bool> TestConnectionAsync(string[] subscriptionIds, CancellationToken cancellationToken = default);
+
+    // NEW: OAuth-enabled methods
+    Task<List<AzureResource>> GetResourcesWithOAuthAsync(string[] subscriptionIds, Guid clientId, Guid organizationId, CancellationToken cancellationToken = default);
+    Task<bool> TestConnectionWithOAuthAsync(string[] subscriptionIds, Guid clientId, Guid organizationId, CancellationToken cancellationToken = default);
 }
 
 public class AzureResourceGraphService : IAzureResourceGraphService
 {
     private readonly ArmClient _armClient;
     private readonly ILogger<AzureResourceGraphService> _logger;
+    private readonly IOAuthService _oauthService;
 
-    public AzureResourceGraphService(ILogger<AzureResourceGraphService> logger)
+    public AzureResourceGraphService(ILogger<AzureResourceGraphService> logger, IOAuthService oauthService)
     {
         _logger = logger;
+        _oauthService = oauthService;
 
-        // Use DefaultAzureCredential for authentication
-        // This will try multiple authentication methods in order:
-        // 1. Environment variables (for service principal)
-        // 2. Managed Identity (when running in Azure)
-        // 3. Visual Studio Code, Azure CLI, etc. (for local development)
+        // Use DefaultAzureCredential for fallback authentication
         var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
         {
-            // Enable logging for troubleshooting authentication issues
             Diagnostics = { IsLoggingEnabled = true }
         });
 
         _armClient = new ArmClient(credential);
     }
 
+    // Original methods using DefaultAzureCredential (for backward compatibility)
     public async Task<List<AzureResource>> GetResourcesAsync(string[] subscriptionIds, CancellationToken cancellationToken = default)
+    {
+        return await GetResourcesInternalAsync(_armClient, subscriptionIds, cancellationToken);
+    }
+
+    public async Task<List<AzureResource>> GetResourcesByTypeAsync(string[] subscriptionIds, string resourceType, CancellationToken cancellationToken = default)
+    {
+        return await GetResourcesByTypeInternalAsync(_armClient, subscriptionIds, resourceType, cancellationToken);
+    }
+
+    public async Task<bool> TestConnectionAsync(string[] subscriptionIds, CancellationToken cancellationToken = default)
+    {
+        return await TestConnectionInternalAsync(_armClient, subscriptionIds, cancellationToken);
+    }
+
+    // NEW: OAuth-enabled methods
+    public async Task<List<AzureResource>> GetResourcesWithOAuthAsync(string[] subscriptionIds, Guid clientId, Guid organizationId, CancellationToken cancellationToken = default)
+    {
+        var armClient = await CreateOAuthArmClientAsync(clientId, organizationId);
+        if (armClient == null)
+        {
+            _logger.LogWarning("Failed to create OAuth ARM client for client {ClientId}, falling back to default credentials", clientId);
+            return await GetResourcesAsync(subscriptionIds, cancellationToken);
+        }
+
+        return await GetResourcesInternalAsync(armClient, subscriptionIds, cancellationToken);
+    }
+
+    public async Task<bool> TestConnectionWithOAuthAsync(string[] subscriptionIds, Guid clientId, Guid organizationId, CancellationToken cancellationToken = default)
+    {
+        var armClient = await CreateOAuthArmClientAsync(clientId, organizationId);
+        if (armClient == null)
+        {
+            _logger.LogWarning("Failed to create OAuth ARM client for client {ClientId}, falling back to default credentials", clientId);
+            return await TestConnectionAsync(subscriptionIds, cancellationToken);
+        }
+
+        return await TestConnectionInternalAsync(armClient, subscriptionIds, cancellationToken);
+    }
+
+    private async Task<ArmClient?> CreateOAuthArmClientAsync(Guid clientId, Guid organizationId)
+    {
+        try
+        {
+            var credentials = await _oauthService.GetStoredCredentialsAsync(clientId, organizationId);
+            if (credentials == null)
+            {
+                _logger.LogWarning("No OAuth credentials found for client {ClientId}", clientId);
+                return null;
+            }
+
+            // Create a token credential from the stored access token
+            var tokenCredential = new OAuthTokenCredential(credentials.AccessToken);
+
+            _logger.LogInformation("Created OAuth ARM client for client {ClientId} with token expiring at {ExpiresAt}",
+                clientId, credentials.ExpiresAt);
+
+            return new ArmClient(tokenCredential);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create OAuth ARM client for client {ClientId}", clientId);
+            return null;
+        }
+    }
+
+    private async Task<List<AzureResource>> GetResourcesInternalAsync(ArmClient armClient, string[] subscriptionIds, CancellationToken cancellationToken)
     {
         try
         {
@@ -68,7 +137,7 @@ public class AzureResourceGraphService : IAzureResourceGraphService
                 | order by type asc, name asc
                 | limit 1000";
 
-            return await ExecuteQueryAsync(query, subscriptionIds, cancellationToken);
+            return await ExecuteQueryAsync(armClient, query, subscriptionIds, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -77,7 +146,7 @@ public class AzureResourceGraphService : IAzureResourceGraphService
         }
     }
 
-    public async Task<List<AzureResource>> GetResourcesByTypeAsync(string[] subscriptionIds, string resourceType, CancellationToken cancellationToken = default)
+    private async Task<List<AzureResource>> GetResourcesByTypeInternalAsync(ArmClient armClient, string[] subscriptionIds, string resourceType, CancellationToken cancellationToken)
     {
         try
         {
@@ -101,7 +170,7 @@ public class AzureResourceGraphService : IAzureResourceGraphService
                 | order by name asc
                 | limit 500";
 
-            return await ExecuteQueryAsync(query, subscriptionIds, cancellationToken);
+            return await ExecuteQueryAsync(armClient, query, subscriptionIds, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -111,7 +180,7 @@ public class AzureResourceGraphService : IAzureResourceGraphService
         }
     }
 
-    public async Task<bool> TestConnectionAsync(string[] subscriptionIds, CancellationToken cancellationToken = default)
+    private async Task<bool> TestConnectionInternalAsync(ArmClient armClient, string[] subscriptionIds, CancellationToken cancellationToken)
     {
         try
         {
@@ -119,7 +188,7 @@ public class AzureResourceGraphService : IAzureResourceGraphService
 
             // Simple test query to verify connectivity and permissions
             var query = "Resources | limit 1 | project id, name, type";
-            var results = await ExecuteQueryAsync(query, subscriptionIds, cancellationToken);
+            var results = await ExecuteQueryAsync(armClient, query, subscriptionIds, cancellationToken);
 
             _logger.LogInformation("Successfully connected to Azure Resource Graph. Found {ResultCount} test results", results.Count);
             return true;
@@ -143,12 +212,12 @@ public class AzureResourceGraphService : IAzureResourceGraphService
         }
     }
 
-    private async Task<List<AzureResource>> ExecuteQueryAsync(string query, string[] subscriptionIds, CancellationToken cancellationToken)
+    private async Task<List<AzureResource>> ExecuteQueryAsync(ArmClient armClient, string query, string[] subscriptionIds, CancellationToken cancellationToken)
     {
         _logger.LogDebug("Executing Azure Resource Graph query: {Query}", query);
 
         // Get the tenant resource to access Resource Graph
-        var tenant = _armClient.GetTenants().First();
+        var tenant = armClient.GetTenants().First();
 
         // Create the query request
         var content = new ResourceQueryContent(query);
@@ -287,5 +356,26 @@ public class AzureResourceGraphService : IAzureResourceGraphService
         }
 
         return tags;
+    }
+}
+
+// Custom token credential for OAuth access tokens
+public class OAuthTokenCredential : TokenCredential
+{
+    private readonly string _accessToken;
+
+    public OAuthTokenCredential(string accessToken)
+    {
+        _accessToken = accessToken;
+    }
+
+    public override AccessToken GetToken(TokenRequestContext requestContext, CancellationToken cancellationToken)
+    {
+        return new AccessToken(_accessToken, DateTimeOffset.UtcNow.AddHours(1));
+    }
+
+    public override ValueTask<AccessToken> GetTokenAsync(TokenRequestContext requestContext, CancellationToken cancellationToken)
+    {
+        return new ValueTask<AccessToken>(new AccessToken(_accessToken, DateTimeOffset.UtcNow.AddHours(1)));
     }
 }

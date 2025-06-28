@@ -64,7 +64,45 @@ const CompanyDashboard = () => {
     const [error, setError] = useState(null);
     const [companyData, setCompanyData] = useState(null);
 
+    // Helper function to get user's first name
+    const getUserFirstName = () => {
+        if (!user) return '';
+
+        // Try different sources for first name
+        if (user.firstName) return user.firstName;
+        if (user.FirstName) return user.FirstName;
+        if (user.given_name) return user.given_name;
+        if (user.name) {
+            const nameParts = user.name.split(' ');
+            return nameParts[0] || '';
+        }
+
+        // Fallback: extract from email
+        if (user.email) {
+            const emailUser = user.email.split('@')[0];
+            return emailUser.charAt(0).toUpperCase() + emailUser.slice(1).toLowerCase();
+        }
+
+        return '';
+    };
+
+    // Helper function to get organization name
+    const getOrganizationName = () => {
+        if (!user) return '';
+
+        // Try different sources for organization name
+        if (user.organizationName) return user.organizationName;
+        if (user.OrganizationName) return user.OrganizationName;
+        if (user.companyName) return user.companyName;
+        if (user.CompanyName) return user.CompanyName;
+        if (user.company_name) return user.company_name;
+        if (user.organization_name) return user.organization_name;
+
+        return 'your organization';
+    };
+
     useEffect(() => {
+        console.log('[CompanyDashboard] Component mounted, user data:', user);
         loadCompanyMetrics();
     }, []);
 
@@ -72,10 +110,14 @@ const CompanyDashboard = () => {
         try {
             setLoading(true);
             setError(null);
+            console.log('[CompanyDashboard] Loading company metrics...');
+
             const data = await dashboardService.getCompanyMetrics();
+            console.log('[CompanyDashboard] Received company data:', data);
+
             setCompanyData(data);
         } catch (err) {
-            console.error('Failed to load company metrics:', err);
+            console.error('[CompanyDashboard] Failed to load company metrics:', err);
             setError('Failed to load company overview');
         } finally {
             setLoading(false);
@@ -169,6 +211,16 @@ const CompanyDashboard = () => {
         }
     ];
 
+    const firstName = getUserFirstName();
+    const organizationName = getOrganizationName();
+
+    console.log('[CompanyDashboard] Render data:', {
+        firstName,
+        organizationName,
+        stats: stats.map(s => ({ title: s.title, value: s.value })),
+        recentClientsCount: companyData?.recentClients?.length || 0
+    });
+
     return (
         <div className="space-y-6">
             {/* Welcome Header */}
@@ -177,12 +229,15 @@ const CompanyDashboard = () => {
                     <div className="flex items-start justify-between">
                         <div>
                             <h1 className="text-2xl font-bold text-white mb-2">
-                                Welcome to {user.companyName}! 👋
+                                Welcome back{firstName ? `, ${firstName}` : ''}! 👋
                             </h1>
+                            <p className="text-gray-300 mb-4">
+                                Here's what's happening at {organizationName}
+                            </p>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                                 <div>
                                     <span className="text-gray-400">Plan:</span>
-                                    <span className="text-white ml-2">{user.subscriptionStatus || 'Trial'}</span>
+                                    <span className="text-white ml-2">{user.subscriptionStatus || user.SubscriptionStatus || 'Trial'}</span>
                                 </div>
                                 <div>
                                     <span className="text-gray-400">Total Clients:</span>
@@ -225,6 +280,7 @@ const CompanyDashboard = () => {
                                 <ClientCard
                                     key={client.id || index}
                                     client={client}
+                                    onClick={(client) => navigate('/app/company/clients')}
                                 />
                             ))}
                             {companyData.totalClients > 5 && (

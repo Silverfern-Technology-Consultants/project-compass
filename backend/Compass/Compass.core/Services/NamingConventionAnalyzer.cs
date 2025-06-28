@@ -382,8 +382,11 @@ public class NamingConventionAnalyzer : INamingConventionAnalyzer
         }
     }
 
-    private string ConvertToPattern(string name, string targetPattern)
+    private string ConvertToPattern(string name, string? targetPattern)
     {
+        if (string.IsNullOrEmpty(targetPattern))
+            return name.ToLowerInvariant();
+
         return targetPattern.ToLowerInvariant() switch
         {
             "lowercase" => name.ToLowerInvariant(),

@@ -22,17 +22,79 @@ const extractUserFromJWT = (token) => {
     const decoded = decodeJWT(token);
     if (!decoded) return null;
 
-    return {
-        customerId: decoded.nameid || decoded.sub,
-        email: decoded.email,
-        firstName: decoded.given_name || decoded.name?.split(' ')[0] || '',
-        lastName: decoded.family_name || decoded.name?.split(' ').slice(1).join(' ') || '',
-        role: decoded.role,
-        organizationId: decoded.organization_id,
-        emailVerified: decoded.email_verified === 'true' || decoded.email_verified === true,
-        companyName: decoded.company_name || decoded.organization_name || '',
-        name: decoded.name || `${decoded.given_name || ''} ${decoded.family_name || ''}`.trim()
+    console.log('[AuthContext] JWT decoded payload:', decoded);
+
+    // Extract names with multiple fallback options
+    const extractFirstName = () => {
+        if (decoded.given_name) return decoded.given_name;
+        if (decoded.FirstName) return decoded.FirstName;
+        if (decoded.name) {
+            const parts = decoded.name.split(' ');
+            return parts[0] || '';
+        }
+        return '';
     };
+
+    const extractLastName = () => {
+        if (decoded.family_name) return decoded.family_name;
+        if (decoded.LastName) return decoded.LastName;
+        if (decoded.name) {
+            const parts = decoded.name.split(' ');
+            return parts.slice(1).join(' ') || '';
+        }
+        return '';
+    };
+
+    const extractOrganizationName = () => {
+        // Try multiple possible field names for organization
+        return decoded.organization_name ||
+            decoded.OrganizationName ||
+            decoded.company_name ||
+            decoded.CompanyName ||
+            decoded.companyName ||
+            '';
+    };
+
+    const user = {
+        // Core identity fields
+        customerId: decoded.nameid || decoded.sub || decoded.CustomerId,
+        email: decoded.email || decoded.Email,
+
+        // Name fields with multiple fallbacks
+        firstName: extractFirstName(),
+        lastName: extractLastName(),
+        name: decoded.name || `${extractFirstName()} ${extractLastName()}`.trim(),
+
+        // Role and permissions
+        role: decoded.role || decoded.Role,
+
+        // Organization context
+        organizationId: decoded.organization_id || decoded.OrganizationId,
+        organizationName: extractOrganizationName(),
+
+        // Legacy field mappings for backward compatibility
+        companyName: extractOrganizationName(),
+
+        // Email verification
+        emailVerified: decoded.email_verified === 'true' || decoded.email_verified === true,
+
+        // Additional JWT fields that might be useful
+        subscriptionStatus: decoded.subscription_status || decoded.SubscriptionStatus || 'Trial',
+
+        // Keep original fields for debugging
+        _jwtFields: {
+            given_name: decoded.given_name,
+            family_name: decoded.family_name,
+            organization_name: decoded.organization_name,
+            company_name: decoded.company_name,
+            name: decoded.name,
+            role: decoded.role,
+            organization_id: decoded.organization_id
+        }
+    };
+
+    console.log('[AuthContext] Extracted user data:', user);
+    return user;
 };
 
 const getEmailVerifiedFromToken = (token) => {

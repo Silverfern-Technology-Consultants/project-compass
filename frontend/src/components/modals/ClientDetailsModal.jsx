@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
     X,
     Building2,
@@ -94,7 +95,7 @@ const ClientDetailsModal = ({ isOpen, onClose, client, onEdit, onManageSubscript
     if (!isOpen || !client) return null;
 
     if (isLoading) {
-        return (
+        return createPortal(
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
                 <div className="bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl">
                     <div className="flex items-center justify-between p-6 border-b border-gray-700">
@@ -121,11 +122,12 @@ const ClientDetailsModal = ({ isOpen, onClose, client, onEdit, onManageSubscript
                     </div>
                 </div>
             </div>
+            ,document.body
         );
     }
 
     if (error) {
-        return (
+        return createPortal(
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
                 <div className="bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl">
                     <div className="flex items-center justify-between p-6 border-b border-gray-700">
@@ -167,6 +169,7 @@ const ClientDetailsModal = ({ isOpen, onClose, client, onEdit, onManageSubscript
                     </div>
                 </div>
             </div>
+            ,document.body
         );
     }
 
@@ -174,7 +177,7 @@ const ClientDetailsModal = ({ isOpen, onClose, client, onEdit, onManageSubscript
 
     const contractStatus = getContractStatus();
 
-    return (
+    return createPortal (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
                 {/* Header */}
@@ -447,6 +450,7 @@ const ClientDetailsModal = ({ isOpen, onClose, client, onEdit, onManageSubscript
                 </div>
             </div>
         </div>
+        ,document.body
     );
 };
 

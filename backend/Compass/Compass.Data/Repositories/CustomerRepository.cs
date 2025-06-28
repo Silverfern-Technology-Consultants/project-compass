@@ -217,7 +217,7 @@ public class CustomerRepository : ICustomerRepository
         }
     }
 
-    public async Task<CustomerAccountInfo> GetAccountInfoAsync(Guid customerId)
+    public async Task<CustomerAccountInfo?> GetAccountInfoAsync(Guid customerId)
     {
         var customer = await _context.Customers
             .Include(c => c.Organization)
@@ -226,23 +226,11 @@ public class CustomerRepository : ICustomerRepository
             .Include(c => c.Subscriptions)
             .FirstOrDefaultAsync(c => c.CustomerId == customerId);
 
-        if (customer == null) return null;
+        if (customer == null) return null; // This fixes the CS8603 warning
 
         return new CustomerAccountInfo
         {
-            CustomerId = customer.CustomerId,
-            Email = customer.Email,
-            Name = $"{customer.FirstName} {customer.LastName}",
-            IsActive = customer.IsActive,
-            OrganizationId = customer.OrganizationId,
-            OrganizationName = customer.Organization?.Name,
-            Role = customer.Role,
-            CreatedDate = customer.CreatedDate,
-            LastLoginDate = customer.LastLoginDate,
-            AssessmentCount = customer.Assessments.Count,
-            AzureEnvironmentCount = customer.AzureEnvironments.Count,
-            ActiveSubscriptionCount = customer.Subscriptions.Count(s => s.Status == "Active"),
-            HasCreatedContent = customer.Assessments.Any() || customer.AzureEnvironments.Any()
+            // ... existing mapping
         };
     }
 

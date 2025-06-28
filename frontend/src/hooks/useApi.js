@@ -158,23 +158,76 @@ export const useAssessments = () => {
 
 
             // Transform the API response to match frontend expectations with proper client context
+            // Updated transformation in loadAssessments function (lines ~120-145)
+            // Replace the existing transformedAssessments mapping with this:
+
             const transformedAssessments = apiAssessments.map(assessment => {
+                console.log('[useApi] Raw backend assessment:', assessment);
+
+                // Calculate duration from StartedDate and CompletedDate
+                const calculateDuration = (startedDate, completedDate) => {
+                    if (!startedDate) return 'Unknown';
+
+                    const start = new Date(startedDate);
+
+                    if (!completedDate) {
+                        return 'In Progress';
+                    }
+
+                    const end = new Date(completedDate);
+                    const diffMs = end - start;
+
+                    console.log('[useApi] Duration calculation:', {
+                        startedDate,
+                        completedDate,
+                        diffMs,
+                        diffSeconds: diffMs / 1000
+                    });
+
+                    if (diffMs < 1000) {
+                        return `${diffMs}ms`;
+                    } else if (diffMs < 60000) {
+                        const totalSeconds = Math.round(diffMs / 100) / 10;
+                        return `${totalSeconds}s`;
+                    } else {
+                        const diffMins = Math.floor(diffMs / 60000);
+                        const diffSecs = Math.floor((diffMs % 60000) / 1000);
+                        return `${diffMins}m ${diffSecs}s`;
+                    }
+                };
 
                 return {
-                    id: assessment.AssessmentId,           // Map API 'AssessmentId' to frontend 'id'
-                    assessmentId: assessment.AssessmentId, // Also provide as assessmentId
-                    AssessmentId: assessment.AssessmentId, // Keep original for reference
+                    // ID mappings
+                    id: assessment.AssessmentId,
+                    assessmentId: assessment.AssessmentId,
+                    AssessmentId: assessment.AssessmentId,
+
+                    // Basic info
                     name: assessment.Name || 'Untitled Assessment',
                     environment: 'Production',
                     status: assessment.Status || 'Unknown',
                     score: assessment.OverallScore,
                     resourceCount: assessment.TotalResourcesAnalyzed || 0,
                     issuesCount: assessment.IssuesFound || 0,
-                    duration: '5m 30s',
-                    date: assessment.StartedDate ? new Date(assessment.StartedDate).toLocaleDateString() : 'Recent',
                     type: assessment.AssessmentType || 'Full',
+
+                    // FIXED: Map date fields properly from backend PascalCase to frontend camelCase
+                    startedDate: assessment.StartedDate,
+                    completedDate: assessment.CompletedDate,
+                    StartedDate: assessment.StartedDate,  // Keep PascalCase for compatibility
+                    CompletedDate: assessment.CompletedDate,  // Keep PascalCase for compatibility
+
+                    // FIXED: Calculate duration from actual dates instead of hard-coding
+                    duration: calculateDuration(assessment.StartedDate, assessment.CompletedDate),
+
+                    // Display date
+                    date: assessment.StartedDate ? new Date(assessment.StartedDate).toLocaleDateString() : 'Recent',
+
+                    // Client context
                     clientId: assessment.ClientId,
                     clientName: assessment.ClientName,
+
+                    // Raw data
                     rawData: assessment
                 };
             });

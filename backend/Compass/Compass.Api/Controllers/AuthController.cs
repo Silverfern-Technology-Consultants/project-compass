@@ -9,9 +9,7 @@ using Microsoft.EntityFrameworkCore; // Add this for Entity Framework
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using System.Text.Json;
-
 namespace Compass.Api.Controllers;
-
 [ApiController]
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
@@ -21,7 +19,6 @@ public class AuthController : ControllerBase
     private readonly ICustomerRepository _customerRepository;
     private readonly CompassDbContext _context; // Add this for direct database access
     private readonly ILogger<AuthController> _logger;
-
     public AuthController(
         IAuthService authService,
         IMfaService mfaService,
@@ -35,16 +32,13 @@ public class AuthController : ControllerBase
         _context = context; // Add this assignment
         _logger = logger;
     }
-
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponse>> Register([FromBody] Compass.Core.Models.RegisterRequest request)
     {
         try
         {
             _logger.LogInformation("Registration attempt for email: {Email}", request.Email);
-
             TeamInvitation? invitation = null;
-
             // If invitation token is provided, validate it first
             if (!string.IsNullOrEmpty(request.InvitationToken))
             {
@@ -53,7 +47,6 @@ public class AuthController : ControllerBase
                     .FirstOrDefaultAsync(ti => ti.InvitationToken == request.InvitationToken &&
                                               ti.Status == "Pending" &&
                                               ti.InvitedEmail.ToLower() == request.Email.ToLower());
-
                 if (invitation == null)
                 {
                     return BadRequest(new AuthResponse
@@ -62,7 +55,6 @@ public class AuthController : ControllerBase
                         Message = "Invalid or expired invitation"
                     });
                 }
-
                 if (invitation.ExpirationDate < DateTime.UtcNow)
                 {
                     return BadRequest(new AuthResponse
@@ -71,14 +63,11 @@ public class AuthController : ControllerBase
                         Message = "Invitation has expired"
                     });
                 }
-
                 _logger.LogInformation("Valid invitation found for {Email} to join organization {OrganizationId} as {Role}",
                     request.Email, invitation.OrganizationId, invitation.InvitedRole);
             }
-
             var ipAddress = GetClientIpAddress();
             var result = await _authService.RegisterAsync(request, ipAddress);
-
             if (result.Success)
             {
                 // If registration with invitation token, complete the invitation process
@@ -87,21 +76,17 @@ public class AuthController : ControllerBase
                     // Find the newly created customer
                     var newCustomer = await _context.Customers
                         .FirstOrDefaultAsync(c => c.Email.ToLower() == request.Email.ToLower());
-
                     if (newCustomer != null)
                     {
                         // CRITICAL FIX: Set the organization and role from the invitation
                         newCustomer.OrganizationId = invitation.OrganizationId;
                         newCustomer.Role = invitation.InvitedRole;
-
                         // Mark invitation as accepted
                         invitation.Status = "Accepted";
                         invitation.AcceptedDate = DateTime.UtcNow;
                         invitation.AcceptedByCustomerId = newCustomer.CustomerId;
-
                         // Save all changes
                         await _context.SaveChangesAsync();
-
                         _logger.LogInformation("User {Email} successfully joined organization {OrganizationId} as {Role}",
                             request.Email, invitation.OrganizationId, invitation.InvitedRole);
                     }
@@ -110,11 +95,9 @@ public class AuthController : ControllerBase
                         _logger.LogError("Could not find newly created customer {Email} to assign to organization", request.Email);
                     }
                 }
-
                 _logger.LogInformation("User registration successful: {Email}", request.Email);
                 return Ok(result);
             }
-
             return BadRequest(result);
         }
         catch (Exception ex)
@@ -127,7 +110,6 @@ public class AuthController : ControllerBase
             });
         }
     }
-
     [HttpPost("login")]
     public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginWithMfaRequest request)
     {
@@ -143,7 +125,6 @@ public class AuthController : ControllerBase
                     Message = "Invalid email or password"
                 });
             }
-
             if (!customer.EmailVerified)
             {
                 return Ok(new LoginResponse
@@ -162,7 +143,6 @@ public class AuthController : ControllerBase
                     }
                 });
             }
-
             if (!customer.IsActive)
             {
                 return Ok(new LoginResponse
@@ -171,7 +151,6 @@ public class AuthController : ControllerBase
                     Message = "Account is deactivated"
                 });
             }
-
             // Check if MFA is required
             if (customer.IsMfaEnabled && !string.IsNullOrEmpty(customer.MfaSecret))
             {
@@ -185,7 +164,6 @@ public class AuthController : ControllerBase
                         Message = "MFA code required"
                     });
                 }
-
                 // Validate MFA token
                 bool mfaValid = false;
                 if (request.IsBackupCode)
@@ -194,7 +172,6 @@ public class AuthController : ControllerBase
                     {
                         var backupCodes = JsonSerializer.Deserialize<List<string>>(customer.MfaBackupCodes) ?? new List<string>();
                         mfaValid = _mfaService.ValidateBackupCode(request.MfaToken, backupCodes);
-
                         if (mfaValid)
                         {
                             // Remove used backup code
@@ -214,7 +191,6 @@ public class AuthController : ControllerBase
                         await _customerRepository.UpdateAsync(customer);
                     }
                 }
-
                 if (!mfaValid)
                 {
                     return Ok(new LoginResponse
@@ -225,7 +201,6 @@ public class AuthController : ControllerBase
                     });
                 }
             }
-
             // Check if MFA setup is required
             if (customer.RequireMfaSetup)
             {
@@ -247,16 +222,13 @@ public class AuthController : ControllerBase
                     }
                 });
             }
-
             // Update last login info
             var ipAddress = GetClientIpAddress();
             customer.LastLoginDate = DateTime.UtcNow;
             customer.LastLoginIP = ipAddress;
             await _customerRepository.UpdateAsync(customer);
-
             // Generate JWT token
             var jwtToken = await _authService.GenerateJwtTokenAsync(customer);
-
             // ✅ CRITICAL FIX: Include EmailVerified in successful login response
             return Ok(new LoginResponse
             {
@@ -286,19 +258,16 @@ public class AuthController : ControllerBase
             });
         }
     }
-
     [HttpPost("verify-email")]
     public async Task<ActionResult<AuthResponse>> VerifyEmail([FromBody] VerifyEmailRequest request)
     {
         try
         {
             var result = await _authService.VerifyEmailAsync(request.Token);
-
             if (!result.Success)
             {
                 return BadRequest(result);
             }
-
             return Ok(result);
         }
         catch (Exception ex)
@@ -311,19 +280,16 @@ public class AuthController : ControllerBase
             });
         }
     }
-
     [HttpPost("resend-verification")]
     public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest request)
     {
         try
         {
             var success = await _authService.ResendVerificationEmailAsync(request.Email);
-
             if (!success)
             {
                 return BadRequest(new { message = "Unable to resend verification email" });
             }
-
             return Ok(new { message = "Verification email sent" });
         }
         catch (Exception ex)
@@ -332,30 +298,29 @@ public class AuthController : ControllerBase
             return StatusCode(500, new { message = "Internal server error" });
         }
     }
-
     [HttpGet("me")]
     [Authorize]
     public async Task<ActionResult<CustomerInfo>> GetCurrentUser()
     {
         try
         {
+
             var customerId = GetCurrentCustomerId();
             if (customerId == null)
             {
                 return Unauthorized();
             }
 
-            // Get customer with organization data
-            var customer = await _context.Customers
-                .Include(c => c.Organization)
-                    .ThenInclude(o => o.Subscriptions.Where(s => s.Status == "Active" || s.Status == "Trial"))
-                .FirstOrDefaultAsync(c => c.CustomerId == customerId.Value);
+            var id = customerId.Value; // Now safe to use
 
+            var customer = await _context.Customers
+             .Include(c => c.Organization)
+             .ThenInclude(o => o.Subscriptions.Where(s => s.Status == "Active" || s.Status == "Trial"))
+             .FirstOrDefaultAsync(c => c.CustomerId == id);
             if (customer == null)
             {
                 return NotFound();
             }
-
             // Get organization-level subscription instead of user-level
             Subscription? activeSubscription = null;
             if (customer.Organization != null)
@@ -369,7 +334,6 @@ public class AuthController : ControllerBase
                     .OrderByDescending(s => s.CreatedDate)
                     .FirstOrDefaultAsync();
             }
-
             return Ok(new CustomerInfo
             {
                 CustomerId = customer.CustomerId,
@@ -381,18 +345,17 @@ public class AuthController : ControllerBase
                 Role = customer.Role,
                 OrganizationId = customer.OrganizationId,
                 OrganizationName = customer.Organization?.Name,
-                // ✅ CRITICAL FIX: Use organization-level subscription
                 SubscriptionStatus = activeSubscription?.Status ?? "None",
                 TrialEndDate = activeSubscription?.TrialEndDate
             });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Get current user error");
+            _logger?.LogError(ex, "Get current user error");
             return StatusCode(500);
         }
-    }
 
+    }
     [HttpPost("check-email")]
     public async Task<IActionResult> CheckEmailAvailability([FromBody] CheckEmailRequest request)
     {
@@ -407,7 +370,6 @@ public class AuthController : ControllerBase
             return StatusCode(500);
         }
     }
-
     [HttpPost("logout")]
     public ActionResult Logout()
     {
@@ -415,7 +377,6 @@ public class AuthController : ControllerBase
         // In a production app, you might want to maintain a token blacklist
         return Ok(new { message = "Logged out successfully" });
     }
-
     [HttpPost("forgot-password")]
     public async Task<ActionResult> ForgotPassword([FromBody] Compass.Core.Models.ForgotPasswordRequest request)
     {
@@ -430,7 +391,6 @@ public class AuthController : ControllerBase
             return StatusCode(500, "An error occurred while processing your request");
         }
     }
-
     [HttpPost("reset-password")]
     public async Task<ActionResult> ResetPassword([FromBody] Compass.Core.Models.ResetPasswordRequest request)
     {
@@ -449,12 +409,10 @@ public class AuthController : ControllerBase
             return StatusCode(500, "An error occurred while resetting your password");
         }
     }
-
     private string? GetClientIpAddress()
     {
         return HttpContext.Connection.RemoteIpAddress?.ToString();
     }
-
     private Guid? GetCurrentCustomerId()
     {
         var customerIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -465,7 +423,6 @@ public class AuthController : ControllerBase
         return null;
     }
 }
-
 public class CheckEmailRequest
 {
     [Required]

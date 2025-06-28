@@ -26,7 +26,7 @@ public class JwtService : IJwtService
 
     public JwtService(IConfiguration configuration, CompassDbContext context)
     {
-        _secretKey = configuration["Jwt:SecretKey"] ?? throw new ArgumentNullException("Jwt:SecretKey");
+        _secretKey = configuration["jwt-secret-key"] ?? throw new ArgumentNullException("jwt-secret-key");
         _issuer = configuration["Jwt:Issuer"] ?? "compass-api";
         _audience = configuration["Jwt:Audience"] ?? "compass-client";
         _context = context;

@@ -1,7 +1,7 @@
 ﻿import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { ClientProvider } from './contexts/ClientContext';  // ADD THIS IMPORT
+import { ClientProvider } from './contexts/ClientContext';
 import { LayoutProvider } from './contexts/LayoutContext';
 import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -13,6 +13,9 @@ import LoginPage from './components/pages/LoginPage';
 import RegisterPage from './components/pages/RegisterPage';
 import VerifyEmailPage from './components/pages/VerifyEmailPage';
 import AcceptInvitePage from './components/pages/AcceptInvitePage';
+// OAuth callback components - NEW
+import OAuthSuccessPage from './components/pages/OAuthSuccessPage';
+import OAuthErrorPage from './components/pages/OAuthErrorPage';
 // Other page components
 import ReportsPage from './components/pages/ReportsPage';
 import TeamManagementPage from './components/pages/TeamManagementPage';
@@ -96,6 +99,10 @@ const AppContent = () => {
                 <Route path="/verify-email" element={<VerifyEmailPage />} />
                 <Route path="/accept-invite" element={<AcceptInvitePage />} />
 
+                {/* OAuth callback routes - NEW */}
+                <Route path="/oauth/success" element={<OAuthSuccessPage />} />
+                <Route path="/oauth/error" element={<OAuthErrorPage />} />
+
                 {/* Protected routes */}
                 <Route
                     path="/app/*"
@@ -145,11 +152,11 @@ const AppContent = () => {
 const App = () => {
     return (
         <AuthProvider>
-            <ClientProvider>  {/* ADD THIS WRAPPER */}
+            <ClientProvider>
                 <Router>
                     <AppContent />
                 </Router>
-            </ClientProvider>  {/* ADD THIS CLOSING TAG */}
+            </ClientProvider>
         </AuthProvider>
     );
 };

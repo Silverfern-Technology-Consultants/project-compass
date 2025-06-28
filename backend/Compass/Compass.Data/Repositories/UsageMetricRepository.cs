@@ -13,7 +13,7 @@ public class UsageMetricRepository : IUsageMetricRepository
         _context = context;
     }
 
-    public async Task<UsageMetric> GetByIdAsync(Guid usageId)
+    public async Task<UsageMetric?> GetByIdAsync(Guid usageId)
     {
         return await _context.UsageMetrics
             .Include(u => u.Customer)

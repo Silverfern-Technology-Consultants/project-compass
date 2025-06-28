@@ -9,11 +9,11 @@ public class SubscriptionFeature
     public Guid FeatureId { get; set; }
 
     [StringLength(255)]
-    public string FeatureValue { get; set; }
+    public string FeatureValue { get; set; } = string.Empty;
 
     public bool IsEnabled { get; set; } = true;
 
     // Navigation properties
-    public Subscription Subscription { get; set; }
-    public LicenseFeature LicenseFeature { get; set; }
+    public Subscription Subscription { get; set; } = null!;
+    public LicenseFeature LicenseFeature { get; set; } = null!;
 }

@@ -9,16 +9,16 @@ public class LicenseFeature
 
     [Required]
     [StringLength(100)]
-    public string FeatureName { get; set; }
+    public string FeatureName { get; set; } = string.Empty;
 
     [StringLength(500)]
-    public string FeatureDescription { get; set; }
+    public string FeatureDescription { get; set; } = string.Empty;
 
     [StringLength(50)]
-    public string FeatureType { get; set; } // Limit, Toggle, Value
+    public string FeatureType { get; set; } = string.Empty;
 
     [StringLength(255)]
-    public string DefaultValue { get; set; }
+    public string DefaultValue { get; set; } = string.Empty;
 
     public bool IsActive { get; set; } = true;
 

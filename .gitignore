@@ -46,3 +46,7 @@ yarn-error.log*
 ._*
 Thumbs.db
 ehthumbs.db
+
+# Local deployment configurations
+*.local.sh
+local-config.json

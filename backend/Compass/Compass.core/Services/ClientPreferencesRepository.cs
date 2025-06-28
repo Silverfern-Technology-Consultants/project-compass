@@ -26,16 +26,12 @@ public class ClientPreferencesRepository : IClientPreferencesRepository
         _logger = logger;
     }
 
-    public async Task<ClientPreferences?> GetByCustomerIdAsync(Guid customerId)
+    public Task<ClientPreferences?> GetByCustomerIdAsync(Guid customerId)
     {
         try
         {
-            // For now, return a sample preference for demo purposes
-            // In a real implementation, you'd query the database
             _logger.LogInformation("Retrieving client preferences for customer {CustomerId}", customerId);
-
-            // Return null for now - will implement database storage later
-            return null;
+            return Task.FromResult<ClientPreferences?>(null);
         }
         catch (Exception ex)
         {

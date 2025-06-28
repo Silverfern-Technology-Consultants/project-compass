@@ -11,16 +11,16 @@ public class UsageMetric
 
     [Required]
     [StringLength(50)]
-    public string MetricType { get; set; } // AssessmentRun, SubscriptionCount, APICall, StorageGB
+    public string MetricType { get; set; } = string.Empty;
 
     public int MetricValue { get; set; }
 
     [StringLength(20)]
-    public string BillingPeriod { get; set; } // 2025-01, 2025-Q1
+    public string BillingPeriod { get; set; } = string.Empty;
 
     public DateTime RecordedDate { get; set; } = DateTime.UtcNow;
 
     // Navigation properties
-    public Customer Customer { get; set; }
-    public Subscription Subscription { get; set; }
+    public Customer Customer { get; set; } = null!;
+    public Subscription Subscription { get; set; } = null!;
 }

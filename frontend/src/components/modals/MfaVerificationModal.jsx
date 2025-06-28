@@ -1,4 +1,5 @@
 ﻿import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
 const MfaVerificationModal = ({ isOpen, onClose, onVerificationSuccess }) => {
@@ -62,8 +63,8 @@ const MfaVerificationModal = ({ isOpen, onClose, onVerificationSuccess }) => {
 
     if (!isOpen) return null;
 
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    return createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60">
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl font-semibold text-white">Two-Factor Authentication</h2>
@@ -155,6 +156,8 @@ const MfaVerificationModal = ({ isOpen, onClose, onVerificationSuccess }) => {
                 </div>
             </div>
         </div>
+
+        ,document.body
     );
 };
 
