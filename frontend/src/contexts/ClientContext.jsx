@@ -126,6 +126,51 @@ export const ClientProvider = ({ children }) => {
         dispatch({ type: 'REMOVE_CLIENT', payload: clientId });
     };
 
+    // NEW: Delete client with API call
+    const deleteClient = async (clientId) => {
+        try {
+            // Import dynamically to avoid circular dependency
+            const { clientApi } = await import('../services/apiService');
+
+            console.log('[ClientContext] Deleting client:', clientId);
+            const result = await clientApi.deleteClient(clientId);
+
+            // Remove from local state
+            dispatch({ type: 'REMOVE_CLIENT', payload: clientId });
+
+            console.log('[ClientContext] Client deleted successfully:', result);
+            return { success: true, message: result.message || 'Client deleted successfully' };
+
+        } catch (error) {
+            console.error('[ClientContext] Error deleting client:', error);
+
+            // Handle specific error responses from backend
+            if (error.response?.data) {
+                const errorData = error.response.data;
+
+                // Backend returns detailed error for clients with associated data
+                if (errorData.error === "Cannot delete client with associated data") {
+                    return {
+                        success: false,
+                        message: errorData.error,
+                        details: errorData.details,
+                        suggestion: errorData.suggestion
+                    };
+                }
+
+                return {
+                    success: false,
+                    message: errorData.message || errorData.error || 'Failed to delete client'
+                };
+            }
+
+            return {
+                success: false,
+                message: error.message || 'Failed to delete client'
+            };
+        }
+    };
+
     const getClientDisplayName = () => {
         if (!state.selectedClient) return 'No Client Selected';
         if (state.selectedClient.isInternal) return `${state.selectedClient.Name} - Internal`;
@@ -151,6 +196,7 @@ export const ClientProvider = ({ children }) => {
         addClient,
         updateClient,
         removeClient,
+        deleteClient, // NEW: Delete with API call
 
         // Utilities
         getClientDisplayName,

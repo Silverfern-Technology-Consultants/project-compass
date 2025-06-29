@@ -28,4 +28,6 @@ public class Assessment
     public virtual Organization? Organization { get; set; }
     public virtual Client? Client { get; set; } // NEW: Client navigation
     public virtual ICollection<AssessmentFinding> Findings { get; set; } = new List<AssessmentFinding>();
+    public virtual ICollection<AssessmentResource> Resources { get; set; } = new List<AssessmentResource>();
+
 }

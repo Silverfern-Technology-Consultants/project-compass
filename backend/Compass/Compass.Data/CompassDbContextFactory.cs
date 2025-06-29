@@ -2,6 +2,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
+using Azure.Extensions.AspNetCore.Configuration.Secrets;
+using Azure.Identity;
 
 namespace Compass.Data;
 
@@ -11,19 +13,29 @@ public class CompassDbContextFactory : IDesignTimeDbContextFactory<CompassDbCont
     {
         var optionsBuilder = new DbContextOptionsBuilder<CompassDbContext>();
 
-        // Build configuration to read from user secrets
-        var configuration = new ConfigurationBuilder()
-            .AddUserSecrets<CompassDbContextFactory>(optional: true)
-            .Build();
+        // Build configuration to read from Azure Key Vault (like your Program.cs)
+        var configBuilder = new ConfigurationBuilder()
+            .AddJsonFile("appsettings.json", optional: true)
+            .AddJsonFile("appsettings.Development.json", optional: true)
+            .AddUserSecrets<CompassDbContextFactory>(optional: true);
 
-        // Get connection string from user secrets
-        var connectionString = configuration.GetConnectionString("DefaultConnection");
+        // Add Azure Key Vault - using the correct vault name and URI format
+        var keyVaultName = "kv-dev-7yu4s2pu";
+        var keyVaultUri = new Uri($"https://{keyVaultName}.vault.azure.net/");
+        configBuilder.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
+
+        var configuration = configBuilder.Build();
+
+        // Try to get connection string from Key Vault first, then fall back to user secrets
+        var connectionString = configuration["compass-database-connection"] ??
+                              configuration.GetConnectionString("DefaultConnection");
 
         if (string.IsNullOrEmpty(connectionString))
         {
             throw new InvalidOperationException(
-                "Connection string 'DefaultConnection' not found. " +
-                "Please set it using: dotnet user-secrets set \"ConnectionStrings:DefaultConnection\" \"<your-connection-string>\""
+                "Connection string not found. " +
+                "Please ensure 'compass-database-connection' is available in Azure Key Vault or " +
+                "set 'ConnectionStrings:DefaultConnection' in user secrets for local development."
             );
         }
 

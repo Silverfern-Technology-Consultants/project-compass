@@ -126,7 +126,62 @@ export const assessmentApi = {
             console.error('[assessmentApi] Error deleting assessment:', error);
             throw error;
         }
-    }
+    },
+    getAssessmentResources: async (assessmentId, queryParams = '') => {
+        try {
+            console.log('[assessmentApi] Getting assessment resources:', assessmentId);
+            const url = queryParams
+                ? `/assessments/${assessmentId}/resources?${queryParams}`
+                : `/assessments/${assessmentId}/resources`;
+
+            const response = await apiClient.get(url);
+            console.log('[assessmentApi] Assessment resources response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[assessmentApi] Failed to get assessment resources:', error);
+            throw error;
+        }
+    },
+    exportResourcesCsv: async (assessmentId) => {
+        try {
+            console.log('[assessmentApi] Exporting resources as CSV:', assessmentId);
+            const response = await fetch(`${API_BASE_URL}/assessments/${assessmentId}/export/csv`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('compass_token')}`,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Export failed: ${response.statusText}`);
+            }
+
+            return response; // Return the response for blob handling
+        } catch (error) {
+            console.error('[assessmentApi] Failed to export CSV:', error);
+            throw error;
+        }
+    },
+    exportResourcesExcel: async (assessmentId) => {
+        try {
+            console.log('[assessmentApi] Exporting resources as Excel:', assessmentId);
+            const response = await fetch(`${API_BASE_URL}/assessments/${assessmentId}/export/xlsx`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('compass_token')}`,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Export failed: ${response.statusText}`);
+            }
+
+            return response; // Return the response for blob handling
+        } catch (error) {
+            console.error('[assessmentApi] Failed to export Excel:', error);
+            throw error;
+        }
+    },
 };
 
 // Assessments API (for listing)

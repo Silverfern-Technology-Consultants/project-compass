@@ -1,10 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, CheckCircle, AlertTriangle, XCircle, FileText, BarChart3, Download, Eye } from 'lucide-react';
+import { X, CheckCircle, AlertTriangle, XCircle, FileText, BarChart3, Download, Eye, Filter, Search, ChevronLeft, ChevronRight, Server, Database, Network } from 'lucide-react';
 import { assessmentApi, apiUtils } from '../../services/apiService';
 
 const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
     const [findings, setFindings] = useState([]);
+    const [resources, setResources] = useState([]);
+    const [resourceFilters, setResourceFilters] = useState({});
+    const [resourceSearch, setResourceSearch] = useState('');
+    const [resourcePage, setResourcePage] = useState(1);
+    const [resourceTotalPages, setResourceTotalPages] = useState(1);
+    const [resourceTotalCount, setResourceTotalCount] = useState(0);
+    const [selectedFilters, setSelectedFilters] = useState({
+        resourceType: '',
+        resourceGroup: '',
+        location: '',
+        environment: ''
+    });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [activeTab, setActiveTab] = useState('overview');
@@ -38,14 +50,145 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
         }
     };
 
+    const loadResources = async (page = 1, resetSearch = false) => {
+        try {
+            setTabLoading(prev => ({ ...prev, resources: true }));
+            setError(null);
+
+            const searchTerm = resetSearch ? '' : resourceSearch;
+            if (resetSearch) {
+                setResourceSearch('');
+            }
+
+            console.log('[AssessmentDetailModal] Fetching resources for assessment:', assessment.id);
+
+            const params = new URLSearchParams({
+                page: page.toString(),
+                limit: '50'
+            });
+
+            if (searchTerm) params.append('search', searchTerm);
+            if (selectedFilters.resourceType) params.append('resourceType', selectedFilters.resourceType);
+            if (selectedFilters.resourceGroup) params.append('resourceGroup', selectedFilters.resourceGroup);
+            if (selectedFilters.location) params.append('location', selectedFilters.location);
+            if (selectedFilters.environment) params.append('environmentFilter', selectedFilters.environment);
+
+            const response = await assessmentApi.getAssessmentResources(assessment.id, params.toString());
+
+            console.log('[AssessmentDetailModal] Raw API response:', response);
+
+            // Force PascalCase reading - backend returns PascalCase
+            setResources(response.Resources || []);
+            setResourceFilters(response.Filters || {});
+            setResourcePage(response.Page || 1);
+            setResourceTotalPages(response.TotalPages || 1);
+            setResourceTotalCount(response.TotalCount || 0);
+
+            console.log('[AssessmentDetailModal] Loaded resources count:', (response.Resources || []).length);
+            console.log('[AssessmentDetailModal] First resource structure:', response.Resources?.[0]);
+            console.log('[AssessmentDetailModal] First resource properties:', response.Resources?.[0] ? Object.keys(response.Resources[0]) : 'No resources');
+        } catch (err) {
+            console.error('[AssessmentDetailModal] Error loading resources:', err);
+            const errorInfo = apiUtils.handleApiError(err);
+            setError(errorInfo.message);
+        } finally {
+            setTabLoading(prev => ({ ...prev, resources: false }));
+        }
+    };
+
     const handleTabChange = async (tab) => {
         setActiveTab(tab);
         setTabLoading(prev => ({ ...prev, [tab]: true }));
 
-        // Simulate loading for demo purposes
-        setTimeout(() => {
-            setTabLoading(prev => ({ ...prev, [tab]: false }));
-        }, 300);
+        // Load data for specific tabs
+        if (tab === 'resources' && resources.length === 0) {
+            await loadResources(1, true);
+        } else {
+            // Simulate loading for other tabs
+            setTimeout(() => {
+                setTabLoading(prev => ({ ...prev, [tab]: false }));
+            }, 300);
+        }
+    };
+
+    const handleExport = async (format) => {
+        try {
+            console.log(`[AssessmentDetailModal] Exporting resources as ${format.toUpperCase()}`);
+
+            const response = await (format === 'csv'
+                ? assessmentApi.exportResourcesCsv(assessment.id)
+                : assessmentApi.exportResourcesExcel(assessment.id));
+
+            if (!response.ok) {
+                throw new Error(`Export failed: ${response.statusText}`);
+            }
+
+            // Get filename from Content-Disposition header or create one
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = `resources.${format}`;
+
+            console.log(`[AssessmentDetailModal] DEBUG - Response headers:`, Array.from(response.headers.entries()));
+            console.log(`[AssessmentDetailModal] DEBUG - Content-Disposition raw:`, contentDisposition);
+            console.log(`[AssessmentDetailModal] DEBUG - Content-Disposition exists:`, !!contentDisposition);
+
+            if (contentDisposition) {
+                console.log(`[AssessmentDetailModal] Content-Disposition header:`, contentDisposition);
+
+                // Try RFC 5987 encoded filename first (filename*=UTF-8'')
+                let filenameStarMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+                console.log(`[AssessmentDetailModal] DEBUG - filename* regex match:`, filenameStarMatch);
+
+                if (filenameStarMatch && filenameStarMatch[1]) {
+                    filename = decodeURIComponent(filenameStarMatch[1]);
+                    console.log(`[AssessmentDetailModal] Extracted filename* (UTF-8):`, filename);
+                } else {
+                    // Fallback to regular filename= (without quotes)
+                    const filenameMatch = contentDisposition.match(/filename=([^;]+)/i);
+                    console.log(`[AssessmentDetailModal] DEBUG - filename= regex match:`, filenameMatch);
+
+                    if (filenameMatch && filenameMatch[1]) {
+                        filename = filenameMatch[1].trim();
+                        console.log(`[AssessmentDetailModal] Extracted filename:`, filename);
+                    } else {
+                        console.log(`[AssessmentDetailModal] DEBUG - No filename match found, using default:`, filename);
+                    }
+                }
+            } else {
+                console.log(`[AssessmentDetailModal] DEBUG - No Content-Disposition header found, using default filename:`, filename);
+            }
+
+            // Download the file
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(downloadUrl);
+
+            console.log(`[AssessmentDetailModal] Successfully exported ${format.toUpperCase()}: ${filename}`);
+        } catch (error) {
+            console.error(`[AssessmentDetailModal] Export ${format} failed:`, error);
+            alert(`Failed to export ${format.toUpperCase()}: ${error.message}`);
+        }
+    };
+
+    const getResourceIcon = (resourceTypeName) => {
+        if (!resourceTypeName) return <FileText size={16} className="text-gray-400" />;
+
+        const type = resourceTypeName.toLowerCase();
+        if (type.includes('virtualmachine') || type.includes('vm')) {
+            return <Server size={16} className="text-blue-400" />;
+        }
+        if (type.includes('database') || type.includes('sql')) {
+            return <Database size={16} className="text-green-400" />;
+        }
+        if (type.includes('network') || type.includes('vnet')) {
+            return <Network size={16} className="text-purple-400" />;
+        }
+        return <FileText size={16} className="text-gray-400" />;
     };
 
     if (!isOpen || !assessment) return null;
@@ -195,7 +338,7 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
         const resourceType = getResourceType();
         const estimatedEffort = getEstimatedEffort();
 
-        return createPortal(
+        return (
             <div key={finding.id || finding.Id || finding.findingId || finding.FindingId || index}
                 className="bg-gray-700 rounded p-4 border border-gray-600">
                 <div className="flex items-start justify-between mb-3">
@@ -238,15 +381,14 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
                     <span>Effort: {estimatedEffort}</span>
                 </div>
             </div>
-            ,document.body
         );
     };
 
     return createPortal(
         // FIXED: Much higher z-index to be above header (z-30)
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[50] p-4">
-            {/* ENHANCED: Increased modal size - 80vw width, 85vh height */}
-            <div className="bg-gray-900 border border-gray-800 rounded w-[80vw] h-[85vh] overflow-hidden flex flex-col">
+            {/* ENHANCED: Increased modal size for better resource viewing - 90vw width, 90vh height */}
+            <div className="bg-gray-900 border border-gray-800 rounded w-[90vw] h-[90vh] overflow-hidden flex flex-col">
                 {/* ENHANCED Header - Cleaner presentation */}
                 <div className="flex items-center justify-between p-6 border-b border-gray-800 flex-shrink-0">
                     <div>
@@ -268,13 +410,13 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
                 {/* Tabs */}
                 <div className="border-b border-gray-800 flex-shrink-0">
                     <nav className="flex space-x-8 px-6">
-                        {['overview', 'findings', 'recommendations'].map((tab) => (
+                        {['overview', 'findings', 'recommendations', 'resources'].map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => handleTabChange(tab)}
                                 className={`py-4 px-1 border-b-2 font-medium text-sm capitalize transition-colors relative ${activeTab === tab
-                                        ? 'border-yellow-600 text-yellow-600'
-                                        : 'border-transparent text-gray-500 hover:text-gray-300'
+                                    ? 'border-yellow-600 text-yellow-600'
+                                    : 'border-transparent text-gray-500 hover:text-gray-300'
                                     }`}
                             >
                                 {tab}
@@ -336,8 +478,8 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
                                         <div>
                                             <p className="text-gray-400 mb-1">Status</p>
                                             <span className={`px-2 py-1 rounded text-xs font-medium ${assessment.status === 'Completed' ? 'bg-green-700 text-white' :
-                                                    assessment.status === 'In Progress' ? 'bg-yellow-700 text-white' :
-                                                        'bg-gray-700 text-white'
+                                                assessment.status === 'In Progress' ? 'bg-yellow-700 text-white' :
+                                                    'bg-gray-700 text-white'
                                                 }`}>
                                                 {assessment.status || 'Unknown'}
                                             </span>
@@ -540,6 +682,236 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
                                 </div>
                             </div>
                         )}
+
+                        {/* NEW: Resources Tab */}
+                        {activeTab === 'resources' && (
+                            <div className="space-y-6">
+                                {/* Resources Header and Controls */}
+                                <div className="bg-gray-800 rounded p-6 border border-gray-700">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-lg font-semibold text-white">Azure Resources</h3>
+                                        <div className="flex space-x-2">
+                                            <button
+                                                onClick={() => handleExport('csv')}
+                                                className="px-3 py-1 bg-gray-700 text-white rounded text-sm hover:bg-gray-600 transition-colors flex items-center space-x-1"
+                                            >
+                                                <Download size={14} />
+                                                <span>Export CSV</span>
+                                            </button>
+                                            <button
+                                                onClick={() => handleExport('xlsx')}
+                                                className="px-3 py-1 bg-yellow-600 text-black rounded text-sm hover:bg-yellow-700 transition-colors flex items-center space-x-1"
+                                            >
+                                                <Download size={14} />
+                                                <span>Export Excel</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Search and Filters */}
+                                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+                                        <div className="relative">
+                                            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                placeholder="Search resources..."
+                                                value={resourceSearch}
+                                                onChange={(e) => setResourceSearch(e.target.value)}
+                                                onKeyPress={(e) => e.key === 'Enter' && loadResources(1)}
+                                                className="w-full pl-10 pr-4 py-2 bg-gray-900 border border-gray-600 rounded text-white text-sm focus:border-yellow-600 focus:outline-none"
+                                            />
+                                        </div>
+
+                                        <select
+                                            value={selectedFilters.resourceType}
+                                            onChange={(e) => setSelectedFilters(prev => ({ ...prev, resourceType: e.target.value }))}
+                                            className="px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white text-sm focus:border-yellow-600 focus:outline-none"
+                                        >
+                                            <option value="">All Types</option>
+                                            {Object.entries(resourceFilters.ResourceTypes || {}).map(([type, count]) => (
+                                                <option key={type} value={type}>{type} ({count})</option>
+                                            ))}
+                                        </select>
+
+                                        <select
+                                            value={selectedFilters.resourceGroup}
+                                            onChange={(e) => setSelectedFilters(prev => ({ ...prev, resourceGroup: e.target.value }))}
+                                            className="px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white text-sm focus:border-yellow-600 focus:outline-none"
+                                        >
+                                            <option value="">All Resource Groups</option>
+                                            {Object.entries(resourceFilters.ResourceGroups || {}).map(([rg, count]) => (
+                                                <option key={rg} value={rg}>{rg} ({count})</option>
+                                            ))}
+                                        </select>
+
+                                        <select
+                                            value={selectedFilters.location}
+                                            onChange={(e) => setSelectedFilters(prev => ({ ...prev, location: e.target.value }))}
+                                            className="px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white text-sm focus:border-yellow-600 focus:outline-none"
+                                        >
+                                            <option value="">All Locations</option>
+                                            {Object.entries(resourceFilters.Locations || {}).map(([loc, count]) => (
+                                                <option key={loc} value={loc}>{loc} ({count})</option>
+                                            ))}
+                                        </select>
+
+                                        <button
+                                            onClick={() => loadResources(1)}
+                                            className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-black rounded text-sm font-medium transition-colors"
+                                        >
+                                            Apply Filters
+                                        </button>
+                                    </div>
+
+                                    {/* Resource Count and Clear Filters */}
+                                    <div className="flex items-center justify-between text-sm text-gray-400 mb-4">
+                                        <span>
+                                            Showing {resources.length} of {resourceTotalCount} resources
+                                        </span>
+                                        <button
+                                            onClick={() => {
+                                                setSelectedFilters({ resourceType: '', resourceGroup: '', location: '', environment: '' });
+                                                setResourceSearch('');
+                                                loadResources(1, true);
+                                            }}
+                                            className="text-yellow-600 hover:text-yellow-500 transition-colors"
+                                        >
+                                            Clear Filters
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Resources Table */}
+                                {tabLoading.resources ? (
+                                    <div className="text-center py-12">
+                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-600 mx-auto mb-4"></div>
+                                        <p className="text-gray-400">Loading resources...</p>
+                                    </div>
+                                ) : resources.length > 0 ? (
+                                    <div className="bg-gray-800 rounded border border-gray-700 overflow-hidden">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full">
+                                                <thead className="bg-gray-700">
+                                                    <tr>
+                                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Resource</th>
+                                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Type</th>
+                                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Resource Group</th>
+                                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Location</th>
+                                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Environment</th>
+                                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Tags</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-700">
+                                                    {resources.map((resource, index) => {
+                                                        // Debug log for table rendering
+                                                        if (index === 0) {
+                                                            console.log('[TABLE DEBUG] Rendering first resource:', {
+                                                                Name: resource.Name,
+                                                                ResourceTypeName: resource.ResourceTypeName,
+                                                                ResourceGroup: resource.ResourceGroup,
+                                                                Location: resource.Location,
+                                                                Environment: resource.Environment,
+                                                                TagCount: resource.TagCount
+                                                            });
+                                                        }
+
+                                                        return (
+                                                            <tr key={resource.Id || index} className="hover:bg-gray-700 transition-colors">
+                                                                <td className="px-4 py-3">
+                                                                    <div className="flex items-center space-x-3">
+                                                                        {getResourceIcon(resource.ResourceTypeName)}
+                                                                        <div>
+                                                                            <p className="text-sm font-medium text-white">{resource.Name}</p>
+                                                                            {resource.Kind && resource.Kind !== "" && resource.Kind !== "null" && (
+                                                                                <p className="text-xs text-gray-400">{resource.Kind}</p>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-4 py-3">
+                                                                    <span className="text-sm text-gray-300">{resource.ResourceTypeName}</span>
+                                                                </td>
+                                                                <td className="px-4 py-3">
+                                                                    <span className="text-sm text-gray-300">{resource.ResourceGroup || 'N/A'}</span>
+                                                                </td>
+                                                                <td className="px-4 py-3">
+                                                                    <span className="text-sm text-gray-300">{resource.Location || 'N/A'}</span>
+                                                                </td>
+                                                                <td className="px-4 py-3">
+                                                                    {resource.Environment ? (
+                                                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-600 text-white">
+                                                                            {resource.Environment}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-gray-500 text-sm">Unknown</span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-4 py-3">
+                                                                    <div className="flex items-center space-x-2">
+                                                                        <span className="text-sm text-gray-300">{resource.TagCount} tags</span>
+                                                                        {resource.TagCount > 0 && resource.Tags && Object.keys(resource.Tags).length > 0 && (
+                                                                            <div className="flex flex-wrap gap-1">
+                                                                                {Object.entries(resource.Tags).slice(0, 2).map(([key, value]) => (
+                                                                                    <span key={key} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-600 text-gray-200">
+                                                                                        {key}: {value}
+                                                                                    </span>
+                                                                                ))}
+                                                                                {resource.TagCount > 2 && (
+                                                                                    <span className="text-xs text-gray-400">+{resource.TagCount - 2} more</span>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        {/* Pagination */}
+                                        {resourceTotalPages > 1 && (
+                                            <div className="px-4 py-3 bg-gray-700 border-t border-gray-600 flex items-center justify-between">
+                                                <div className="text-sm text-gray-400">
+                                                    Page {resourcePage} of {resourceTotalPages}
+                                                </div>
+                                                <div className="flex items-center space-x-2">
+                                                    <button
+                                                        onClick={() => loadResources(resourcePage - 1)}
+                                                        disabled={resourcePage <= 1}
+                                                        className="p-2 rounded hover:bg-gray-600 text-gray-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        <ChevronLeft size={16} />
+                                                    </button>
+                                                    <span className="text-sm text-gray-300">
+                                                        {resourcePage} / {resourceTotalPages}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => loadResources(resourcePage + 1)}
+                                                        disabled={resourcePage >= resourceTotalPages}
+                                                        className="p-2 rounded hover:bg-gray-600 text-gray-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        <ChevronRight size={16} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-12">
+                                        <Server size={48} className="text-gray-600 mx-auto mb-4" />
+                                        <h3 className="text-lg font-semibold text-white mb-2">No Resources Found</h3>
+                                        <p className="text-gray-400">
+                                            {Object.keys(selectedFilters).some(key => selectedFilters[key]) || resourceSearch
+                                                ? "Try adjusting your search or filters."
+                                                : "No Azure resources were found for this assessment."
+                                            }
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -562,7 +934,7 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
                 </div>
             </div>
         </div>
-        ,document.body
+        , document.body
     );
 };
 

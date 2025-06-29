@@ -20,14 +20,17 @@ const MyClientsPage = () => {
     const [showSubscriptionsModal, setShowSubscriptionsModal] = useState(false);
     const [showDetailsModal, setShowDetailsModal] = useState(false);
     const [selectedClient, setSelectedClient] = useState(null);
+    const [hasLoaded, setHasLoaded] = useState(false);
 
-    // Load clients on mount if not already loaded
+    // Load clients on mount only
     useEffect(() => {
-        if (clients.length === 0 && !isLoading && !localLoading) {
+        if (!hasLoaded && !isLoading && !localLoading) {
             setLocalLoading(true);
+            setHasLoaded(true);
             loadClients().finally(() => setLocalLoading(false));
         }
-    }, [clients.length, isLoading, loadClients, localLoading]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hasLoaded, isLoading, localLoading]); // Removed loadClients from dependencies
 
     const handleRefresh = async () => {
         setLocalLoading(true);
@@ -90,7 +93,7 @@ const MyClientsPage = () => {
 
     const stats = getClientStats();
 
-    if (isLoading || localLoading) {
+    if ((isLoading || localLoading) && !hasLoaded) {
         return (
             <div className="space-y-6">
                 <div className="flex items-center justify-between">

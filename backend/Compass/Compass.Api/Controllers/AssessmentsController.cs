@@ -5,8 +5,12 @@ using Compass.Data.Entities;
 using Compass.Data.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using System.Text;
+using ClosedXML.Excel;
+using System.IO;
 
 namespace Compass.Api.Controllers;
 
@@ -49,6 +53,246 @@ public class AssessmentsController : ControllerBase
         _context = context;
         _logger = logger;
     }
+
+    [HttpGet("{assessmentId}/resources")]
+    public async Task<ActionResult<ResourceListResponse>> GetAssessmentResources(
+    Guid assessmentId,
+    [FromQuery] int page = 1,
+    [FromQuery] int limit = 50,
+    [FromQuery] string? resourceType = null,
+    [FromQuery] string? resourceGroup = null,
+    [FromQuery] string? location = null,
+    [FromQuery] string? environmentFilter = null,
+    [FromQuery] string? search = null)
+    {
+        try
+        {
+            var organizationId = GetOrganizationIdFromContext();
+            var customerId = GetCurrentCustomerId();
+
+            if (organizationId == null || customerId == null)
+            {
+                return BadRequest("Organization or customer context not found");
+            }
+
+            // Verify assessment access
+            var assessment = await _assessmentRepository.GetByIdAndOrganizationAsync(assessmentId, organizationId.Value);
+            if (assessment == null)
+            {
+                return NotFound(new { error = "Assessment not found" });
+            }
+
+            // Validate client access if assessment is client-scoped
+            if (assessment.ClientId.HasValue)
+            {
+                var hasClientAccess = await _clientService.CanUserAccessClient(customerId.Value, assessment.ClientId.Value, "ViewResources");
+                if (!hasClientAccess)
+                {
+                    return Forbid("You don't have permission to view resources for this client");
+                }
+            }
+
+            // ✅ PERFORMANCE FIX: Get stored resources from database (no live Azure calls)
+            var storedResources = await _assessmentRepository.GetResourcesByAssessmentIdAsync(
+                assessmentId, page, limit, resourceType, resourceGroup, location, environmentFilter, search);
+
+            var totalCount = await _assessmentRepository.GetResourceCountByAssessmentIdAsync(assessmentId);
+            var filters = await _assessmentRepository.GetResourceFiltersByAssessmentIdAsync(assessmentId);
+
+            var response = new ResourceListResponse
+            {
+                Resources = storedResources.Select(r => new ResourceDto
+                {
+                    Id = r.ResourceId,
+                    Name = r.Name,
+                    Type = r.Type,
+                    ResourceTypeName = r.ResourceTypeName,
+                    ResourceGroup = r.ResourceGroup,
+                    Location = r.Location,
+                    SubscriptionId = r.SubscriptionId,
+                    Kind = r.Kind,
+                    Tags = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(r.Tags) ?? new(),
+                    TagCount = r.TagCount,
+                    Environment = r.Environment,
+                    Sku = r.Sku
+                }).ToList(),
+                TotalCount = totalCount,
+                Page = page,
+                PageSize = limit,
+                TotalPages = (int)Math.Ceiling((double)totalCount / limit),
+                Filters = new ResourceFilters
+                {
+                    ResourceTypes = filters.ContainsKey("ResourceTypes") ?
+                        System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(filters["ResourceTypes"]) ?? new() : new(),
+                    ResourceGroups = filters.ContainsKey("ResourceGroups") ?
+                        System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(filters["ResourceGroups"]) ?? new() : new(),
+                    Locations = filters.ContainsKey("Locations") ?
+                        System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(filters["Locations"]) ?? new() : new(),
+                    Environments = filters.ContainsKey("Environments") ?
+                        System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(filters["Environments"]) ?? new() : new()
+                }
+            };
+
+            _logger.LogInformation("Retrieved {ResourceCount} stored resources for assessment {AssessmentId} (page {Page})",
+                storedResources.Count, assessmentId, page);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get stored resources for assessment {AssessmentId}", assessmentId);
+            return StatusCode(500, new { error = "Failed to retrieve resources" });
+        }
+    }
+
+    [HttpGet("{assessmentId}/export/csv")]
+    public async Task<IActionResult> ExportResourcesToCsv(Guid assessmentId)
+    {
+        try
+        {
+            var organizationId = GetOrganizationIdFromContext();
+            var customerId = GetCurrentCustomerId();
+
+            if (organizationId == null || customerId == null)
+            {
+                return BadRequest("Organization or customer context not found");
+            }
+
+            // Verify assessment access
+            var assessment = await _assessmentRepository.GetByIdAndOrganizationAsync(assessmentId, organizationId.Value);
+            if (assessment == null)
+            {
+                return NotFound(new { error = "Assessment not found" });
+            }
+
+            // Validate client access if assessment is client-scoped
+            if (assessment.ClientId.HasValue)
+            {
+                var hasClientAccess = await _clientService.CanUserAccessClient(customerId.Value, assessment.ClientId.Value, "ExportReports");
+                if (!hasClientAccess)
+                {
+                    return Forbid("You don't have permission to export reports for this client");
+                }
+            }
+
+            // Get environment and resources
+            var azureEnvironment = await _context.AzureEnvironments.FindAsync(assessment.EnvironmentId);
+            if (azureEnvironment == null || !azureEnvironment.SubscriptionIds.Any())
+            {
+                return BadRequest("Environment or subscription IDs not found");
+            }
+
+            // Get all resources
+            List<AzureResource> resources;
+            if (assessment.ClientId.HasValue && organizationId.HasValue)
+            {
+                resources = await _resourceGraphService.GetResourcesWithOAuthAsync(
+                    azureEnvironment.SubscriptionIds.ToArray(),
+                    assessment.ClientId.Value,
+                    organizationId.Value);
+            }
+            else
+            {
+                resources = await _resourceGraphService.GetResourcesAsync(azureEnvironment.SubscriptionIds.ToArray());
+            }
+
+            // Generate CSV content
+            var csvContent = GenerateResourcesCsv(resources);
+
+            // Generate filename with client name and date
+            var clientName = SanitizeFileName(assessment.Client?.Name ?? "Internal");
+            var assessmentDate = assessment.StartedDate.ToString("yyyy-MM-dd");
+            var filename = $"{clientName}-Azure-Resources-{assessmentDate}.csv";
+
+            _logger.LogInformation("Exported {ResourceCount} resources to CSV for assessment {AssessmentId}, filename: {Filename}",
+                resources.Count, assessmentId, filename);
+
+            return File(
+                System.Text.Encoding.UTF8.GetBytes(csvContent),
+                "text/csv",
+                filename);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to export CSV for assessment {AssessmentId}", assessmentId);
+            return StatusCode(500, new { error = "Failed to export CSV" });
+        }
+    }
+
+    [HttpGet("{assessmentId}/export/xlsx")]
+    public async Task<IActionResult> ExportResourcesToXlsx(Guid assessmentId)
+    {
+        try
+        {
+            var organizationId = GetOrganizationIdFromContext();
+            var customerId = GetCurrentCustomerId();
+
+            if (organizationId == null || customerId == null)
+            {
+                return BadRequest("Organization or customer context not found");
+            }
+
+            // Verify assessment access
+            var assessment = await _assessmentRepository.GetByIdAndOrganizationAsync(assessmentId, organizationId.Value);
+            if (assessment == null)
+            {
+                return NotFound(new { error = "Assessment not found" });
+            }
+
+            // Validate client access if assessment is client-scoped
+            if (assessment.ClientId.HasValue)
+            {
+                var hasClientAccess = await _clientService.CanUserAccessClient(customerId.Value, assessment.ClientId.Value, "ExportReports");
+                if (!hasClientAccess)
+                {
+                    return Forbid("You don't have permission to export reports for this client");
+                }
+            }
+
+            // Get environment and resources
+            var azureEnvironment = await _context.AzureEnvironments.FindAsync(assessment.EnvironmentId);
+            if (azureEnvironment == null || !azureEnvironment.SubscriptionIds.Any())
+            {
+                return BadRequest("Environment or subscription IDs not found");
+            }
+
+            // Get all resources
+            List<AzureResource> resources;
+            if (assessment.ClientId.HasValue && organizationId.HasValue)
+            {
+                resources = await _resourceGraphService.GetResourcesWithOAuthAsync(
+                    azureEnvironment.SubscriptionIds.ToArray(),
+                    assessment.ClientId.Value,
+                    organizationId.Value);
+            }
+            else
+            {
+                resources = await _resourceGraphService.GetResourcesAsync(azureEnvironment.SubscriptionIds.ToArray());
+            }
+
+            // Generate Excel workbook
+            var excelBytes = GenerateResourcesExcel(resources, assessment);
+
+            // Generate filename with client name and date
+            var clientName = SanitizeFileName(assessment.Client?.Name ?? "Internal");
+            var assessmentDate = assessment.StartedDate.ToString("yyyy-MM-dd");
+            var filename = $"{clientName}-Azure-Resources-{assessmentDate}.xlsx";
+
+            _logger.LogInformation("Exported {ResourceCount} resources to Excel for assessment {AssessmentId}, filename: {Filename}",
+                resources.Count, assessmentId, filename);
+
+            return File(
+                excelBytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                filename);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to export Excel for assessment {AssessmentId}", assessmentId);
+            return StatusCode(500, new { error = "Failed to export Excel" });
+        }
+    }
+
 
     [HttpPost]
     public async Task<ActionResult<AssessmentStartResponse>> StartAssessment([FromBody] ClientScopedAssessmentRequest request)
@@ -566,6 +810,425 @@ public class AssessmentsController : ControllerBase
     }
 
     // Helper methods following your existing patterns
+    private List<AzureResource> ApplyResourceFilters(
+    List<AzureResource> resources,
+    string? resourceType,
+    string? resourceGroup,
+    string? location,
+    string? environmentFilter,
+    string? search)
+    {
+        var filtered = resources.AsEnumerable();
+
+        if (!string.IsNullOrEmpty(resourceType))
+        {
+            filtered = filtered.Where(r => r.ResourceTypeName.Equals(resourceType, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrEmpty(resourceGroup))
+        {
+            filtered = filtered.Where(r => r.ResourceGroup?.Equals(resourceGroup, StringComparison.OrdinalIgnoreCase) == true);
+        }
+
+        if (!string.IsNullOrEmpty(location))
+        {
+            filtered = filtered.Where(r => r.Location?.Equals(location, StringComparison.OrdinalIgnoreCase) == true);
+        }
+
+        if (!string.IsNullOrEmpty(environmentFilter))
+        {
+            filtered = filtered.Where(r => r.Environment?.Equals(environmentFilter, StringComparison.OrdinalIgnoreCase) == true);
+        }
+
+        if (!string.IsNullOrEmpty(search))
+        {
+            var searchLower = search.ToLowerInvariant();
+            filtered = filtered.Where(r =>
+                r.Name.ToLowerInvariant().Contains(searchLower) ||
+                r.Type.ToLowerInvariant().Contains(searchLower) ||
+                (r.ResourceGroup?.ToLowerInvariant().Contains(searchLower) == true));
+        }
+
+        return filtered.ToList();
+    }
+
+    private static string SanitizeFileName(string fileName)
+    {
+        // Remove invalid filename characters and replace with hyphens
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var sanitized = fileName;
+
+        foreach (var invalidChar in invalidChars)
+        {
+            sanitized = sanitized.Replace(invalidChar, '-');
+        }
+
+        // Replace spaces and common problematic characters
+        sanitized = sanitized
+            .Replace(" ", "-")
+            .Replace("&", "and")
+            .Replace(",", "-")
+            .Replace(".", "-")
+            .Replace("(", "-")
+            .Replace(")", "-");
+
+        // Remove consecutive hyphens and trim
+        while (sanitized.Contains("--"))
+        {
+            sanitized = sanitized.Replace("--", "-");
+        }
+
+        return sanitized.Trim('-');
+    }
+
+    private string GenerateResourcesCsv(List<AzureResource> resources)
+    {
+        var csv = new StringBuilder();
+
+        // ===== SHEET 1: RESOURCES =====
+        csv.AppendLine("=== RESOURCES ===");
+        csv.AppendLine("Resource Name,Resource Type,Resource Group,Location,Subscription ID,Environment,Kind,SKU,Tag Count,Tags");
+
+        // Data rows for resources
+        foreach (var resource in resources)
+        {
+            var tags = string.Join("; ", resource.Tags.Select(t => $"{t.Key}={t.Value}"));
+            var sku = !string.IsNullOrEmpty(resource.Sku) ? resource.Sku.Replace("\"", "\"\"") : "";
+
+            csv.AppendLine($"\"{resource.Name}\",\"{resource.ResourceTypeName}\",\"{resource.ResourceGroup ?? ""}\",\"{resource.Location ?? ""}\",\"{resource.SubscriptionId ?? ""}\",\"{resource.Environment ?? ""}\",\"{resource.Kind ?? ""}\",\"{sku}\",{resource.TagCount},\"{tags}\"");
+        }
+
+        csv.AppendLine(); // Empty line separator
+
+        // ===== SHEET 2: RESOURCE GROUPS =====
+        csv.AppendLine("=== RESOURCE GROUPS ===");
+        csv.AppendLine("Resource Group,Resource Count,Locations,Top Resource Types");
+
+        var resourceGroupStats = resources
+            .Where(r => !string.IsNullOrEmpty(r.ResourceGroup))
+            .GroupBy(r => r.ResourceGroup!)
+            .Select(g => new
+            {
+                ResourceGroup = g.Key,
+                ResourceCount = g.Count(),
+                Locations = g.Where(r => !string.IsNullOrEmpty(r.Location))
+                             .Select(r => r.Location!)
+                             .Distinct()
+                             .OrderBy(l => l)
+                             .ToList(),
+                ResourceTypes = g.GroupBy(r => r.ResourceTypeName)
+                                .OrderByDescending(rt => rt.Count())
+                                .Take(3)
+                                .Select(rt => $"{rt.Key} ({rt.Count()})")
+                                .ToList()
+            })
+            .OrderBy(rg => rg.ResourceGroup)
+            .ToList();
+
+        foreach (var stat in resourceGroupStats)
+        {
+            var locations = string.Join("; ", stat.Locations);
+            var topTypes = string.Join("; ", stat.ResourceTypes);
+            csv.AppendLine($"\"{stat.ResourceGroup}\",{stat.ResourceCount},\"{locations}\",\"{topTypes}\"");
+        }
+
+        csv.AppendLine(); // Empty line separator
+
+        // ===== SHEET 3: RESOURCE TYPES =====
+        csv.AppendLine("=== RESOURCE TYPES ===");
+        csv.AppendLine("Resource Type,Count,Examples,Resource Groups");
+
+        var resourceTypeStats = resources
+            .GroupBy(r => r.ResourceTypeName)
+            .Select(g => new
+            {
+                ResourceType = g.Key,
+                Count = g.Count(),
+                Examples = g.Take(3).Select(r => r.Name).ToList(),
+                ResourceGroups = g.Where(r => !string.IsNullOrEmpty(r.ResourceGroup))
+                                  .Select(r => r.ResourceGroup!)
+                                  .Distinct()
+                                  .OrderBy(rg => rg)
+                                  .Take(5)
+                                  .ToList()
+            })
+            .OrderByDescending(rt => rt.Count)
+            .ThenBy(rt => rt.ResourceType)
+            .ToList();
+
+        foreach (var stat in resourceTypeStats)
+        {
+            var examples = string.Join("; ", stat.Examples);
+            var resourceGroups = string.Join("; ", stat.ResourceGroups);
+            csv.AppendLine($"\"{stat.ResourceType}\",{stat.Count},\"{examples}\",\"{resourceGroups}\"");
+        }
+
+        csv.AppendLine(); // Empty line separator
+
+        // ===== SUMMARY SECTION =====
+        csv.AppendLine("=== SUMMARY ===");
+        csv.AppendLine("Metric,Value");
+        csv.AppendLine($"\"Total Resources\",{resources.Count}");
+        csv.AppendLine($"\"Total Resource Groups\",{resourceGroupStats.Count}");
+        csv.AppendLine($"\"Total Resource Types\",{resourceTypeStats.Count}");
+        csv.AppendLine($"\"Resources with Tags\",{resources.Count(r => r.TagCount > 0)}");
+        csv.AppendLine($"\"Resources with Environment\",{resources.Count(r => !string.IsNullOrEmpty(r.Environment))}");
+        csv.AppendLine($"\"Average Tags per Resource\",{(resources.Count > 0 ? Math.Round(resources.Average(r => r.TagCount), 1) : 0)}");
+
+        // Most common resource type
+        var mostCommonType = resourceTypeStats.FirstOrDefault();
+        if (mostCommonType != null)
+        {
+            csv.AppendLine($"\"Most Common Resource Type\",\"{mostCommonType.ResourceType} ({mostCommonType.Count})\"");
+        }
+
+        // Most used resource group
+        var mostUsedRG = resourceGroupStats.OrderByDescending(rg => rg.ResourceCount).FirstOrDefault();
+        if (mostUsedRG != null)
+        {
+            csv.AppendLine($"\"Most Used Resource Group\",\"{mostUsedRG.ResourceGroup} ({mostUsedRG.ResourceCount} resources)\"");
+        }
+
+        return csv.ToString();
+    }
+
+    private byte[] GenerateResourcesExcel(List<AzureResource> resources, Assessment assessment)
+    {
+        using var workbook = new XLWorkbook();
+
+        // Worksheet 1: Resources
+        var resourcesSheet = workbook.Worksheets.Add("Resources");
+        CreateResourcesWorksheet(resourcesSheet, resources);
+
+        // Worksheet 2: Resource Groups
+        var resourceGroupsSheet = workbook.Worksheets.Add("Resource Groups");
+        CreateResourceGroupsWorksheet(resourceGroupsSheet, resources);
+
+        // Worksheet 3: Resource Types
+        var resourceTypesSheet = workbook.Worksheets.Add("Resource Types");
+        CreateResourceTypesWorksheet(resourceTypesSheet, resources);
+
+        // Add assessment metadata sheet
+        var metadataSheet = workbook.Worksheets.Add("Assessment Info");
+        CreateMetadataWorksheet(metadataSheet, assessment);
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+    private void CreateResourcesWorksheet(IXLWorksheet worksheet, List<AzureResource> resources)
+    {
+        // Set headers
+        var headers = new[]
+        {
+        "Resource Name", "Resource Type", "Resource Group", "Location",
+        "Subscription ID", "Environment", "Kind", "SKU", "Tag Count", "Tags"
+    };
+
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var cell = worksheet.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.LightGray;
+            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        }
+
+        // Add data rows
+        for (int i = 0; i < resources.Count; i++)
+        {
+            var resource = resources[i];
+            var row = i + 2; // Start from row 2 (after headers)
+
+            worksheet.Cell(row, 1).Value = resource.Name;
+            worksheet.Cell(row, 2).Value = resource.ResourceTypeName;
+            worksheet.Cell(row, 3).Value = resource.ResourceGroup ?? "";
+            worksheet.Cell(row, 4).Value = resource.Location ?? "";
+            worksheet.Cell(row, 5).Value = resource.SubscriptionId ?? "";
+            worksheet.Cell(row, 6).Value = resource.Environment ?? "";
+            worksheet.Cell(row, 7).Value = resource.Kind ?? "";
+            worksheet.Cell(row, 8).Value = resource.Sku ?? "";
+            worksheet.Cell(row, 9).Value = resource.TagCount;
+            worksheet.Cell(row, 10).Value = string.Join("; ", resource.Tags.Select(t => $"{t.Key}={t.Value}"));
+
+            // Add borders to data cells
+            for (int col = 1; col <= headers.Length; col++)
+            {
+                worksheet.Cell(row, col).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            }
+        }
+
+        // Auto-fit columns
+        worksheet.Columns().AdjustToContents();
+
+        // Add filtering to the table
+        var dataRange = worksheet.Range(1, 1, resources.Count + 1, headers.Length);
+        dataRange.SetAutoFilter();
+
+        // Freeze the header row
+        worksheet.SheetView.FreezeRows(1);
+    }
+
+    private void CreateResourceGroupsWorksheet(IXLWorksheet worksheet, List<AzureResource> resources)
+    {
+        // Group resources by resource group
+        var resourceGroupStats = resources
+            .Where(r => !string.IsNullOrEmpty(r.ResourceGroup))
+            .GroupBy(r => r.ResourceGroup!)
+            .Select(g => new
+            {
+                ResourceGroup = g.Key,
+                ResourceCount = g.Count(),
+                Locations = g.Where(r => !string.IsNullOrEmpty(r.Location))
+                             .Select(r => r.Location!)
+                             .Distinct()
+                             .OrderBy(l => l)
+                             .ToList(),
+                ResourceTypes = g.GroupBy(r => r.ResourceTypeName)
+                                .ToDictionary(rt => rt.Key, rt => rt.Count())
+            })
+            .OrderBy(rg => rg.ResourceGroup)
+            .ToList();
+
+        // Set headers
+        var headers = new[] { "Resource Group", "Resource Count", "Locations", "Top Resource Types" };
+
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var cell = worksheet.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.LightBlue;
+            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        }
+
+        // Add data rows
+        for (int i = 0; i < resourceGroupStats.Count; i++)
+        {
+            var stat = resourceGroupStats[i];
+            var row = i + 2;
+
+            worksheet.Cell(row, 1).Value = stat.ResourceGroup;
+            worksheet.Cell(row, 2).Value = stat.ResourceCount;
+            worksheet.Cell(row, 3).Value = string.Join(", ", stat.Locations);
+
+            // Show top 3 resource types
+            var topTypes = stat.ResourceTypes
+                .OrderByDescending(rt => rt.Value)
+                .Take(3)
+                .Select(rt => $"{rt.Key} ({rt.Value})")
+                .ToList();
+            worksheet.Cell(row, 4).Value = string.Join(", ", topTypes);
+
+            // Add borders
+            for (int col = 1; col <= headers.Length; col++)
+            {
+                worksheet.Cell(row, col).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            }
+        }
+
+        // Auto-fit columns
+        worksheet.Columns().AdjustToContents();
+
+        // Add filtering
+        var dataRange = worksheet.Range(1, 1, resourceGroupStats.Count + 1, headers.Length);
+        dataRange.SetAutoFilter();
+
+        // Freeze header
+        worksheet.SheetView.FreezeRows(1);
+    }
+
+    private void CreateResourceTypesWorksheet(IXLWorksheet worksheet, List<AzureResource> resources)
+    {
+        // Group resources by type
+        var resourceTypeStats = resources
+            .GroupBy(r => r.ResourceTypeName)
+            .Select(g => new
+            {
+                ResourceType = g.Key,
+                Count = g.Count(),
+                Examples = g.Take(3).Select(r => r.Name).ToList(),
+                ResourceGroups = g.Where(r => !string.IsNullOrEmpty(r.ResourceGroup))
+                                  .Select(r => r.ResourceGroup!)
+                                  .Distinct()
+                                  .OrderBy(rg => rg)
+                                  .ToList()
+            })
+            .OrderByDescending(rt => rt.Count)
+            .ThenBy(rt => rt.ResourceType)
+            .ToList();
+
+        // Set headers
+        var headers = new[] { "Resource Type", "Count", "Examples", "Resource Groups" };
+
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var cell = worksheet.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.LightGreen;
+            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        }
+
+        // Add data rows
+        for (int i = 0; i < resourceTypeStats.Count; i++)
+        {
+            var stat = resourceTypeStats[i];
+            var row = i + 2;
+
+            worksheet.Cell(row, 1).Value = stat.ResourceType;
+            worksheet.Cell(row, 2).Value = stat.Count;
+            worksheet.Cell(row, 3).Value = string.Join(", ", stat.Examples);
+            worksheet.Cell(row, 4).Value = string.Join(", ", stat.ResourceGroups.Take(5)); // Limit to top 5 RGs
+
+            // Add borders
+            for (int col = 1; col <= headers.Length; col++)
+            {
+                worksheet.Cell(row, col).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            }
+        }
+
+        // Auto-fit columns
+        worksheet.Columns().AdjustToContents();
+
+        // Add filtering
+        var dataRange = worksheet.Range(1, 1, resourceTypeStats.Count + 1, headers.Length);
+        dataRange.SetAutoFilter();
+
+        // Freeze header
+        worksheet.SheetView.FreezeRows(1);
+    }
+
+    private void CreateMetadataWorksheet(IXLWorksheet worksheet, Assessment assessment)
+    {
+        worksheet.Cell(1, 1).Value = "Assessment Information";
+        worksheet.Cell(1, 1).Style.Font.Bold = true;
+        worksheet.Cell(1, 1).Style.Font.FontSize = 16;
+
+        var metadata = new Dictionary<string, string>
+    {
+        { "Assessment Name", assessment.Name },
+        { "Assessment Type", assessment.AssessmentType },
+        { "Status", assessment.Status },
+        { "Started Date", assessment.StartedDate.ToString("yyyy-MM-dd HH:mm:ss") },
+        { "Completed Date", assessment.CompletedDate?.ToString("yyyy-MM-dd HH:mm:ss") ?? "N/A" },
+        { "Overall Score", assessment.OverallScore?.ToString("F1") + "%" ?? "N/A" },
+        { "Client", assessment.Client?.Name ?? "Internal" },
+        { "Generated", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC") }
+    };
+
+        int row = 3;
+        foreach (var kvp in metadata)
+        {
+            worksheet.Cell(row, 1).Value = kvp.Key;
+            worksheet.Cell(row, 1).Style.Font.Bold = true;
+            worksheet.Cell(row, 2).Value = kvp.Value;
+            row++;
+        }
+
+        // Auto-fit columns
+        worksheet.Columns().AdjustToContents();
+    }
     private Guid? GetOrganizationIdFromContext()
     {
         var organizationIdClaim = User.FindFirst("organization_id")?.Value;

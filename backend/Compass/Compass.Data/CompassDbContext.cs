@@ -20,6 +20,7 @@ public class CompassDbContext : DbContext
     public DbSet<Customer> Customers { get; set; }
     public DbSet<Assessment> Assessments { get; set; }
     public DbSet<AssessmentFinding> AssessmentFindings { get; set; }
+    public DbSet<AssessmentResource> AssessmentResources { get; set; }
 
     // LICENSING DBSETS
     public DbSet<Subscription> Subscriptions { get; set; }
@@ -87,7 +88,74 @@ public class CompassDbContext : DbContext
             entity.HasIndex(e => e.CreatedByCustomerId);
             entity.HasIndex(e => e.LastModifiedByCustomerId);
         });
+        modelBuilder.Entity<AssessmentResource>(entity =>
+        {
+            entity.HasKey(e => e.Id);
 
+            entity.Property(e => e.ResourceId)
+                .IsRequired()
+                .HasMaxLength(500);
+
+            entity.Property(e => e.Name)
+                .IsRequired()
+                .HasMaxLength(255);
+
+            entity.Property(e => e.Type)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(e => e.ResourceTypeName)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(e => e.ResourceGroup)
+                .HasMaxLength(255);
+
+            entity.Property(e => e.Location)
+                .HasMaxLength(100);
+
+            entity.Property(e => e.SubscriptionId)
+                .HasMaxLength(50);
+
+            entity.Property(e => e.Kind)
+                .HasMaxLength(100);
+
+            entity.Property(e => e.Environment)
+                .HasMaxLength(50);
+
+            entity.Property(e => e.Tags)
+                .IsRequired()
+                .HasDefaultValue("{}");
+
+            entity.Property(e => e.Properties)
+                .HasColumnType("nvarchar(max)"); // For large JSON data
+
+            entity.Property(e => e.Sku)
+                .HasColumnType("nvarchar(max)"); // For SKU JSON data
+
+            entity.Property(e => e.CreatedAt)
+                .IsRequired()
+                .HasDefaultValueSql("GETUTCDATE()");
+
+            // Foreign key relationship
+            entity.HasOne(e => e.Assessment)
+                .WithMany(a => a.Resources)
+                .HasForeignKey(e => e.AssessmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Indexes for performance
+            entity.HasIndex(e => e.AssessmentId)
+                .HasDatabaseName("IX_AssessmentResources_AssessmentId");
+
+            entity.HasIndex(e => new { e.AssessmentId, e.ResourceTypeName })
+                .HasDatabaseName("IX_AssessmentResources_AssessmentId_ResourceTypeName");
+
+            entity.HasIndex(e => new { e.AssessmentId, e.ResourceGroup })
+                .HasDatabaseName("IX_AssessmentResources_AssessmentId_ResourceGroup");
+
+            entity.HasIndex(e => new { e.AssessmentId, e.Location })
+                .HasDatabaseName("IX_AssessmentResources_AssessmentId_Location");
+        });
         // NEW: ClientAccess configuration
         modelBuilder.Entity<ClientAccess>(entity =>
         {

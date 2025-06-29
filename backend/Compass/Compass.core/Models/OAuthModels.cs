@@ -13,11 +13,24 @@ namespace Compass.Core.Models
         public string? Description { get; set; }
     }
 
+    public class OAuthProgressResponse
+    {
+        public string ProgressId { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty; // "Creating", "Completed", "Failed"
+        public string Message { get; set; } = string.Empty;
+        public int ProgressPercentage { get; set; }
+        public string? AuthorizationUrl { get; set; } // Available when completed
+        public string? State { get; set; } // Available when completed
+        public DateTime? ExpiresAt { get; set; } // Available when completed
+    }
+
     public class OAuthInitiateResponse
     {
-        public string AuthorizationUrl { get; set; } = string.Empty;
+        public string? AuthorizationUrl { get; set; } = string.Empty;
         public string State { get; set; } = string.Empty;
         public DateTime ExpiresAt { get; set; }
+        public bool RequiresKeyVaultCreation { get; set; } // NEW
+        public string? ProgressId { get; set; } // NEW - for tracking creation progress
     }
 
     public class OAuthCallbackRequest

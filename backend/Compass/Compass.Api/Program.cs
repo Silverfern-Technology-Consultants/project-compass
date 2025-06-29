@@ -1,4 +1,4 @@
-using Azure.Extensions.AspNetCore.Configuration.Secrets;
+﻿using Azure.Extensions.AspNetCore.Configuration.Secrets;
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
 using Compass.Api.Services;
@@ -29,7 +29,6 @@ if (!builder.Environment.IsDevelopment() || !string.IsNullOrEmpty(builder.Config
         tempLogger.LogInformation("Azure Key Vault integrated: {KeyVaultName}", keyVaultName);
     }
 }
-
 // Add services to the container
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -197,7 +196,8 @@ builder.Services.AddCors(options =>
         policy.WithOrigins("http://localhost:3000", "https://localhost:3000")
               .AllowAnyHeader()
               .AllowAnyMethod()
-              .AllowCredentials();
+              .AllowCredentials()
+              .WithExposedHeaders("Content-Disposition"); // ← ADD THIS LINE
     });
 });
 

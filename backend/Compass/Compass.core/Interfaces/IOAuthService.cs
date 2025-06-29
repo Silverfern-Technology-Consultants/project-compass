@@ -10,6 +10,11 @@ namespace Compass.Core.Interfaces
         Task<OAuthInitiateResponse> InitiateOAuthFlowAsync(OAuthInitiateRequest request, Guid organizationId);
 
         /// <summary>
+        /// Gets OAuth progress for Key Vault creation
+        /// </summary>
+        Task<OAuthProgressResponse?> GetOAuthProgressAsync(string progressId);
+
+        /// <summary>
         /// Handles OAuth callback and exchanges code for tokens
         /// </summary>
         Task<bool> HandleOAuthCallbackAsync(OAuthCallbackRequest request);

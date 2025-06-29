@@ -1,5 +1,6 @@
 ﻿using Compass.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace Compass.Data.Repositories;
 
@@ -215,5 +216,117 @@ public class AssessmentRepository : IAssessmentRepository
             _context.Assessments.Remove(assessment);
             await _context.SaveChangesAsync();
         }
+    }
+    public async Task CreateResourcesAsync(List<AssessmentResource> resources)
+    {
+        if (!resources.Any()) return;
+
+        _context.AssessmentResources.AddRange(resources);
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task<List<AssessmentResource>> GetResourcesByAssessmentIdAsync(
+        Guid assessmentId,
+        int page = 1,
+        int limit = 50,
+        string? resourceType = null,
+        string? resourceGroup = null,
+        string? location = null,
+        string? environmentFilter = null,
+        string? search = null)
+    {
+        var query = _context.AssessmentResources
+            .Where(r => r.AssessmentId == assessmentId);
+
+        // Apply filters
+        if (!string.IsNullOrEmpty(resourceType))
+        {
+            query = query.Where(r => r.ResourceTypeName == resourceType);
+        }
+
+        if (!string.IsNullOrEmpty(resourceGroup))
+        {
+            query = query.Where(r => r.ResourceGroup == resourceGroup);
+        }
+
+        if (!string.IsNullOrEmpty(location))
+        {
+            query = query.Where(r => r.Location == location);
+        }
+
+        if (!string.IsNullOrEmpty(environmentFilter))
+        {
+            query = query.Where(r => r.Environment == environmentFilter);
+        }
+
+        if (!string.IsNullOrEmpty(search))
+        {
+            var searchLower = search.ToLowerInvariant();
+            query = query.Where(r =>
+                r.Name.ToLower().Contains(searchLower) ||
+                r.ResourceTypeName.ToLower().Contains(searchLower) ||
+                (r.ResourceGroup != null && r.ResourceGroup.ToLower().Contains(searchLower)));
+        }
+
+        // Apply pagination and ordering
+        return await query
+            .OrderBy(r => r.ResourceTypeName)
+            .ThenBy(r => r.Name)
+            .Skip((page - 1) * limit)
+            .Take(limit)
+            .ToListAsync();
+    }
+
+    public async Task<int> GetResourceCountByAssessmentIdAsync(Guid assessmentId)
+    {
+        return await _context.AssessmentResources
+            .CountAsync(r => r.AssessmentId == assessmentId);
+    }
+
+    public async Task<Dictionary<string, string>> GetResourceFiltersByAssessmentIdAsync(Guid assessmentId)
+    {
+        var resources = await _context.AssessmentResources
+            .Where(r => r.AssessmentId == assessmentId)
+            .ToListAsync();
+
+        var filters = new Dictionary<string, string>();
+
+        // Resource Types filter
+        var resourceTypes = resources
+            .GroupBy(r => r.ResourceTypeName)
+            .ToDictionary(g => g.Key, g => g.Count());
+        filters["ResourceTypes"] = JsonSerializer.Serialize(resourceTypes);
+
+        // Resource Groups filter
+        var resourceGroups = resources
+            .Where(r => !string.IsNullOrEmpty(r.ResourceGroup))
+            .GroupBy(r => r.ResourceGroup!)
+            .ToDictionary(g => g.Key, g => g.Count());
+        filters["ResourceGroups"] = JsonSerializer.Serialize(resourceGroups);
+
+        // Locations filter
+        var locations = resources
+            .Where(r => !string.IsNullOrEmpty(r.Location))
+            .GroupBy(r => r.Location!)
+            .ToDictionary(g => g.Key, g => g.Count());
+        filters["Locations"] = JsonSerializer.Serialize(locations);
+
+        // Environments filter
+        var environments = resources
+            .Where(r => !string.IsNullOrEmpty(r.Environment))
+            .GroupBy(r => r.Environment!)
+            .ToDictionary(g => g.Key, g => g.Count());
+        filters["Environments"] = JsonSerializer.Serialize(environments);
+
+        return filters;
+    }
+
+    public async Task<List<AssessmentResource>> GetAllResourcesByAssessmentIdAsync(Guid assessmentId)
+    {
+        return await _context.AssessmentResources
+            .Where(r => r.AssessmentId == assessmentId)
+            .OrderBy(r => r.ResourceTypeName)
+            .ThenBy(r => r.Name)
+            .ToListAsync();
     }
 }

@@ -109,6 +109,9 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
 
         _logger.LogInformation("Found {ResourceCount} resources for enhanced assessment {AssessmentId}", resources.Count, assessmentId);
 
+        // NEW: Save resources to database for historical data
+        await SaveAssessmentResourcesAsync(assessmentId, resources);
+
         // 2. Run enhanced analyses based on assessment type
         NamingConventionResults? namingResults = null;
         TaggingResults? taggingResults = null;
@@ -275,7 +278,35 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
             await _assessmentRepository.CreateFindingsAsync(findings);
         }
     }
+    private async Task SaveAssessmentResourcesAsync(Guid assessmentId, List<AzureResource> resources)
+    {
+        _logger.LogInformation("Saving {ResourceCount} resources for assessment {AssessmentId}", resources.Count, assessmentId);
 
+        var assessmentResources = resources.Select(r => new AssessmentResource
+        {
+            Id = Guid.NewGuid(),
+            AssessmentId = assessmentId,
+            ResourceId = r.Id,
+            Name = r.Name,
+            Type = r.Type,
+            ResourceTypeName = r.ResourceTypeName,
+            ResourceGroup = r.ResourceGroup,
+            Location = r.Location,
+            SubscriptionId = r.SubscriptionId,
+            Kind = r.Kind,
+            Sku = r.Sku,
+            Tags = System.Text.Json.JsonSerializer.Serialize(r.Tags),
+            TagCount = r.TagCount,
+            Environment = r.Environment,
+            Properties = r.Properties,
+            CreatedAt = DateTime.UtcNow
+        }).ToList();
+
+        await _assessmentRepository.CreateResourcesAsync(assessmentResources);
+
+        _logger.LogInformation("Successfully saved {ResourceCount} resources for assessment {AssessmentId}",
+            assessmentResources.Count, assessmentId);
+    }
     private string GetEffortEstimate(string violationType)
     {
         return violationType switch

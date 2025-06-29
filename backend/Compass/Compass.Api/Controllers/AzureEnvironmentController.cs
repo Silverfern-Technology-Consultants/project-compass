@@ -388,6 +388,7 @@ public class AzureEnvironmentController : ControllerBase
             return StatusCode(500, "Internal server error");
         }
     }
+
     [HttpPost("oauth/initiate")]
     [Authorize]
     public async Task<ActionResult<OAuthInitiateResponse>> InitiateOAuth([FromBody] OAuthInitiateRequest request)
@@ -411,6 +412,28 @@ public class AzureEnvironmentController : ControllerBase
         {
             _logger.LogError(ex, "Failed to initiate OAuth flow for client {ClientId}", request.ClientId);
             return StatusCode(500, "Failed to initiate OAuth flow");
+        }
+    }
+
+    [HttpGet("oauth/progress/{progressId}")]
+    [Authorize]
+    public async Task<ActionResult<OAuthProgressResponse>> GetOAuthProgress(string progressId)
+    {
+        try
+        {
+            var progress = await _oauthService.GetOAuthProgressAsync(progressId);
+
+            if (progress == null)
+            {
+                return NotFound(new { error = "Progress tracking not found or expired" });
+            }
+
+            return Ok(progress);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get OAuth progress for {ProgressId}", progressId);
+            return StatusCode(500, "Failed to retrieve progress");
         }
     }
 
@@ -581,6 +604,7 @@ public class AzureEnvironmentController : ControllerBase
             return StatusCode(500, "Failed to refresh OAuth tokens");
         }
     }
+
     [HttpPost("{environmentId}/test-connection")]
     public async Task<ActionResult<ConnectionTestResult>> TestEnvironmentConnection(Guid environmentId)
     {
