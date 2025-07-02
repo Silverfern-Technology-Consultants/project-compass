@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLayout } from '../../contexts/LayoutContext';
+import fernWorksLogo from '../../assets/images/256-256 Logo Transparent.png';
 
 const Sidebar = ({ currentPage, onSidebarClick }) => {
     const navigate = useNavigate();
@@ -130,14 +131,31 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
                 onClick={handleSidebarClick}
             >
                 {/* Header */}
-                <div className="p-4 border-b border-gray-800 flex-shrink-0">
-                    <div className="flex items-center justify-between">
+                <div className="px-4 py-4 border-b border-gray-800 flex-shrink-0 h-[88px]">
+                    <div className="flex items-center justify-between h-full">
                         {sidebarOpen && (
                             <div className="flex items-center space-x-3 min-w-0">
-                                <div className="w-8 h-8 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded flex items-center justify-center flex-shrink-0">
-                                    <span className="text-black font-bold text-sm">C</span>
+                                <div className="w-16 h-16 flex items-center justify-center flex-shrink-0">
+                                    <img
+                                        src={fernWorksLogo}
+                                        alt="FernWorks Logo"
+                                        className="w-16 h-16 object-contain"
+                                    />
                                 </div>
-                                <span className="text-white font-semibold truncate">Compass</span>
+                                <div className="min-w-0 flex flex-col justify-center">
+                                    <div
+                                        className="text-white font-bold text-xl leading-tight"
+                                        style={{ fontFamily: "'Roboto Slab', serif", fontWeight: 700 }}
+                                    >
+                                        Governance Guardian
+                                    </div>
+                                    <div
+                                        className="text-sm text-gray-400 leading-tight"
+                                        style={{ fontFamily: "'Roboto Slab', serif", fontWeight: 700 }}
+                                    >
+                                        by FernWorks
+                                    </div>
+                                </div>
                             </div>
                         )}
                         <button

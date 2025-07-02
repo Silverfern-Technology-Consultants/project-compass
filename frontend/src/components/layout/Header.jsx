@@ -25,15 +25,15 @@ const Header = ({ dropdownOpen, setDropdownOpen, clientDropdownOpen, setClientDr
                 return {
                     title: `Dashboard${clientSuffix}`,
                     subtitle: selectedClient
-                        ? `Azure governance assessment portal for ${getClientDisplayName()}`
-                        : 'Azure Governance Assessment Portal'
+                        ? `Cloud governance monitoring for ${getClientDisplayName()}`
+                        : 'Cloud governance monitoring and assessment platform'
                 };
             case 'assessments':
                 return {
                     title: `Assessments${clientSuffix}`,
                     subtitle: selectedClient
                         ? `Manage and monitor assessments for ${getClientDisplayName()}`
-                        : 'Manage and monitor your Azure governance assessments'
+                        : 'Manage and monitor your cloud governance assessments'
                 };
             case 'reports':
                 return {
@@ -72,7 +72,7 @@ const Header = ({ dropdownOpen, setDropdownOpen, clientDropdownOpen, setClientDr
             default:
                 return {
                     title: `Dashboard${clientSuffix}`,
-                    subtitle: 'Azure Governance Assessment Portal'
+                    subtitle: 'Cloud governance monitoring and assessment platform'
                 };
         }
     };
@@ -134,14 +134,14 @@ const Header = ({ dropdownOpen, setDropdownOpen, clientDropdownOpen, setClientDr
 
     return (
         <header
-            className={`fixed top-0 right-0 bg-gray-900 border-b border-gray-800 px-6 py-4 transition-all duration-300 z-30 ${sidebarOpen ? 'left-64' : 'left-20'
+            className={`fixed top-0 right-0 bg-gray-900 border-b border-gray-800 px-6 py-4 transition-all duration-300 z-30 h-[88px] ${sidebarOpen ? 'left-64' : 'left-20'
                 }`}
         >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between h-full">
                 {/* Page Title Section - Simplified since breadcrumbs will show navigation */}
-                <div className="flex-1">
-                    <h1 className="text-xl font-semibold text-white">{pageInfo.title}</h1>
-                    <p className="text-sm text-gray-400">{pageInfo.subtitle}</p>
+                <div className="flex-1 flex flex-col justify-center">
+                    <h1 className="text-xl font-semibold text-white leading-tight">{pageInfo.title}</h1>
+                    <p className="text-sm text-gray-400 leading-tight">{pageInfo.subtitle}</p>
                 </div>
 
                 {/* Right Side Controls */}

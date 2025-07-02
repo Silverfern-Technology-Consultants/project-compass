@@ -20,6 +20,11 @@ namespace Compass.Core.Interfaces
         Task<bool> HandleOAuthCallbackAsync(OAuthCallbackRequest request);
 
         /// <summary>
+        /// Retrieves OAuth error information for failed authentication attempts
+        /// </summary>
+        Task<OAuthErrorInfo?> GetOAuthErrorAsync(string state);
+
+        /// <summary>
         /// Retrieves stored credentials for a client
         /// </summary>
         Task<StoredCredentials?> GetStoredCredentialsAsync(Guid clientId, Guid organizationId);

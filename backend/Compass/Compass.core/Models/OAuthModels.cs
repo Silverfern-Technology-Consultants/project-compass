@@ -12,7 +12,14 @@ namespace Compass.Core.Models
 
         public string? Description { get; set; }
     }
-
+    public class OAuthErrorInfo
+    {
+        public string Error { get; set; } = string.Empty;
+        public string? ErrorDescription { get; set; }
+        public bool IsUserError { get; set; }
+        public string UserMessage { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; }
+    }
     public class OAuthProgressResponse
     {
         public string ProgressId { get; set; } = string.Empty;

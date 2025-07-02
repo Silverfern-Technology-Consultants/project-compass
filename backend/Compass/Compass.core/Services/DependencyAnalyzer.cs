@@ -30,7 +30,9 @@ public class DependencyAnalyzer : IDependencyAnalyzer
 
         // Create resource lookup for faster dependency resolution
         var resourceLookup = resources.ToDictionary(r => r.Id, r => r);
-        var resourcesByName = resources.ToDictionary(r => r.Name.ToLowerInvariant(), r => r);
+        var resourcesByName = resources
+        .GroupBy(r => r.Name.ToLowerInvariant())
+        .ToDictionary(g => g.Key, g => g.First());
 
         // Analyze different dependency types
         results.VirtualMachineDependencies = AnalyzeVMDependencies(resources, resourceLookup, resourcesByName);

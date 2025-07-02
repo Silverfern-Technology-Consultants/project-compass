@@ -1,4 +1,5 @@
 ﻿using Compass.Core.Models;
+using Compass.Core.Interfaces;
 using Compass.Data.Entities;
 using Compass.Data.Repositories;
 using Microsoft.Extensions.Logging;
@@ -19,6 +20,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
     private readonly ITaggingAnalyzer _taggingAnalyzer;
     private readonly IDependencyAnalyzer _dependencyAnalyzer;
     private readonly IAssessmentRepository _assessmentRepository;
+    private readonly IOAuthService _oauthService; // NEW: Added OAuth service
     private readonly ILogger<AssessmentOrchestrator> _logger;
 
     public AssessmentOrchestrator(
@@ -27,6 +29,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         ITaggingAnalyzer taggingAnalyzer,
         IDependencyAnalyzer dependencyAnalyzer,
         IAssessmentRepository assessmentRepository,
+        IOAuthService oauthService, // NEW: Added OAuth service parameter
         ILogger<AssessmentOrchestrator> logger)
     {
         _resourceGraphService = resourceGraphService;
@@ -34,6 +37,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         _taggingAnalyzer = taggingAnalyzer;
         _dependencyAnalyzer = dependencyAnalyzer;
         _assessmentRepository = assessmentRepository;
+        _oauthService = oauthService; // NEW: Assign OAuth service
         _logger = logger;
     }
 
@@ -97,8 +101,104 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         // Update status to InProgress
         await _assessmentRepository.UpdateStatusAsync(assessmentId, AssessmentStatus.InProgress.ToString());
 
-        // 1. Collect Azure resources using the REAL subscription IDs from the request
-        var resources = await _resourceGraphService.GetResourcesAsync(request.SubscriptionIds, cancellationToken);
+        // NEW: Get environment details to check for OAuth credentials
+        var environment = await _assessmentRepository.GetEnvironmentByIdAsync(request.EnvironmentId);
+        if (environment == null)
+        {
+            _logger.LogError("Environment {EnvironmentId} not found for assessment {AssessmentId}",
+                request.EnvironmentId, assessmentId);
+            await MarkAssessmentAsFailed(assessmentId, "Environment not found");
+            return;
+        }
+
+        // FIXED: Handle nullable OrganizationId
+        if (!request.OrganizationId.HasValue)
+        {
+            _logger.LogError("OrganizationId is null for assessment {AssessmentId}", assessmentId);
+            await MarkAssessmentAsFailed(assessmentId, "Organization context not found");
+            return;
+        }
+
+        var organizationId = request.OrganizationId.Value;
+
+        // 1. Collect Azure resources - FIXED: Use OAuth if available
+        List<AzureResource> resources;
+        bool oauthAttempted = false;
+
+        if (environment.ClientId.HasValue)
+        {
+            _logger.LogInformation("Checking OAuth credentials for assessment {AssessmentId} with client {ClientId}",
+                assessmentId, environment.ClientId.Value);
+
+            // Check if OAuth credentials actually exist before attempting to use them
+            bool hasOAuthCredentials = false;
+            try
+            {
+                hasOAuthCredentials = await _oauthService.TestCredentialsAsync(environment.ClientId.Value, organizationId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to test OAuth credentials for assessment {AssessmentId}", assessmentId);
+            }
+
+            if (hasOAuthCredentials)
+            {
+                _logger.LogInformation("Using OAuth credentials for assessment {AssessmentId} with client {ClientId}",
+                    assessmentId, environment.ClientId.Value);
+
+                oauthAttempted = true;
+                try
+                {
+                    // Use OAuth credentials
+                    resources = await _resourceGraphService.GetResourcesWithOAuthAsync(
+                        request.SubscriptionIds,
+                        environment.ClientId.Value,
+                        organizationId,
+                        cancellationToken);
+
+                    _logger.LogInformation("Successfully retrieved {ResourceCount} resources using OAuth for assessment {AssessmentId}",
+                        resources.Count, assessmentId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "OAuth resource collection failed for assessment {AssessmentId}, falling back to default credentials",
+                        assessmentId);
+
+                    // Fallback to default credentials
+                    resources = await _resourceGraphService.GetResourcesAsync(request.SubscriptionIds, cancellationToken);
+
+                    _logger.LogInformation("Fallback: Retrieved {ResourceCount} resources using default credentials for assessment {AssessmentId}",
+                        resources.Count, assessmentId);
+                }
+            }
+            else
+            {
+                _logger.LogInformation("No valid OAuth credentials found for client {ClientId}, using default credentials for assessment {AssessmentId}",
+                    environment.ClientId.Value, assessmentId);
+
+                // Use default credentials
+                resources = await _resourceGraphService.GetResourcesAsync(request.SubscriptionIds, cancellationToken);
+
+                _logger.LogInformation("Retrieved {ResourceCount} resources using default credentials for assessment {AssessmentId}",
+                    resources.Count, assessmentId);
+            }
+        }
+        else
+        {
+            _logger.LogInformation("No client associated with environment, using default credentials for assessment {AssessmentId}",
+                assessmentId);
+
+            // Use default credentials
+            resources = await _resourceGraphService.GetResourcesAsync(request.SubscriptionIds, cancellationToken);
+
+            _logger.LogInformation("Retrieved {ResourceCount} resources using default credentials for assessment {AssessmentId}",
+                resources.Count, assessmentId);
+        }
+
+        // Log the method used for resource collection
+        var resourceCollectionMethod = oauthAttempted ? "OAuth" : "DefaultCredentials";
+        _logger.LogInformation("Assessment {AssessmentId} used {Method} for resource collection, found {ResourceCount} resources",
+            assessmentId, resourceCollectionMethod, resources.Count);
 
         if (!resources.Any())
         {

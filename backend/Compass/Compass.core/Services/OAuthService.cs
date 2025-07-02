@@ -202,7 +202,7 @@ namespace Compass.Core.Services
 
             // Build authorization URL
             var scopeString = string.Join(" ", scopes.Length > 0 ? scopes : new[] { "https://management.azure.com/user_impersonation" });
-            var authUrl = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/authorize" +
+            var authUrl = $"https://login.microsoftonline.com/common/oauth2/v2.0/authorize" +
                          $"?client_id={clientId}" +
                          $"&response_type=code" +
                          $"&redirect_uri={HttpUtility.UrlEncode(redirectUri)}" +
@@ -348,6 +348,24 @@ namespace Compass.Core.Services
                 {
                     _logger.LogWarning("OAuth callback received error: {Error} - {ErrorDescription}",
                         request.Error, request.ErrorDescription);
+
+                    // Store the error in cache for frontend to retrieve
+                    if (!string.IsNullOrEmpty(request.State))
+                    {
+                        var errorKey = $"oauth_error_{request.State}";
+                        var errorInfo = new OAuthErrorInfo
+                        {
+                            Error = request.Error,
+                            ErrorDescription = request.ErrorDescription,
+                            IsUserError = IsUserRecoverableError(request.Error),
+                            UserMessage = GetUserFriendlyErrorMessage(request.Error, request.ErrorDescription),
+                            Timestamp = DateTime.UtcNow
+                        };
+
+                        _cache.Set(errorKey, errorInfo, TimeSpan.FromMinutes(10));
+                        _logger.LogInformation("Stored OAuth error info for state {State}: {ErrorType}", request.State, request.Error);
+                    }
+
                     return false;
                 }
 
@@ -373,6 +391,19 @@ namespace Compass.Core.Services
                 if (tokenResponse == null)
                 {
                     _logger.LogError("Token exchange failed for state: {State}", request.State);
+
+                    // Store token exchange failure info
+                    var errorKey = $"oauth_error_{request.State}";
+                    var errorInfo = new OAuthErrorInfo
+                    {
+                        Error = "token_exchange_failed",
+                        ErrorDescription = "Failed to exchange authorization code for access tokens",
+                        IsUserError = false,
+                        UserMessage = "Authentication setup failed. Please try again or contact support if the issue persists.",
+                        Timestamp = DateTime.UtcNow
+                    };
+                    _cache.Set(errorKey, errorInfo, TimeSpan.FromMinutes(10));
+
                     return false;
                 }
 
@@ -389,8 +420,75 @@ namespace Compass.Core.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to handle OAuth callback for state: {State}", request.State);
+
+                // Store general error info
+                if (!string.IsNullOrEmpty(request.State))
+                {
+                    var errorKey = $"oauth_error_{request.State}";
+                    var errorInfo = new OAuthErrorInfo
+                    {
+                        Error = "callback_processing_failed",
+                        ErrorDescription = ex.Message,
+                        IsUserError = false,
+                        UserMessage = "An unexpected error occurred during authentication setup. Please try again.",
+                        Timestamp = DateTime.UtcNow
+                    };
+                    _cache.Set(errorKey, errorInfo, TimeSpan.FromMinutes(10));
+                }
+
                 return false;
             }
+        }
+
+        public async Task<OAuthErrorInfo?> GetOAuthErrorAsync(string state)
+        {
+            try
+            {
+                var errorKey = $"oauth_error_{state}";
+                var errorInfo = _cache.Get<OAuthErrorInfo>(errorKey);
+
+                if (errorInfo != null)
+                {
+                    // Remove error from cache after retrieval (one-time use)
+                    _cache.Remove(errorKey);
+                }
+
+                return errorInfo;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to retrieve OAuth error for state: {State}", state);
+                return null;
+            }
+        }
+        private bool IsUserRecoverableError(string error)
+        {
+            return error switch
+            {
+                "access_denied" => true,
+                "invalid_request" => false,
+                "unauthorized_client" => false,
+                "unsupported_response_type" => false,
+                "invalid_scope" => false,
+                "server_error" => false,
+                "temporarily_unavailable" => true,
+                _ => false
+            };
+        }
+
+        private string GetUserFriendlyErrorMessage(string error, string? errorDescription)
+        {
+            return error switch
+            {
+                "access_denied" => "You declined to authorize access to your Azure environment. To set up OAuth access, please try again and click 'Accept' when prompted.",
+                "invalid_request" => "There was a technical issue with the authorization request. Please try again or contact support.",
+                "unauthorized_client" => "This application is not authorized to access your Azure tenant. Please contact your Azure administrator to add this application as an external user, or use a different Azure account that has access to both tenants.",
+                "unsupported_response_type" => "There was a technical configuration issue. Please contact support.",
+                "invalid_scope" => "The requested permissions are not available. Please contact support.",
+                "server_error" => "Microsoft's authentication service is experiencing issues. Please try again in a few minutes.",
+                "temporarily_unavailable" => "Microsoft's authentication service is temporarily unavailable. Please try again in a few minutes.",
+                _ => !string.IsNullOrEmpty(errorDescription) ? errorDescription : "An unexpected error occurred during authentication. Please try again."
+            };
         }
 
         public async Task<StoredCredentials?> GetStoredCredentialsAsync(Guid clientId, Guid organizationId)
@@ -754,7 +852,7 @@ namespace Compass.Core.Services
                 var clientSecret = clientSecretSecret.Value.Value;
                 var tenantId = tenantIdSecret.Value.Value;
 
-                var tokenEndpoint = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
+                var tokenEndpoint = $"https://login.microsoftonline.com/common/oauth2/v2.0/token";
 
                 var formData = new Dictionary<string, string>
                 {
@@ -840,7 +938,7 @@ namespace Compass.Core.Services
                 var clientSecret = clientSecretSecret.Value.Value;
                 var tenantId = tenantIdSecret.Value.Value;
 
-                var tokenEndpoint = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
+                var tokenEndpoint = $"https://login.microsoftonline.com/common/oauth2/v2.0/token";
 
                 var formData = new Dictionary<string, string>
                 {

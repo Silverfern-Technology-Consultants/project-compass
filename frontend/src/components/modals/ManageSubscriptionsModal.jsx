@@ -29,7 +29,6 @@ const ManageSubscriptionsModal = ({ isOpen, onClose, client }) => {
     const [editingEnvironment, setEditingEnvironment] = useState(null);
     const [testingConnection, setTestingConnection] = useState(null);
     const [connectionResults, setConnectionResults] = useState({});
-    const [oauthStatus, setOauthStatus] = useState({});
     const [oauthLoading, setOauthLoading] = useState({});
 
     // Form state for adding/editing environments
@@ -40,7 +39,7 @@ const ManageSubscriptionsModal = ({ isOpen, onClose, client }) => {
         subscriptionIds: [''],
         servicePrincipalId: '',
         servicePrincipalName: '',
-        useOAuth: false  // NEW: OAuth toggle
+        useOAuth: false  // OAuth toggle
     });
     const [formErrors, setFormErrors] = useState({});
 
@@ -70,49 +69,16 @@ const ManageSubscriptionsModal = ({ isOpen, onClose, client }) => {
         try {
             console.log('[ManageSubscriptionsModal] Loading environments for client:', client.ClientId);
             const envs = await azureEnvironmentsApi.getClientEnvironments(client.ClientId);
-            console.log('[ManageSubscriptionsModal] Loaded environments:', envs);
+            console.log('[ManageSubscriptionsModal] Loaded environments with OAuth status:', envs);
             setEnvironments(envs || []);
 
-            // Check OAuth status for each environment
-            if (envs && envs.length > 0) {
-                checkOAuthStatus(envs);
-            }
+            // OAuth status is now included in the backend response - no separate API calls needed
         } catch (error) {
             console.error('[ManageSubscriptionsModal] Failed to load environments:', error);
             setError('Failed to load Azure environments');
         } finally {
             setIsLoading(false);
         }
-    };
-
-    const checkOAuthStatus = async (environments) => {
-        console.log('[ManageSubscriptionsModal] Checking OAuth status for environments:', environments.length);
-        const statusChecks = {};
-
-        for (const env of environments) {
-            const envId = env.AzureEnvironmentId || env.Id || env.EnvironmentId;
-            if (envId) {
-                try {
-                    console.log('[ManageSubscriptionsModal] Testing OAuth credentials for environment:', envId);
-                    const hasOAuth = await oauthApi.testOAuthCredentials(envId);
-                    console.log('[ManageSubscriptionsModal] OAuth status for', envId, ':', hasOAuth);
-                    statusChecks[envId] = {
-                        hasOAuth,
-                        connectionMethod: hasOAuth ? 'OAuth' : 'DefaultCredentials'
-                    };
-                } catch (error) {
-                    console.error('[ManageSubscriptionsModal] Failed to test OAuth for', envId, ':', error);
-                    statusChecks[envId] = {
-                        hasOAuth: false,
-                        connectionMethod: 'DefaultCredentials',
-                        error: error.message
-                    };
-                }
-            }
-        }
-
-        console.log('[ManageSubscriptionsModal] Final OAuth status checks:', statusChecks);
-        setOauthStatus(statusChecks);
     };
 
     const resetForm = () => {
@@ -308,11 +274,11 @@ const ManageSubscriptionsModal = ({ isOpen, onClose, client }) => {
             const checkClosed = setInterval(() => {
                 try {
                     if (authWindow.closed) {
-                        console.log('[ManageSubscriptionsModal] OAuth window closed, refreshing status');
+                        console.log('[ManageSubscriptionsModal] OAuth window closed, refreshing environments');
                         clearInterval(checkClosed);
-                        // Refresh OAuth status after a short delay
+                        // Refresh environments to get updated OAuth status from backend
                         setTimeout(() => {
-                            checkOAuthStatus([{ AzureEnvironmentId: environmentId }]);
+                            loadEnvironments();
                         }, 2000);
                     }
                 } catch (error) {
@@ -409,14 +375,8 @@ const ManageSubscriptionsModal = ({ isOpen, onClose, client }) => {
             await oauthApi.revokeOAuthCredentials(environmentId);
             console.log('[ManageSubscriptionsModal] OAuth revoked successfully');
 
-            // Update OAuth status
-            setOauthStatus(prev => ({
-                ...prev,
-                [environmentId]: {
-                    hasOAuth: false,
-                    connectionMethod: 'DefaultCredentials'
-                }
-            }));
+            // Refresh environments to get updated OAuth status from backend
+            await loadEnvironments();
 
         } catch (error) {
             console.error('[ManageSubscriptionsModal] Failed to revoke OAuth:', error);
@@ -742,7 +702,10 @@ const ManageSubscriptionsModal = ({ isOpen, onClose, client }) => {
                         <div className="space-y-4">
                             {environments.map((environment) => {
                                 const envId = environment.EnvironmentId || environment.Id || environment.AzureEnvironmentId;
-                                const envOAuthStatus = oauthStatus[envId];
+
+                                // Use OAuth status directly from backend response
+                                const hasOAuth = environment.HasOAuthCredentials || false;
+                                const connectionMethod = environment.ConnectionMethod || 'DefaultCredentials';
 
                                 return (
                                     <div key={envId} className="bg-gray-900 border border-gray-700 rounded-lg p-4">
@@ -752,11 +715,11 @@ const ManageSubscriptionsModal = ({ isOpen, onClose, client }) => {
                                                     <h4 className="text-lg font-medium text-white">{environment.Name}</h4>
 
                                                     {/* Connection Method Badge */}
-                                                    <div className={`px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 ${envOAuthStatus?.hasOAuth
-                                                            ? 'bg-yellow-900/30 text-yellow-400 border border-yellow-800'
-                                                            : 'bg-blue-900/30 text-blue-400 border border-blue-800'
+                                                    <div className={`px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 ${hasOAuth
+                                                        ? 'bg-yellow-900/30 text-yellow-400 border border-yellow-800'
+                                                        : 'bg-blue-900/30 text-blue-400 border border-blue-800'
                                                         }`}>
-                                                        {envOAuthStatus?.hasOAuth ? (
+                                                        {hasOAuth ? (
                                                             <>
                                                                 <Shield size={12} />
                                                                 <span>OAuth</span>
@@ -844,7 +807,7 @@ const ManageSubscriptionsModal = ({ isOpen, onClose, client }) => {
                                             {/* Environment Actions */}
                                             <div className="flex items-center space-x-2 ml-4">
                                                 {/* OAuth Setup/Management Button */}
-                                                {!envOAuthStatus?.hasOAuth ? (
+                                                {!hasOAuth ? (
                                                     <button
                                                         onClick={() => handleOAuthSetup(envId, environment.Name)}
                                                         disabled={oauthLoading[envId]}
@@ -924,7 +887,7 @@ const ManageSubscriptionsModal = ({ isOpen, onClose, client }) => {
                 </div>
             </div>
         </div>
-        ,document.body
+        , document.body
     );
 };
 

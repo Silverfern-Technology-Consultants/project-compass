@@ -68,23 +68,49 @@ public class AzureEnvironmentController : ControllerBase
                 .OrderBy(e => e.Name)
                 .ToListAsync();
 
-            var environmentDtos = environments.Select(e => new AzureEnvironmentDto
+            var environmentDtos = new List<AzureEnvironmentDto>();
+
+            // Check OAuth status for each environment
+            foreach (var e in environments)
             {
-                AzureEnvironmentId = e.AzureEnvironmentId,
-                ClientId = e.ClientId,
-                Name = e.Name,
-                Description = e.Description,
-                TenantId = e.TenantId,
-                SubscriptionIds = e.SubscriptionIds,
-                ServicePrincipalId = e.ServicePrincipalId,
-                ServicePrincipalName = e.ServicePrincipalName,
-                IsActive = e.IsActive,
-                CreatedDate = e.CreatedDate,
-                LastAccessDate = e.LastAccessDate,
-                LastConnectionTest = e.LastConnectionTest,
-                LastConnectionTestDate = e.LastConnectionTestDate,
-                LastConnectionError = e.LastConnectionError
-            }).ToList();
+                bool hasOAuth = false;
+                string connectionMethod = "DefaultCredentials";
+
+                if (e.ClientId.HasValue)
+                {
+                    try
+                    {
+                        hasOAuth = await _oauthService.TestCredentialsAsync(e.ClientId.Value, organizationId.Value);
+                        connectionMethod = hasOAuth ? "OAuth" : "DefaultCredentials";
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug("Failed to test OAuth credentials for environment {EnvironmentId}: {Error}",
+                            e.AzureEnvironmentId, ex.Message);
+                        // Keep default values
+                    }
+                }
+
+                environmentDtos.Add(new AzureEnvironmentDto
+                {
+                    AzureEnvironmentId = e.AzureEnvironmentId,
+                    ClientId = e.ClientId,
+                    Name = e.Name,
+                    Description = e.Description,
+                    TenantId = e.TenantId,
+                    SubscriptionIds = e.SubscriptionIds,
+                    ServicePrincipalId = e.ServicePrincipalId,
+                    ServicePrincipalName = e.ServicePrincipalName,
+                    IsActive = e.IsActive,
+                    CreatedDate = e.CreatedDate,
+                    LastAccessDate = e.LastAccessDate,
+                    LastConnectionTest = e.LastConnectionTest,
+                    LastConnectionTestDate = e.LastConnectionTestDate,
+                    LastConnectionError = e.LastConnectionError,
+                    HasOAuthCredentials = hasOAuth,
+                    ConnectionMethod = connectionMethod
+                });
+            }
 
             return Ok(environmentDtos);
         }
@@ -127,6 +153,24 @@ public class AzureEnvironmentController : ControllerBase
                 }
             }
 
+            // Check OAuth status
+            bool hasOAuth = false;
+            string connectionMethod = "DefaultCredentials";
+
+            if (environment.ClientId.HasValue)
+            {
+                try
+                {
+                    hasOAuth = await _oauthService.TestCredentialsAsync(environment.ClientId.Value, organizationId.Value);
+                    connectionMethod = hasOAuth ? "OAuth" : "DefaultCredentials";
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug("Failed to test OAuth credentials for environment {EnvironmentId}: {Error}",
+                        environmentId, ex.Message);
+                }
+            }
+
             var environmentDto = new AzureEnvironmentDto
             {
                 AzureEnvironmentId = environment.AzureEnvironmentId,
@@ -142,7 +186,9 @@ public class AzureEnvironmentController : ControllerBase
                 LastAccessDate = environment.LastAccessDate,
                 LastConnectionTest = environment.LastConnectionTest,
                 LastConnectionTestDate = environment.LastConnectionTestDate,
-                LastConnectionError = environment.LastConnectionError
+                LastConnectionError = environment.LastConnectionError,
+                HasOAuthCredentials = hasOAuth,
+                ConnectionMethod = connectionMethod
             };
 
             return Ok(environmentDto);
@@ -414,6 +460,273 @@ public class AzureEnvironmentController : ControllerBase
             return StatusCode(500, "Failed to initiate OAuth flow");
         }
     }
+    [HttpGet("oauth/error/{state}")]
+    [AllowAnonymous] // Frontend needs to access this after OAuth callback
+    public async Task<ActionResult<OAuthErrorInfo>> GetOAuthError(string state)
+    {
+        try
+        {
+            var errorInfo = await _oauthService.GetOAuthErrorAsync(state);
+
+            if (errorInfo == null)
+            {
+                return NotFound(new { message = "No error information found for this request" });
+            }
+
+            return Ok(errorInfo);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve OAuth error for state: {State}", state);
+            return StatusCode(500, "Failed to retrieve error information");
+        }
+    }
+
+    [HttpPost("{environmentId}/test-connection")]
+    public async Task<ActionResult<ConnectionTestResult>> TestEnvironmentConnection(Guid environmentId)
+    {
+        try
+        {
+            var organizationId = GetOrganizationIdFromContext();
+            var customerId = GetCurrentCustomerId();
+
+            if (organizationId == null || customerId == null)
+            {
+                return BadRequest("Organization or customer context not found");
+            }
+
+            var environment = await _context.AzureEnvironments
+                .FirstOrDefaultAsync(e => e.AzureEnvironmentId == environmentId);
+
+            if (environment == null)
+            {
+                return NotFound("Environment not found");
+            }
+
+            // Validate client access
+            if (environment.ClientId.HasValue)
+            {
+                var hasClientAccess = await _clientService.CanUserAccessClient(customerId.Value, environment.ClientId.Value, "ViewEnvironments");
+                if (!hasClientAccess)
+                {
+                    return Forbid("You don't have permission to test this environment");
+                }
+            }
+
+            // Validate that we have subscription IDs
+            if (environment.SubscriptionIds == null || !environment.SubscriptionIds.Any())
+            {
+                var errorMessage = "No subscription IDs found for this environment";
+                _logger.LogWarning("Connection test failed for environment {EnvironmentId}: {Error}", environmentId, errorMessage);
+
+                environment.LastConnectionTest = false;
+                environment.LastConnectionTestDate = DateTime.UtcNow;
+                environment.LastConnectionError = errorMessage;
+                environment.LastAccessDate = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+
+                return Ok(new ConnectionTestResult
+                {
+                    Success = false,
+                    Message = errorMessage,
+                    ErrorCode = "NO_SUBSCRIPTIONS",
+                    Details = new Dictionary<string, object>
+                    {
+                        ["EnvironmentId"] = environmentId,
+                        ["SubscriptionIds"] = environment.SubscriptionIds ?? new List<string>(),
+                        ["TestedAt"] = DateTime.UtcNow,
+                        ["SubscriptionCount"] = 0
+                    }
+                });
+            }
+
+            var subscriptionArray = environment.SubscriptionIds.ToArray();
+            _logger.LogInformation("Testing connection with subscription array: {SubscriptionArray}",
+                string.Join(", ", subscriptionArray));
+
+            bool canConnect;
+            string? connectionMethod = null;
+            string? connectionError = null;
+            bool hasOAuth = false;
+
+            // Try OAuth credentials first if environment has a client
+            if (environment.ClientId.HasValue)
+            {
+                _logger.LogInformation("Attempting OAuth connection test for environment {EnvironmentId} with client {ClientId}",
+                    environmentId, environment.ClientId);
+
+                // Check if OAuth credentials exist first
+                var hasStoredCredentials = await _oauthService.TestCredentialsAsync(environment.ClientId.Value, organizationId.Value);
+                hasOAuth = hasStoredCredentials;
+
+                if (hasStoredCredentials)
+                {
+                    canConnect = await _resourceGraphService.TestConnectionWithOAuthAsync(
+                        subscriptionArray, environment.ClientId.Value, organizationId.Value);
+
+                    connectionMethod = canConnect ? "OAuth" : null;
+
+                    if (!canConnect)
+                    {
+                        connectionError = "OAuth credentials exist but failed to access Azure subscriptions. This may indicate the credentials have expired or lack proper permissions.";
+                        _logger.LogWarning("OAuth connection failed for environment {EnvironmentId}: {Error}",
+                            environmentId, connectionError);
+                    }
+                }
+                else
+                {
+                    canConnect = false;
+                    connectionError = "No OAuth credentials found for this client. Please set up OAuth access first.";
+                    _logger.LogInformation("No OAuth credentials found for environment {EnvironmentId} with client {ClientId}",
+                        environmentId, environment.ClientId);
+                }
+            }
+            else
+            {
+                canConnect = false;
+                connectionError = "Environment has no associated client for OAuth authentication.";
+                _logger.LogInformation("Environment {EnvironmentId} has no associated client, skipping OAuth test", environmentId);
+            }
+
+            // Fallback to default credentials only if OAuth completely failed or no client
+            bool defaultCredentialsWork = false;
+            if (!canConnect)
+            {
+                _logger.LogInformation("Testing connection with default credentials for environment {EnvironmentId}", environmentId);
+
+                try
+                {
+                    defaultCredentialsWork = await _resourceGraphService.TestConnectionAsync(subscriptionArray);
+
+                    if (defaultCredentialsWork)
+                    {
+                        // Only use default credentials as primary method if OAuth isn't set up at all
+                        if (!hasOAuth)
+                        {
+                            canConnect = true;
+                            connectionMethod = "DefaultCredentials";
+                            connectionError = null;
+                        }
+                        else
+                        {
+                            // OAuth is set up but failed - don't mask this with default credentials success
+                            canConnect = false;
+                            connectionMethod = "Failed";
+                            connectionError = connectionError ?? "OAuth authentication failed, but default credentials could connect. Please refresh your OAuth access or contact support.";
+                        }
+                    }
+                    else
+                    {
+                        connectionMethod = "Failed";
+                        if (hasOAuth)
+                        {
+                            connectionError = connectionError ?? "Both OAuth and default credentials failed to connect.";
+                        }
+                        else
+                        {
+                            connectionError = "No OAuth credentials configured and default credentials failed to connect.";
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Default credentials test failed for environment {EnvironmentId}", environmentId);
+                    defaultCredentialsWork = false;
+                    connectionMethod = "Failed";
+
+                    if (hasOAuth)
+                    {
+                        connectionError = $"OAuth failed and default credentials also failed: {ex.Message}";
+                    }
+                    else
+                    {
+                        connectionError = $"Default credentials failed: {ex.Message}";
+                    }
+                }
+            }
+
+            // Update environment with test results
+            environment.LastConnectionTest = canConnect;
+            environment.LastConnectionTestDate = DateTime.UtcNow;
+            environment.LastConnectionError = canConnect ? null : connectionError;
+            environment.LastAccessDate = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            // Determine appropriate success message
+            string successMessage;
+            if (canConnect)
+            {
+                if (connectionMethod == "OAuth")
+                {
+                    successMessage = "Successfully connected using OAuth authentication";
+                }
+                else if (connectionMethod == "DefaultCredentials")
+                {
+                    successMessage = hasOAuth
+                        ? "Connected using default credentials (OAuth setup recommended for production use)"
+                        : "Successfully connected using default credentials";
+                }
+                else
+                {
+                    successMessage = "Successfully connected to all subscriptions";
+                }
+            }
+            else
+            {
+                successMessage = connectionError ?? "Failed to connect to Azure subscriptions";
+            }
+
+            _logger.LogInformation("Connection test for environment {EnvironmentId}: {Result} using {Method}. HasOAuth: {HasOAuth}",
+                environmentId, canConnect ? "Success" : "Failed", connectionMethod, hasOAuth);
+
+            return Ok(new ConnectionTestResult
+            {
+                Success = canConnect,
+                Message = successMessage,
+                ErrorCode = canConnect ? null : "CONNECTION_FAILED",
+                Details = new Dictionary<string, object>
+                {
+                    ["EnvironmentId"] = environmentId,
+                    ["SubscriptionIds"] = environment.SubscriptionIds,
+                    ["TestedAt"] = DateTime.UtcNow,
+                    ["SubscriptionCount"] = environment.SubscriptionIds.Count,
+                    ["ConnectionMethod"] = connectionMethod ?? "Failed",
+                    ["HasOAuthCredentials"] = hasOAuth,
+                    ["DefaultCredentialsWork"] = defaultCredentialsWork,
+                    ["OAuthAttempted"] = environment.ClientId.HasValue,
+                    ["Error"] = connectionError
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Connection test failed for environment {EnvironmentId}", environmentId);
+
+            // Update environment with error
+            var environment = await _context.AzureEnvironments.FindAsync(environmentId);
+            if (environment != null)
+            {
+                environment.LastConnectionTest = false;
+                environment.LastConnectionTestDate = DateTime.UtcNow;
+                environment.LastConnectionError = ex.Message;
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok(new ConnectionTestResult
+            {
+                Success = false,
+                Message = $"Connection test failed: {ex.Message}",
+                ErrorCode = "CONNECTION_ERROR",
+                Details = new Dictionary<string, object>
+                {
+                    ["EnvironmentId"] = environmentId,
+                    ["TestedAt"] = DateTime.UtcNow,
+                    ["Error"] = ex.Message
+                }
+            });
+        }
+    }
 
     [HttpGet("oauth/progress/{progressId}")]
     [Authorize]
@@ -605,159 +918,6 @@ public class AzureEnvironmentController : ControllerBase
         }
     }
 
-    [HttpPost("{environmentId}/test-connection")]
-    public async Task<ActionResult<ConnectionTestResult>> TestEnvironmentConnection(Guid environmentId)
-    {
-        try
-        {
-            var organizationId = GetOrganizationIdFromContext();
-            var customerId = GetCurrentCustomerId();
-
-            if (organizationId == null || customerId == null)
-            {
-                return BadRequest("Organization or customer context not found");
-            }
-
-            var environment = await _context.AzureEnvironments
-                .FirstOrDefaultAsync(e => e.AzureEnvironmentId == environmentId);
-
-            if (environment == null)
-            {
-                return NotFound("Environment not found");
-            }
-
-            // Validate client access
-            if (environment.ClientId.HasValue)
-            {
-                var hasClientAccess = await _clientService.CanUserAccessClient(customerId.Value, environment.ClientId.Value, "ViewEnvironments");
-                if (!hasClientAccess)
-                {
-                    return Forbid("You don't have permission to test this environment");
-                }
-            }
-
-            // Validate that we have subscription IDs
-            if (environment.SubscriptionIds == null || !environment.SubscriptionIds.Any())
-            {
-                var errorMessage = "No subscription IDs found for this environment";
-                _logger.LogWarning("Connection test failed for environment {EnvironmentId}: {Error}", environmentId, errorMessage);
-
-                environment.LastConnectionTest = false;
-                environment.LastConnectionTestDate = DateTime.UtcNow;
-                environment.LastConnectionError = errorMessage;
-                environment.LastAccessDate = DateTime.UtcNow;
-                await _context.SaveChangesAsync();
-
-                return Ok(new ConnectionTestResult
-                {
-                    Success = false,
-                    Message = errorMessage,
-                    ErrorCode = "NO_SUBSCRIPTIONS",
-                    Details = new Dictionary<string, object>
-                    {
-                        ["EnvironmentId"] = environmentId,
-                        ["SubscriptionIds"] = environment.SubscriptionIds ?? new List<string>(),
-                        ["TestedAt"] = DateTime.UtcNow,
-                        ["SubscriptionCount"] = 0
-                    }
-                });
-            }
-
-            var subscriptionArray = environment.SubscriptionIds.ToArray();
-            _logger.LogInformation("Testing connection with subscription array: {SubscriptionArray}",
-                string.Join(", ", subscriptionArray));
-
-            bool canConnect;
-            string? connectionMethod = null;
-
-            // Try OAuth credentials first if environment has a client
-            if (environment.ClientId.HasValue)
-            {
-                _logger.LogInformation("Attempting OAuth connection test for environment {EnvironmentId} with client {ClientId}",
-                    environmentId, environment.ClientId);
-
-                canConnect = await _resourceGraphService.TestConnectionWithOAuthAsync(
-                    subscriptionArray, environment.ClientId.Value, organizationId.Value);
-
-                connectionMethod = canConnect ? "OAuth" : null;
-
-                if (!canConnect)
-                {
-                    _logger.LogWarning("OAuth connection failed for environment {EnvironmentId}, falling back to default credentials",
-                        environmentId);
-                }
-            }
-            else
-            {
-                canConnect = false;
-                _logger.LogInformation("Environment {EnvironmentId} has no associated client, skipping OAuth test", environmentId);
-            }
-
-            // Fallback to default credentials if OAuth failed or no client
-            if (!canConnect)
-            {
-                _logger.LogInformation("Testing connection with default credentials for environment {EnvironmentId}", environmentId);
-                canConnect = await _resourceGraphService.TestConnectionAsync(subscriptionArray);
-                connectionMethod = canConnect ? "DefaultCredentials" : "Failed";
-            }
-
-            // Update environment with test results
-            environment.LastConnectionTest = canConnect;
-            environment.LastConnectionTestDate = DateTime.UtcNow;
-            environment.LastConnectionError = canConnect ? null : "Connection test failed with both OAuth and default credentials";
-            environment.LastAccessDate = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-
-            _logger.LogInformation("Connection test for environment {EnvironmentId}: {Result} using {Method}",
-                environmentId, canConnect ? "Success" : "Failed", connectionMethod);
-
-            return Ok(new ConnectionTestResult
-            {
-                Success = canConnect,
-                Message = canConnect
-                    ? $"Successfully connected to all subscriptions using {connectionMethod}"
-                    : "Failed to connect to one or more subscriptions",
-                Details = new Dictionary<string, object>
-                {
-                    ["EnvironmentId"] = environmentId,
-                    ["SubscriptionIds"] = environment.SubscriptionIds,
-                    ["TestedAt"] = DateTime.UtcNow,
-                    ["SubscriptionCount"] = environment.SubscriptionIds.Count,
-                    ["ConnectionMethod"] = connectionMethod ?? "Failed",
-                    ["HasOAuthCredentials"] = environment.ClientId.HasValue
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Connection test failed for environment {EnvironmentId}", environmentId);
-
-            // Update environment with error
-            var environment = await _context.AzureEnvironments.FindAsync(environmentId);
-            if (environment != null)
-            {
-                environment.LastConnectionTest = false;
-                environment.LastConnectionTestDate = DateTime.UtcNow;
-                environment.LastConnectionError = ex.Message;
-                await _context.SaveChangesAsync();
-            }
-
-            return Ok(new ConnectionTestResult
-            {
-                Success = false,
-                Message = $"Connection test failed: {ex.Message}",
-                ErrorCode = "CONNECTION_ERROR",
-                Details = new Dictionary<string, object>
-                {
-                    ["EnvironmentId"] = environmentId,
-                    ["TestedAt"] = DateTime.UtcNow,
-                    ["Error"] = ex.Message
-                }
-            });
-        }
-    }
-
     // Helper methods
     private Guid? GetOrganizationIdFromContext()
     {
@@ -789,8 +949,11 @@ public class AzureEnvironmentDto
     public bool? LastConnectionTest { get; set; }
     public DateTime? LastConnectionTestDate { get; set; }
     public string? LastConnectionError { get; set; }
-}
 
+    // NEW: OAuth status fields
+    public bool HasOAuthCredentials { get; set; }
+    public string ConnectionMethod { get; set; } = "Unknown";
+}
 public class CreateAzureEnvironmentRequest
 {
     [Required]

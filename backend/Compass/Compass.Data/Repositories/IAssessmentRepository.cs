@@ -4,9 +4,13 @@ namespace Compass.Data.Repositories;
 
 public interface IAssessmentRepository
 {
-    // EXISTING METHODS (these were missing from your interface)
+    // Core CRUD operations
     Task<Assessment?> GetByIdAsync(Guid id);
     Task<Assessment> CreateAsync(Assessment assessment);
+    Task UpdateAsync(Assessment assessment);
+    Task DeleteAsync(Guid assessmentId);
+
+    // Query methods
     Task<List<Assessment>> GetByEnvironmentIdAsync(Guid environmentId, int limit = 10);
     Task<List<Assessment>> GetByCustomerIdAsync(Guid customerId, int limit = 10);
     Task<List<Assessment>> GetByOrganizationIdAsync(Guid organizationId, int limit = 10);
@@ -14,19 +18,23 @@ public interface IAssessmentRepository
     Task<List<Assessment>> GetByClientIdAsync(Guid clientId, int limit = 10);
     Task<Assessment?> GetByIdAndClientAsync(Guid assessmentId, Guid clientId);
     Task<List<Assessment>> GetByClientAndOrganizationAsync(Guid clientId, Guid organizationId, int limit = 10);
+    Task<List<Assessment>> GetPendingAssessmentsAsync();
+
+    // Client-specific methods
     Task<int> GetAssessmentCountByClientAsync(Guid clientId);
     Task<int> GetCompletedAssessmentCountByClientAsync(Guid clientId);
     Task<List<Assessment>> GetRecentAssessmentsByClientAsync(Guid clientId, int limit = 5);
-    Task UpdateAsync(Assessment assessment);
+
+    // Status and update methods
     Task UpdateStatusAsync(Guid assessmentId, string status);
     Task UpdateAssessmentAsync(Guid assessmentId, decimal score, string status, DateTime completedDate);
-    Task<List<Assessment>> GetPendingAssessmentsAsync();
+
+    // Findings methods
     Task<List<AssessmentFinding>> GetFindingsByAssessmentIdAsync(Guid assessmentId);
     Task CreateFindingsAsync(List<AssessmentFinding> findings);
     Task UpdateFindingStatusAsync(Guid findingId, string status);
-    Task DeleteAsync(Guid assessmentId);
 
-    // NEW: Assessment Resource Methods
+    // Resources methods
     Task CreateResourcesAsync(List<AssessmentResource> resources);
     Task<List<AssessmentResource>> GetResourcesByAssessmentIdAsync(
         Guid assessmentId,
@@ -40,4 +48,7 @@ public interface IAssessmentRepository
     Task<int> GetResourceCountByAssessmentIdAsync(Guid assessmentId);
     Task<Dictionary<string, string>> GetResourceFiltersByAssessmentIdAsync(Guid assessmentId);
     Task<List<AssessmentResource>> GetAllResourcesByAssessmentIdAsync(Guid assessmentId);
+
+    // NEW: Environment lookup method for OAuth support
+    Task<AzureEnvironment?> GetEnvironmentByIdAsync(Guid environmentId);
 }
