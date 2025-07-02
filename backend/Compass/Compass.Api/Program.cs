@@ -179,6 +179,8 @@ builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
 builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
 builder.Services.AddScoped<IUsageMetricRepository, UsageMetricRepository>();
 builder.Services.AddScoped<IClientRepository, ClientRepository>();
+builder.Services.AddScoped<Compass.Data.Repositories.IClientPreferencesRepository, Compass.Data.Repositories.ClientPreferencesRepository>();
+
 
 // Register services
 builder.Services.AddScoped<IAssessmentOrchestrator, AssessmentOrchestrator>();

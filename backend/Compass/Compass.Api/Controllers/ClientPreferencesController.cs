@@ -1,361 +1,331 @@
-﻿using Compass.Core.Models;
-using Compass.Core.Services;
+﻿using Compass.Data.Entities;
+using Compass.Data.Repositories;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace Compass.Api.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class ClientPreferencesController : ControllerBase
 {
     private readonly IClientPreferencesRepository _preferencesRepository;
+    private readonly IClientRepository _clientRepository;
     private readonly ILogger<ClientPreferencesController> _logger;
 
     public ClientPreferencesController(
         IClientPreferencesRepository preferencesRepository,
+        IClientRepository clientRepository,
         ILogger<ClientPreferencesController> logger)
     {
         _preferencesRepository = preferencesRepository;
+        _clientRepository = clientRepository;
         _logger = logger;
     }
 
     /// <summary>
-    /// Get client preferences by customer ID
+    /// Get client preferences by client ID
     /// </summary>
-    [HttpGet("customer/{customerId}")]
-    public async Task<ActionResult<ClientPreferences>> GetClientPreferences(Guid customerId)
+    [HttpGet("client/{clientId}")]
+    public async Task<ActionResult<ClientPreferencesResponse>> GetClientPreferences(Guid clientId)
     {
         try
         {
-            var preferences = await _preferencesRepository.GetByCustomerIdAsync(customerId);
-            if (preferences == null)
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null)
             {
-                return NotFound(new { error = "Client preferences not found", customerId });
+                return BadRequest("Organization context not found");
             }
 
-            return Ok(preferences);
+            var preferences = await _preferencesRepository.GetByClientIdAsync(clientId, organizationId.Value);
+            if (preferences == null)
+            {
+                return NotFound(new { error = "Client preferences not found", clientId });
+            }
+
+            var response = MapToResponse(preferences);
+            return Ok(response);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to retrieve client preferences for customer {CustomerId}", customerId);
+            _logger.LogError(ex, "Failed to retrieve client preferences for client {ClientId}", clientId);
             return StatusCode(500, new { error = "Failed to retrieve client preferences" });
         }
     }
 
     /// <summary>
-    /// Get assessment configuration derived from client preferences
+    /// Get all client preferences for the organization
     /// </summary>
-    [HttpGet("customer/{customerId}/assessment-config")]
-    public async Task<ActionResult<ClientAssessmentConfiguration>> GetAssessmentConfiguration(Guid customerId)
+    [HttpGet]
+    public async Task<ActionResult<List<ClientPreferencesResponse>>> GetAllClientPreferences()
     {
         try
         {
-            var config = await _preferencesRepository.GetAssessmentConfigurationAsync(customerId);
-            if (config == null)
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null)
             {
-                return NotFound(new { error = "Assessment configuration not found", customerId });
+                return BadRequest("Organization context not found");
             }
 
-            return Ok(config);
+            var preferences = await _preferencesRepository.GetActiveByOrganizationIdAsync(organizationId.Value);
+            var responses = preferences.Select(MapToResponse).ToList();
+
+            return Ok(responses);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to retrieve assessment configuration for customer {CustomerId}", customerId);
-            return StatusCode(500, new { error = "Failed to retrieve assessment configuration" });
+            _logger.LogError(ex, "Failed to retrieve client preferences for organization");
+            return StatusCode(500, new { error = "Failed to retrieve client preferences" });
         }
     }
 
     /// <summary>
     /// Create or update client preferences
     /// </summary>
-    [HttpPost]
-    public async Task<ActionResult<ClientPreferences>> SaveClientPreferences([FromBody] ClientPreferences preferences)
+    [HttpPost("client/{clientId}")]
+    public async Task<ActionResult<ClientPreferencesResponse>> CreateOrUpdateClientPreferences(
+        Guid clientId,
+        [FromBody] CreateClientPreferencesRequest request)
     {
         try
         {
-            if (string.IsNullOrEmpty(preferences.CustomerName))
+            // Debug: Log all claims
+            _logger.LogInformation("JWT Claims: {Claims}",
+                string.Join(", ", User.Claims.Select(c => $"{c.Type}={c.Value}")));
+
+            var organizationId = GetOrganizationIdFromContext();
+            var customerId = GetCustomerIdFromContext();
+
+            _logger.LogInformation("Extracted - OrganizationId: {OrgId}, CustomerId: {CustId}",
+                organizationId, customerId);
+
+            if (organizationId == null)
             {
-                return BadRequest(new { error = "Customer name is required" });
+                _logger.LogWarning("Organization ID is null");
+                return BadRequest("Organization context not found");
             }
 
-            var savedPreferences = await _preferencesRepository.SaveClientPreferencesAsync(preferences);
+            if (customerId == null)
+            {
+                _logger.LogWarning("Customer ID is null");
+                return BadRequest("Customer context not found");
+            }
 
-            _logger.LogInformation("Successfully saved preferences for customer {CustomerName}", preferences.CustomerName);
+            // Verify client exists and belongs to organization
+            var client = await _clientRepository.GetByIdAndOrganizationAsync(clientId, organizationId.Value);
+            if (client == null)
+            {
+                _logger.LogWarning("Client {ClientId} not found in organization {OrgId}", clientId, organizationId);
+                return NotFound(new { error = "Client not found", clientId });
+            }
 
-            return CreatedAtAction(
-                nameof(GetClientPreferences),
-                new { customerId = savedPreferences.CustomerId },
-                savedPreferences);
+            // Check if preferences already exist
+            var existingPreferences = await _preferencesRepository.GetByClientIdAsync(clientId, organizationId.Value);
+
+            ClientPreferences preferences;
+            if (existingPreferences != null)
+            {
+                // Update existing preferences
+                preferences = UpdatePreferencesFromRequest(existingPreferences, request, customerId.Value);
+                preferences = await _preferencesRepository.UpdateAsync(preferences);
+                _logger.LogInformation("Updated client preferences for client {ClientId}", clientId);
+            }
+            else
+            {
+                // Create new preferences
+                preferences = CreatePreferencesFromRequest(clientId, organizationId.Value, request, customerId.Value);
+                preferences = await _preferencesRepository.CreateAsync(preferences);
+                _logger.LogInformation("Created client preferences for client {ClientId}", clientId);
+            }
+
+            var response = MapToResponse(preferences);
+            return Ok(response);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to save client preferences");
+            _logger.LogError(ex, "Failed to create/update client preferences for client {ClientId}", clientId);
             return StatusCode(500, new { error = "Failed to save client preferences" });
-        }
-    }
-
-    /// <summary>
-    /// Update existing client preferences
-    /// </summary>
-    [HttpPut("customer/{customerId}")]
-    public async Task<ActionResult<ClientPreferences>> UpdateClientPreferences(
-        Guid customerId,
-        [FromBody] ClientPreferences preferences)
-    {
-        try
-        {
-            preferences.CustomerId = customerId;
-            var updatedPreferences = await _preferencesRepository.UpdatePreferencesAsync(preferences);
-
-            _logger.LogInformation("Successfully updated preferences for customer {CustomerId}", customerId);
-
-            return Ok(updatedPreferences);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to update client preferences for customer {CustomerId}", customerId);
-            return StatusCode(500, new { error = "Failed to update client preferences" });
         }
     }
 
     /// <summary>
     /// Delete client preferences
     /// </summary>
-    [HttpDelete("customer/{customerId}")]
-    public async Task<ActionResult> DeleteClientPreferences(Guid customerId)
+    [HttpDelete("client/{clientId}")]
+    public async Task<ActionResult> DeleteClientPreferences(Guid clientId)
     {
         try
         {
-            var deleted = await _preferencesRepository.DeletePreferencesAsync(customerId);
-            if (!deleted)
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null)
             {
-                return NotFound(new { error = "Client preferences not found", customerId });
+                return BadRequest("Organization context not found");
             }
 
-            _logger.LogInformation("Successfully deleted preferences for customer {CustomerId}", customerId);
+            var preferences = await _preferencesRepository.GetByClientIdAsync(clientId, organizationId.Value);
+            if (preferences == null)
+            {
+                return NotFound(new { error = "Client preferences not found", clientId });
+            }
+
+            await _preferencesRepository.DeleteAsync(preferences.ClientPreferencesId);
+
+            _logger.LogInformation("Successfully deleted preferences for client {ClientId}", clientId);
             return NoContent();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to delete client preferences for customer {CustomerId}", customerId);
+            _logger.LogError(ex, "Failed to delete client preferences for client {ClientId}", clientId);
             return StatusCode(500, new { error = "Failed to delete client preferences" });
         }
     }
 
     /// <summary>
-    /// Get all active client preferences
+    /// Check if client has preferences configured
     /// </summary>
-    [HttpGet]
-    public async Task<ActionResult<List<ClientPreferences>>> GetAllActivePreferences()
+    [HttpGet("client/{clientId}/exists")]
+    public async Task<ActionResult<bool>> CheckClientPreferencesExist(Guid clientId)
     {
         try
         {
-            var preferences = await _preferencesRepository.GetAllActivePreferencesAsync();
-            return Ok(preferences);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to retrieve all client preferences");
-            return StatusCode(500, new { error = "Failed to retrieve client preferences" });
-        }
-    }
-
-    /// <summary>
-    /// Get Safe Haven demo preferences (for testing)
-    /// </summary>
-    [HttpGet("demo/safe-haven")]
-    public ActionResult<ClientPreferences> GetSafeHavenDemoPreferences()
-    {
-        try
-        {
-            // Create demo Safe Haven preferences
-            var safeHavenPreferences = new ClientPreferences
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null)
             {
-                CustomerId = Guid.NewGuid(),
-                CustomerName = "Safe Haven Technologies (Demo)",
-                CreatedDate = DateTime.UtcNow,
-                IsActive = true,
+                return BadRequest("Organization context not found");
+            }
 
-                OrganizationalStructure = new OrganizationalStructurePreferences
-                {
-                    EnvironmentSeparationMethods = new List<string> { "Subscription-based", "Resource Group based" },
-                    EnvironmentIsolationLevel = "Strict",
-                    ComplianceRequirements = new List<string> { "PCI DSS", "SOC 2" },
-                    PrimaryResourceOrganizationMethod = "Environment-based resource groups"
-                },
-
-                NamingStrategy = new NamingConventionStrategy
-                {
-                    PreferredNamingStyles = new List<string> { "Uppercase", "CamelCase", "Snake_case" },
-                    RequiredNameElements = new List<string> { "Environment indicator", "Project code" },
-                    HasAutomationRequirements = true,
-                    IncludeEnvironmentIndicator = true
-                },
-
-                TaggingStrategy = new TaggingStrategy
-                {
-                    RequiredTags = new List<string> { "Environment", "Owner", "Project", "CostCenter" },
-                    EnforceTagCompliance = true
-                },
-
-                Governance = new GovernancePreferences
-                {
-                    AccessControlGranularity = "Resource Group level",
-                    ComplianceFrameworks = new List<string> { "PCI DSS", "SOC 2" }
-                },
-
-                Implementation = new ImplementationPreferences
-                {
-                    MigrationStrategy = "Phased approach",
-                    RiskTolerance = "Low"
-                }
-            };
-
-            return Ok(safeHavenPreferences);
+            var exists = await _preferencesRepository.HasActivePreferencesAsync(clientId, organizationId.Value);
+            return Ok(exists);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to generate Safe Haven demo preferences");
-            return StatusCode(500, new { error = "Failed to generate demo preferences" });
+            _logger.LogError(ex, "Failed to check if client preferences exist for client {ClientId}", clientId);
+            return StatusCode(500, new { error = "Failed to check client preferences" });
         }
     }
 
-    /// <summary>
-    /// Run assessment with client-specific preferences
-    /// </summary>
-    [HttpPost("customer/{customerId}/assess")]
-    public async Task<ActionResult<PreferenceBasedAssessmentResult>> RunPreferenceBasedAssessment(
-        Guid customerId,
-        [FromBody] PreferenceBasedAssessmentRequest request)
+    // Helper methods
+    private Guid? GetOrganizationIdFromContext()
     {
-        try
-        {
-            _logger.LogInformation("Running preference-based assessment for customer {CustomerId}", customerId);
-
-            // This would typically get resources from Azure Resource Graph
-            // For demo purposes, return a placeholder response
-            var result = new PreferenceBasedAssessmentResult
-            {
-                CustomerId = customerId,
-                AssessmentDate = DateTime.UtcNow,
-                Message = "Preference-based assessment functionality ready. Connect to Azure Resource Graph for real data.",
-                HasClientPreferences = await _preferencesRepository.GetByCustomerIdAsync(customerId) != null
-            };
-
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to run preference-based assessment for customer {CustomerId}", customerId);
-            return StatusCode(500, new { error = "Failed to run assessment" });
-        }
+        var orgClaim = User.FindFirst("organization_id")?.Value;
+        return Guid.TryParse(orgClaim, out var orgId) ? orgId : null;
     }
 
-    /// <summary>
-    /// Create preferences from assessment form data (like Safe Haven form)
-    /// </summary>
-    [HttpPost("from-form")]
-    public async Task<ActionResult<ClientPreferences>> CreatePreferencesFromForm([FromBody] AssessmentFormData formData)
+    private Guid? GetCustomerIdFromContext()
     {
-        try
-        {
-            var preferences = ConvertFormDataToPreferences(formData);
-            var savedPreferences = await _preferencesRepository.SaveClientPreferencesAsync(preferences);
+        // Try multiple claim types for customer ID
+        var customerClaim = User.FindFirst("customer_id")?.Value
+            ?? User.FindFirst("nameid")?.Value
+            ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
 
-            _logger.LogInformation("Successfully created preferences from form data for {CustomerName}", formData.CustomerName);
-
-            return CreatedAtAction(
-                nameof(GetClientPreferences),
-                new { customerId = savedPreferences.CustomerId },
-                savedPreferences);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to create preferences from form data");
-            return StatusCode(500, new { error = "Failed to create preferences from form" });
-        }
+        return Guid.TryParse(customerClaim, out var customerId) ? customerId : null;
     }
 
-    private ClientPreferences ConvertFormDataToPreferences(AssessmentFormData formData)
+    private ClientPreferences CreatePreferencesFromRequest(
+        Guid clientId,
+        Guid organizationId,
+        CreateClientPreferencesRequest request,
+        Guid customerId)
     {
         return new ClientPreferences
         {
-            CustomerId = Guid.NewGuid(),
-            CustomerName = formData.CustomerName,
-            CreatedDate = DateTime.UtcNow,
-            IsActive = true,
+            ClientId = clientId,
+            OrganizationId = organizationId,
+            AllowedNamingPatterns = request.AllowedNamingPatterns?.Any() == true
+                ? JsonSerializer.Serialize(request.AllowedNamingPatterns)
+                : null,
+            RequiredNamingElements = request.RequiredNamingElements?.Any() == true
+                ? JsonSerializer.Serialize(request.RequiredNamingElements)
+                : null,
+            EnvironmentIndicators = request.EnvironmentIndicators,
+            RequiredTags = request.RequiredTags?.Any() == true
+                ? JsonSerializer.Serialize(request.RequiredTags)
+                : null,
+            EnforceTagCompliance = request.EnforceTagCompliance,
+            ComplianceFrameworks = request.ComplianceFrameworks?.Any() == true
+                ? JsonSerializer.Serialize(request.ComplianceFrameworks)
+                : null,
+            CreatedByCustomerId = customerId
+        };
+    }
 
-            OrganizationalStructure = new OrganizationalStructurePreferences
-            {
-                EnvironmentSeparationMethods = formData.EnvironmentSeparationMethods ?? new List<string>(),
-                EnvironmentIsolationLevel = formData.EnvironmentIsolationLevel ?? string.Empty,
-                ComplianceRequirements = formData.ComplianceRequirements ?? new List<string>(),
-                PrimaryResourceOrganizationMethod = formData.PrimaryResourceOrganizationMethod ?? string.Empty
-            },
+    private ClientPreferences UpdatePreferencesFromRequest(
+        ClientPreferences existing,
+        CreateClientPreferencesRequest request,
+        Guid customerId)
+    {
+        existing.AllowedNamingPatterns = request.AllowedNamingPatterns?.Any() == true
+            ? JsonSerializer.Serialize(request.AllowedNamingPatterns)
+            : null;
+        existing.RequiredNamingElements = request.RequiredNamingElements?.Any() == true
+            ? JsonSerializer.Serialize(request.RequiredNamingElements)
+            : null;
+        existing.EnvironmentIndicators = request.EnvironmentIndicators;
+        existing.RequiredTags = request.RequiredTags?.Any() == true
+            ? JsonSerializer.Serialize(request.RequiredTags)
+            : null;
+        existing.EnforceTagCompliance = request.EnforceTagCompliance;
+        existing.ComplianceFrameworks = request.ComplianceFrameworks?.Any() == true
+            ? JsonSerializer.Serialize(request.ComplianceFrameworks)
+            : null;
+        existing.LastModifiedByCustomerId = customerId;
 
-            NamingStrategy = new NamingConventionStrategy
-            {
-                PreferredNamingStyles = formData.PreferredNamingStyles ?? new List<string>(),
-                RequiredNameElements = formData.RequiredNameElements ?? new List<string>(),
-                HasAutomationRequirements = formData.HasAutomationRequirements,
-                IncludeEnvironmentIndicator = formData.RequiredNameElements?.Contains("Environment indicator") ?? false
-            },
+        return existing;
+    }
 
-            TaggingStrategy = new TaggingStrategy
-            {
-                RequiredTags = new List<string> { "Environment", "Owner", "Project" },
-                EnforceTagCompliance = true
-            },
-
-            Governance = new GovernancePreferences
-            {
-                AccessControlGranularity = formData.AccessControlGranularity ?? string.Empty,
-                ComplianceFrameworks = formData.ComplianceFrameworks ?? new List<string>()
-            },
-
-            Implementation = new ImplementationPreferences
-            {
-                MigrationStrategy = formData.MigrationStrategy ?? string.Empty,
-                RiskTolerance = formData.RiskTolerance ?? string.Empty
-            }
+    private ClientPreferencesResponse MapToResponse(ClientPreferences preferences)
+    {
+        return new ClientPreferencesResponse
+        {
+            ClientPreferencesId = preferences.ClientPreferencesId,
+            ClientId = preferences.ClientId,
+            ClientName = preferences.Client?.Name ?? "Unknown Client",
+            AllowedNamingPatterns = !string.IsNullOrEmpty(preferences.AllowedNamingPatterns)
+                ? JsonSerializer.Deserialize<List<string>>(preferences.AllowedNamingPatterns) ?? new List<string>()
+                : new List<string>(),
+            RequiredNamingElements = !string.IsNullOrEmpty(preferences.RequiredNamingElements)
+                ? JsonSerializer.Deserialize<List<string>>(preferences.RequiredNamingElements) ?? new List<string>()
+                : new List<string>(),
+            EnvironmentIndicators = preferences.EnvironmentIndicators,
+            RequiredTags = !string.IsNullOrEmpty(preferences.RequiredTags)
+                ? JsonSerializer.Deserialize<List<string>>(preferences.RequiredTags) ?? new List<string>()
+                : new List<string>(),
+            EnforceTagCompliance = preferences.EnforceTagCompliance,
+            ComplianceFrameworks = !string.IsNullOrEmpty(preferences.ComplianceFrameworks)
+                ? JsonSerializer.Deserialize<List<string>>(preferences.ComplianceFrameworks) ?? new List<string>()
+                : new List<string>(),
+            CreatedDate = preferences.CreatedDate,
+            LastModifiedDate = preferences.LastModifiedDate,
+            IsActive = preferences.IsActive
         };
     }
 }
 
-// Supporting DTOs
-public class PreferenceBasedAssessmentRequest
+// DTOs for the API
+public class CreateClientPreferencesRequest
 {
-    public string[] SubscriptionIds { get; set; } = Array.Empty<string>();
-    public bool IncludeDependencyAnalysis { get; set; } = true;
+    public List<string> AllowedNamingPatterns { get; set; } = new();
+    public List<string> RequiredNamingElements { get; set; } = new();
+    public bool EnvironmentIndicators { get; set; } = false;
+    public List<string> RequiredTags { get; set; } = new();
+    public bool EnforceTagCompliance { get; set; } = true;
+    public List<string> ComplianceFrameworks { get; set; } = new();
 }
 
-public class PreferenceBasedAssessmentResult
+public class ClientPreferencesResponse
 {
-    public Guid CustomerId { get; set; }
-    public DateTime AssessmentDate { get; set; }
-    public string Message { get; set; } = string.Empty;
-    public bool HasClientPreferences { get; set; }
-}
-
-public class AssessmentFormData
-{
-    public string CustomerName { get; set; } = string.Empty;
-    public string CompletedBy { get; set; } = string.Empty;
-    public string Email { get; set; } = string.Empty;
-
-    // From form sections
-    public List<string>? EnvironmentSeparationMethods { get; set; }
-    public string? EnvironmentIsolationLevel { get; set; }
-    public List<string>? ComplianceRequirements { get; set; }
-    public string? PrimaryResourceOrganizationMethod { get; set; }
-
-    public List<string>? PreferredNamingStyles { get; set; }
-    public List<string>? RequiredNameElements { get; set; }
-    public bool HasAutomationRequirements { get; set; }
-
-    public string? AccessControlGranularity { get; set; }
-    public List<string>? ComplianceFrameworks { get; set; }
-
-    public string? MigrationStrategy { get; set; }
-    public string? RiskTolerance { get; set; }
+    public Guid ClientPreferencesId { get; set; }
+    public Guid ClientId { get; set; }
+    public string ClientName { get; set; } = string.Empty;
+    public List<string> AllowedNamingPatterns { get; set; } = new();
+    public List<string> RequiredNamingElements { get; set; } = new();
+    public bool EnvironmentIndicators { get; set; }
+    public List<string> RequiredTags { get; set; } = new();
+    public bool EnforceTagCompliance { get; set; }
+    public List<string> ComplianceFrameworks { get; set; } = new();
+    public DateTime CreatedDate { get; set; }
+    public DateTime? LastModifiedDate { get; set; }
+    public bool IsActive { get; set; }
 }

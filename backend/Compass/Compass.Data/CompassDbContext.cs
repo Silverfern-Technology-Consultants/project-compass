@@ -12,6 +12,9 @@ public class CompassDbContext : DbContext
     // ORGANIZATION DBSET
     public DbSet<Organization> Organizations { get; set; }
 
+    // CLIENT PREFERENCES
+    public DbSet<ClientPreferences> ClientPreferences { get; set; }
+
     // NEW: CLIENT MANAGEMENT DBSETS
     public DbSet<Client> Clients { get; set; }
     public DbSet<ClientAccess> ClientAccess { get; set; }
@@ -37,6 +40,49 @@ public class CompassDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        // ClientPreferences configuration
+        modelBuilder.Entity<ClientPreferences>(entity =>
+        {
+            entity.HasKey(e => e.ClientPreferencesId);
+            entity.Property(e => e.EnvironmentIndicators).HasDefaultValue(false);
+            entity.Property(e => e.EnforceTagCompliance).HasDefaultValue(true);
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.CreatedDate).HasDefaultValueSql("GETUTCDATE()");
+
+            // Client relationship
+            entity.HasOne(e => e.Client)
+                .WithMany() // Client doesn't need to navigate back to preferences
+                .HasForeignKey(e => e.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Organization relationship
+            entity.HasOne(e => e.Organization)
+                .WithMany() // Organization doesn't need to navigate back to preferences
+                .HasForeignKey(e => e.OrganizationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Created by relationship
+            entity.HasOne(e => e.CreatedBy)
+                .WithMany()
+                .HasForeignKey(e => e.CreatedByCustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Last modified by relationship
+            entity.HasOne(e => e.LastModifiedBy)
+                .WithMany()
+                .HasForeignKey(e => e.LastModifiedByCustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Unique constraint - one preference set per client
+            entity.HasIndex(e => new { e.ClientId, e.OrganizationId }).IsUnique();
+
+            // Performance indexes
+            entity.HasIndex(e => e.ClientId);
+            entity.HasIndex(e => e.OrganizationId);
+            entity.HasIndex(e => new { e.IsActive, e.OrganizationId });
+            entity.HasIndex(e => e.CreatedByCustomerId);
+            entity.HasIndex(e => e.LastModifiedByCustomerId);
+        });
         // Organization configuration
         modelBuilder.Entity<Organization>(entity =>
         {
