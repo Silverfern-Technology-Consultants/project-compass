@@ -1,4 +1,5 @@
-﻿namespace Compass.Core.Models;
+﻿
+namespace Compass.Core.Models;
 
 public class AssessmentRequest
 {
@@ -12,4 +13,7 @@ public class AssessmentRequest
     public string[] SubscriptionIds { get; set; } = Array.Empty<string>();
     public AssessmentType Type { get; set; }
     public AssessmentOptions? Options { get; set; }
+
+    // NEW: Client preferences integration flag
+    public bool UseClientPreferences { get; set; } = false;
 }

@@ -42,13 +42,6 @@ public class EmailService : IEmailService
         _emailOptions = emailOptions.Value;
         _logger = logger;
         _configuration = configuration;
-
-        // DEBUG: Log configuration values
-        _logger.LogInformation("Email Config Debug - TenantId: {TenantId}", _emailOptions.TenantId);
-        _logger.LogInformation("Email Config Debug - ClientId: {ClientId}", _emailOptions.ClientId);
-        _logger.LogInformation("Email Config Debug - ClientSecret Length: {Length}",
-            string.IsNullOrEmpty(_emailOptions.ClientSecret) ? 0 : _emailOptions.ClientSecret.Length);
-        _logger.LogInformation("Email Config Debug - NoReplyAddress: {NoReply}", _emailOptions.NoReplyAddress);
         // Only initialize Graph client if we have proper configuration
         if (!string.IsNullOrEmpty(_emailOptions.ClientSecret) &&
             !string.IsNullOrEmpty(_emailOptions.ClientId) &&
@@ -64,7 +57,6 @@ public class EmailService : IEmailService
                 );
 
                 _graphServiceClient = new GraphServiceClient(credential);
-                _logger.LogInformation("Microsoft Graph email service initialized successfully");
             }
             catch (Exception ex)
             {

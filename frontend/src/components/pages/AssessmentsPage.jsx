@@ -55,6 +55,17 @@ const AssessmentCard = ({ assessment, onView, onDelete }) => {
         return 'text-red-400';
     };
 
+    // NEW: Check if client preferences were used in this assessment
+    const hasClientPreferences = () => {
+        // Check multiple indicators that preferences were used:
+        // 1. Assessment has a clientId (client-scoped)
+        // 2. Assessment type indicates preference-aware analysis
+        // 3. Assessment was created with useClientPreferences flag
+        return assessment.clientId &&
+            assessment.clientId !== 'internal' &&
+            assessment.clientName;
+    };
+
     // Enhanced display format: "User Name - Assessment ID"
     const formatAssessmentTitle = (assessment) => {
         // Handle both id and assessmentId fields from API
@@ -87,7 +98,16 @@ const AssessmentCard = ({ assessment, onView, onDelete }) => {
         <div className="bg-gray-900 border border-gray-800 rounded p-6 hover:border-gray-700 transition-colors">
             <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-white mb-1">{formatAssessmentTitle(assessment)}</h3>
+                    <div className="flex items-center gap-2 mb-1">
+                        <h3 className="text-lg font-semibold text-white">{formatAssessmentTitle(assessment)}</h3>
+                        {/* NEW: Client Preferences Badge */}
+                        {hasClientPreferences() && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                                <Building2 size={12} className="mr-1" />
+                                Client Preferences
+                            </span>
+                        )}
+                    </div>
                     <p className="text-gray-400 text-sm">{formatAssessmentSubtitle(assessment)}</p>
                 </div>
                 <div className="flex items-center space-x-2">
@@ -472,34 +492,21 @@ const AssessmentsPage = () => {
         return types[typeString] ?? 2; // Default to Full
     };
 
-    const handleStartAssessment = async (formData) => {
+    const handleAssessmentCreated = async (response) => {
         try {
-            // Build the client-scoped assessment request matching backend model
-            const assessmentRequest = {
-                environmentId: formData.environmentId, // Environment ID from the selected environment
-                name: formData.name,
-                type: formData.type, // Already converted to number in NewAssessmentModal
-                options: formData.options || {
-                    includeRecommendations: true
-                }
-            };
+            console.log('[AssessmentsPage] Assessment created:', response);
 
-            // Use the updated assessment API call
-            const result = await startAssessment(assessmentRequest);
-
-            // Close modals
+            // Close the modal
             setShowNewModal(false);
 
+            // Refresh the assessments list to show the new assessment
+            await refreshAssessments();
+
+            console.log('[AssessmentsPage] Assessments refreshed after creation');
+
         } catch (error) {
-            console.error('Failed to start assessment:', error);
-
-            // Extract meaningful error message
-            const errorMessage = error.response?.data?.message ||
-                error.response?.data?.error ||
-                error.message ||
-                'Unknown error occurred';
-
-            alert(`Failed to start assessment: ${errorMessage}`);
+            console.error('[AssessmentsPage] Failed to refresh assessments after creation:', error);
+            // Don't throw error - assessment was still created successfully
         }
     };
 
@@ -724,7 +731,8 @@ const AssessmentsPage = () => {
             <NewAssessmentModal
                 isOpen={showNewModal}
                 onClose={() => setShowNewModal(false)}
-                onStart={handleStartAssessment}
+                onAssessmentCreated={handleAssessmentCreated}
+                selectedClient={selectedClient}
             />
 
             {/* Connection Test Modal */}

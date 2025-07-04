@@ -1,6 +1,11 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, CheckCircle, AlertTriangle, XCircle, FileText, BarChart3, Download, Eye, Filter, Search, ChevronLeft, ChevronRight, Server, Database, Network } from 'lucide-react';
+import { 
+    X, CheckCircle, AlertTriangle, XCircle, FileText, BarChart3, Download, 
+    Eye, Filter, Search, ChevronLeft, ChevronRight, Server, Database, Network,
+    ChevronDown, ChevronUp, Settings, User, Clock, Shield, AlertCircle,
+    Target, Zap, Calendar, TrendingUp, Tag, Folder, MapPin, Activity
+} from 'lucide-react';
 import { assessmentApi, apiUtils } from '../../services/apiService';
 
 const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
@@ -21,6 +26,8 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
     const [error, setError] = useState(null);
     const [activeTab, setActiveTab] = useState('overview');
     const [tabLoading, setTabLoading] = useState({});
+    const [expandedFindings, setExpandedFindings] = useState({});
+    const [expandedCategories, setExpandedCategories] = useState({});
 
     useEffect(() => {
         if (isOpen && assessment?.id) {
@@ -127,34 +134,19 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
             const contentDisposition = response.headers.get('Content-Disposition');
             let filename = `resources.${format}`;
 
-            console.log(`[AssessmentDetailModal] DEBUG - Response headers:`, Array.from(response.headers.entries()));
-            console.log(`[AssessmentDetailModal] DEBUG - Content-Disposition raw:`, contentDisposition);
-            console.log(`[AssessmentDetailModal] DEBUG - Content-Disposition exists:`, !!contentDisposition);
-
             if (contentDisposition) {
-                console.log(`[AssessmentDetailModal] Content-Disposition header:`, contentDisposition);
-
                 // Try RFC 5987 encoded filename first (filename*=UTF-8'')
                 let filenameStarMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
-                console.log(`[AssessmentDetailModal] DEBUG - filename* regex match:`, filenameStarMatch);
 
                 if (filenameStarMatch && filenameStarMatch[1]) {
                     filename = decodeURIComponent(filenameStarMatch[1]);
-                    console.log(`[AssessmentDetailModal] Extracted filename* (UTF-8):`, filename);
                 } else {
                     // Fallback to regular filename= (without quotes)
                     const filenameMatch = contentDisposition.match(/filename=([^;]+)/i);
-                    console.log(`[AssessmentDetailModal] DEBUG - filename= regex match:`, filenameMatch);
-
                     if (filenameMatch && filenameMatch[1]) {
                         filename = filenameMatch[1].trim();
-                        console.log(`[AssessmentDetailModal] Extracted filename:`, filename);
-                    } else {
-                        console.log(`[AssessmentDetailModal] DEBUG - No filename match found, using default:`, filename);
                     }
                 }
-            } else {
-                console.log(`[AssessmentDetailModal] DEBUG - No Content-Disposition header found, using default filename:`, filename);
             }
 
             // Download the file
@@ -191,12 +183,26 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
         return <FileText size={16} className="text-gray-400" />;
     };
 
+    const toggleFindingExpansion = (findingId) => {
+        setExpandedFindings(prev => ({
+            ...prev,
+            [findingId]: !prev[findingId]
+        }));
+    };
+
+    const toggleCategoryExpansion = (category) => {
+        setExpandedCategories(prev => ({
+            ...prev,
+            [category]: !prev[category]
+        }));
+    };
+
     if (!isOpen || !assessment) return null;
 
     const getSeverityIcon = (severity) => {
         const sev = severity?.toLowerCase();
         switch (sev) {
-            case 'critical': return <XCircle size={16} className="text-red-500" />;
+            case 'critical': return <AlertCircle size={16} className="text-red-500" />;
             case 'high': return <XCircle size={16} className="text-red-400" />;
             case 'medium': return <AlertTriangle size={16} className="text-yellow-400" />;
             case 'low': return <CheckCircle size={16} className="text-blue-400" />;
@@ -207,71 +213,98 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
     const getSeverityColor = (severity) => {
         const sev = severity?.toLowerCase();
         switch (sev) {
-            case 'critical': return 'bg-red-700 text-white';
-            case 'high': return 'bg-red-600 text-white';
-            case 'medium': return 'bg-yellow-600 text-black';
-            case 'low': return 'bg-blue-600 text-white';
-            default: return 'bg-gray-600 text-white';
+            case 'critical': return 'bg-red-600 text-white border-red-500';
+            case 'high': return 'bg-red-500 text-white border-red-400';
+            case 'medium': return 'bg-yellow-500 text-black border-yellow-400';
+            case 'low': return 'bg-blue-500 text-white border-blue-400';
+            default: return 'bg-gray-500 text-white border-gray-400';
         }
     };
 
+    const getSeverityBgColor = (severity) => {
+        const sev = severity?.toLowerCase();
+        switch (sev) {
+            case 'critical': return 'bg-red-900/30 border-red-700';
+            case 'high': return 'bg-red-900/20 border-red-600';
+            case 'medium': return 'bg-yellow-900/20 border-yellow-600';
+            case 'low': return 'bg-blue-900/20 border-blue-600';
+            default: return 'bg-gray-800 border-gray-600';
+        }
+    };
+
+    const getScoreColor = (score) => {
+        if (score >= 80) return 'text-green-400';
+        if (score >= 60) return 'text-yellow-400';
+        if (score >= 40) return 'text-orange-400';
+        return 'text-red-400';
+    };
+
+    const getScoreIcon = (score) => {
+        if (score >= 80) return <CheckCircle size={20} className="text-green-400" />;
+        if (score >= 60) return <AlertTriangle size={20} className="text-yellow-400" />;
+        return <XCircle size={20} className="text-red-400" />;
+    };
+
+    // Group findings by category with deduplication
     const findingsByCategory = findings.reduce((acc, finding) => {
-        // Try multiple possible field names for category
         const category = finding.category || finding.Category || 'Other';
         if (!acc[category]) acc[category] = [];
         acc[category].push(finding);
         return acc;
     }, {});
 
+    // Group similar findings within each category
+    const groupSimilarFindings = (categoryFindings) => {
+        const grouped = {};
+        
+        categoryFindings.forEach(finding => {
+            const issue = finding.issue || finding.Issue || 'Governance Issue';
+            const key = issue.toLowerCase().replace(/[^a-z0-9]/g, '');
+            
+            if (!grouped[key]) {
+                grouped[key] = {
+                    issue: issue,
+                    resources: [],
+                    severity: finding.severity || finding.Severity || 'Medium',
+                    recommendation: finding.recommendation || finding.Recommendation || 'Review and update resource to meet governance standards.',
+                    estimatedEffort: finding.estimatedEffort || finding.EstimatedEffort || 'Medium',
+                    isClientSpecific: finding.isClientSpecific || false
+                };
+            }
+            
+            grouped[key].resources.push({
+                name: finding.resourceName || finding.ResourceName || 'Azure Resource',
+                type: finding.resourceType || finding.ResourceType || 'Unknown',
+                id: finding.resourceId || finding.ResourceId || '',
+                findingId: finding.id || finding.Id || finding.findingId || finding.FindingId
+            });
+        });
+        
+        return Object.values(grouped);
+    };
+
     // Helper function to extract duration from assessment object
     const getAssessmentDuration = () => {
-        console.log('[AssessmentDetailModal] Assessment object:', assessment);
-        console.log('[AssessmentDetailModal] Available keys:', Object.keys(assessment));
-
-        // Try to get dates with multiple field name variations (PascalCase and camelCase)
-        const startDate = assessment.startedDate ||
-            assessment.StartedDate ||
-            assessment.date ||
-            assessment.Date;
-
-        const endDate = assessment.completedDate ||
-            assessment.CompletedDate ||
-            assessment.endDate ||
-            assessment.EndDate;
-
-        console.log('[AssessmentDetailModal] Extracted startDate:', startDate);
-        console.log('[AssessmentDetailModal] Extracted endDate:', endDate);
-        console.log('[AssessmentDetailModal] StartedDate (PascalCase):', assessment.StartedDate);
-        console.log('[AssessmentDetailModal] CompletedDate (PascalCase):', assessment.CompletedDate);
+        const startDate = assessment.startedDate || assessment.StartedDate || assessment.date || assessment.Date;
+        const endDate = assessment.completedDate || assessment.CompletedDate || assessment.endDate || assessment.EndDate;
 
         if (startDate && endDate) {
             const start = new Date(startDate);
             const end = new Date(endDate);
             const diffMs = end - start;
 
-            console.log('[AssessmentDetailModal] Duration calculation:', {
-                start: start.toISOString(),
-                end: end.toISOString(),
-                diffMs: diffMs,
-                diffSeconds: diffMs / 1000
-            });
-
             if (diffMs < 1000) {
-                // Less than 1 second
                 return `${diffMs}ms`;
             } else if (diffMs < 60000) {
-                // Less than 1 minute - show seconds with decimal
                 const totalSeconds = Math.round(diffMs / 100) / 10;
                 return `${totalSeconds}s`;
             } else {
-                // More than 1 minute - show minutes and seconds
                 const diffMins = Math.floor(diffMs / 60000);
                 const diffSecs = Math.floor((diffMs % 60000) / 1000);
                 return `${diffMins}m ${diffSecs}s`;
             }
         }
 
-        // If we only have a start date, show "In Progress"
         if (startDate && !endDate) {
             return 'In Progress';
         }
@@ -279,662 +312,910 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
         return 'Unknown';
     };
 
-    const renderFindingCard = (finding, index) => {
-        console.log('[AssessmentDetailModal] Rendering finding:', finding);
-
-        // Try multiple possible field names for each property (backend might use PascalCase)
-        const getIssueTitle = () => {
-            return finding.issue ||
-                finding.Issue ||
-                finding.title ||
-                finding.Title ||
-                finding.name ||
-                finding.Name ||
-                finding.description ||
-                finding.Description ||
-                'Governance Issue Found';
-        };
-
-        const getResourceName = () => {
-            return finding.resourceName ||
-                finding.ResourceName ||
-                finding.resource ||
-                finding.Resource ||
-                finding.resourceId ||
-                finding.ResourceId ||
-                'Azure Resource';
-        };
-
-        const getSeverity = () => {
-            return finding.severity ||
-                finding.Severity ||
-                'Medium';
-        };
-
-        const getRecommendation = () => {
-            return finding.recommendation ||
-                finding.Recommendation ||
-                'Review and update this resource to meet governance standards.';
-        };
-
-        const getResourceType = () => {
-            return finding.resourceType ||
-                finding.ResourceType ||
-                finding.type ||
-                finding.Type ||
-                'Unknown';
-        };
-
-        const getEstimatedEffort = () => {
-            return finding.estimatedEffort ||
-                finding.EstimatedEffort ||
-                'Medium';
-        };
-
-        const issueTitle = getIssueTitle();
-        const resourceName = getResourceName();
-        const severity = getSeverity();
-        const recommendation = getRecommendation();
-        const resourceType = getResourceType();
-        const estimatedEffort = getEstimatedEffort();
+    const renderGroupedFinding = (groupedFinding, categoryKey, groupKey) => {
+        const findingKey = `${categoryKey}-${groupKey}`;
+        const isExpanded = expandedFindings[findingKey];
+        const resourceCount = groupedFinding.resources.length;
+        const primaryResource = groupedFinding.resources[0];
 
         return (
-            <div key={finding.id || finding.Id || finding.findingId || finding.FindingId || index}
-                className="bg-gray-700 rounded p-4 border border-gray-600">
-                <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center space-x-3">
-                        {getSeverityIcon(severity)}
-                        <div>
-                            <h4 className="font-medium text-white text-sm">
-                                {issueTitle}
-                            </h4>
-                            <p className="text-gray-400 text-xs">
-                                {resourceName}
-                            </p>
-                        </div>
-                    </div>
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${getSeverityColor(severity)}`}>
-                        {severity}
-                    </span>
-                </div>
-
-                {/* Issue Description */}
-                <div className="mb-3">
-                    <p className="text-gray-300 text-sm">
-                        {issueTitle !== recommendation ? issueTitle : 'This resource does not meet governance standards.'}
-                    </p>
-                </div>
-
-                {/* Recommendation */}
-                <div className="mb-3">
-                    <p className="text-gray-400 text-sm">
-                        <strong className="text-gray-300">Recommendation:</strong> {recommendation}
-                    </p>
-                </div>
-
-                {/* Resource Details */}
-                <div className="flex flex-wrap gap-4 text-xs text-gray-500">
-                    <span>Type: {resourceType}</span>
-                    {finding.resourceId && (
-                        <span>ID: {finding.resourceId.substring(0, 20)}...</span>
-                    )}
-                    <span>Effort: {estimatedEffort}</span>
-                </div>
-            </div>
-        );
-    };
-
-    return createPortal(
-        // FIXED: Much higher z-index to be above header (z-30)
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[50] p-4">
-            {/* ENHANCED: Increased modal size for better resource viewing - 90vw width, 90vh height */}
-            <div className="bg-gray-900 border border-gray-800 rounded w-[90vw] h-[90vh] overflow-hidden flex flex-col">
-                {/* ENHANCED Header - Cleaner presentation */}
-                <div className="flex items-center justify-between p-6 border-b border-gray-800 flex-shrink-0">
-                    <div>
-                        <h2 className="text-xl font-semibold text-white">{assessment.name}</h2>
-                        <div className="flex items-center space-x-3 text-sm text-gray-400 mt-1">
-                            <span>{assessment.environment || 'Production'} Environment</span>
-                            <span className="text-gray-600">�</span>
-                            <span>Score: {assessment.score ? `${assessment.score}%` : 'N/A'}</span>
-                        </div>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 rounded hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
-                    >
-                        <X size={20} />
-                    </button>
-                </div>
-
-                {/* Tabs */}
-                <div className="border-b border-gray-800 flex-shrink-0">
-                    <nav className="flex space-x-8 px-6">
-                        {['overview', 'findings', 'recommendations', 'resources'].map((tab) => (
-                            <button
-                                key={tab}
-                                onClick={() => handleTabChange(tab)}
-                                className={`py-4 px-1 border-b-2 font-medium text-sm capitalize transition-colors relative ${activeTab === tab
-                                    ? 'border-yellow-600 text-yellow-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-300'
-                                    }`}
-                            >
-                                {tab}
-                                {tabLoading[tab] && (
-                                    <div className="absolute -top-1 -right-1">
-                                        <div className="w-2 h-2 bg-yellow-600 rounded-full animate-pulse"></div>
-                                    </div>
-                                )}
-                            </button>
-                        ))}
-                    </nav>
-                </div>
-
-                {/* Content Area - ENHANCED: Better scrolling and height management */}
-                <div className="flex-1 overflow-y-auto">
-                    <div className="p-6">
-                        {/* Overview Tab */}
-                        {activeTab === 'overview' && (
-                            <div className="space-y-6">
-                                {/* Score Summary */}
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                    <div className="bg-gray-800 rounded p-4 border border-gray-700">
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <p className="text-sm text-gray-400">Overall Score</p>
-                                                <p className="text-2xl font-bold text-white">
-                                                    {assessment.score ? `${assessment.score}%` : 'N/A'}
-                                                </p>
-                                            </div>
-                                            <BarChart3 size={24} className="text-yellow-600" />
-                                        </div>
-                                    </div>
-                                    <div className="bg-gray-800 rounded p-4 border border-gray-700">
-                                        <p className="text-sm text-gray-400">Resources Analyzed</p>
-                                        <p className="text-2xl font-bold text-white">{assessment.resourceCount || 'N/A'}</p>
-                                    </div>
-                                    <div className="bg-gray-800 rounded p-4 border border-gray-700">
-                                        <p className="text-sm text-gray-400">Issues Found</p>
-                                        <p className="text-2xl font-bold text-white">{assessment.issuesCount || findings.length}</p>
-                                    </div>
-                                    <div className="bg-gray-800 rounded p-4 border border-gray-700">
-                                        <p className="text-sm text-gray-400">Assessment Type</p>
-                                        <p className="text-lg font-semibold text-white">{assessment.type || 'Unknown'}</p>
-                                    </div>
-                                </div>
-
-                                {/* Assessment Details - FIXED Duration */}
-                                <div className="bg-gray-800 rounded p-6 border border-gray-700">
-                                    <h3 className="text-lg font-semibold text-white mb-4">Assessment Details</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
-                                        <div>
-                                            <p className="text-gray-400 mb-1">Started</p>
-                                            <p className="text-white">{assessment.date || assessment.startedDate || 'Unknown'}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-gray-400 mb-1">Duration</p>
-                                            <p className="text-white">{getAssessmentDuration()}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-gray-400 mb-1">Status</p>
-                                            <span className={`px-2 py-1 rounded text-xs font-medium ${assessment.status === 'Completed' ? 'bg-green-700 text-white' :
-                                                assessment.status === 'In Progress' ? 'bg-yellow-700 text-white' :
-                                                    'bg-gray-700 text-white'
-                                                }`}>
-                                                {assessment.status || 'Unknown'}
-                                            </span>
-                                        </div>
-                                        <div>
-                                            <p className="text-gray-400 mb-1">Environment</p>
-                                            <p className="text-white">{assessment.environment || 'Unknown'}</p>
-                                        </div>
-                                        {/* Add more details if available */}
-                                        {assessment.completedDate && (
-                                            <div>
-                                                <p className="text-gray-400 mb-1">Completed</p>
-                                                <p className="text-white">{assessment.completedDate}</p>
-                                            </div>
-                                        )}
-                                        {assessment.subscriptionCount && (
-                                            <div>
-                                                <p className="text-gray-400 mb-1">Subscriptions</p>
-                                                <p className="text-white">{assessment.subscriptionCount}</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Quick Stats */}
-                                {findings.length > 0 && (
-                                    <div className="bg-gray-800 rounded p-6 border border-gray-700">
-                                        <h3 className="text-lg font-semibold text-white mb-4">Findings Summary</h3>
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                                            {['Critical', 'High', 'Medium', 'Low'].map(severity => {
-                                                const count = findings.filter(f => {
-                                                    const findingSeverity = (f.severity || f.Severity || '').toLowerCase();
-                                                    return findingSeverity === severity.toLowerCase();
-                                                }).length;
-                                                return (
-                                                    <div key={severity} className="bg-gray-700 rounded p-3">
-                                                        <p className={`text-2xl font-bold ${getSeverityColor(severity).includes('red') ? 'text-red-400' :
-                                                            getSeverityColor(severity).includes('yellow') ? 'text-yellow-400' :
-                                                                getSeverityColor(severity).includes('blue') ? 'text-blue-400' : 'text-gray-400'}`}>
-                                                            {count}
-                                                        </p>
-                                                        <p className="text-sm text-gray-400">{severity}</p>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
+            <div 
+                key={findingKey} 
+                className={`border rounded-lg transition-all duration-200 ${getSeverityBgColor(groupedFinding.severity)}`}
+            >
+                {/* Collapsed Header with Resource Name */}
+                <div 
+                    className="p-4 cursor-pointer hover:bg-gray-700/50 transition-colors"
+                    onClick={() => toggleFindingExpansion(findingKey)}
+                >
+                    <div className="flex items-start justify-between">
+                        <div className="flex items-start space-x-3 flex-1">
+                            <div className="flex items-center space-x-2">
+                                {getSeverityIcon(groupedFinding.severity)}
+                                {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
                             </div>
-                        )}
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center space-x-2 mb-1">
+                                    <h4 className="font-medium text-white text-sm truncate">
+                                        {groupedFinding.issue}
+                                    </h4>
+                                    {groupedFinding.isClientSpecific && (
+                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-600 text-white">
+                                            <Settings size={12} className="mr-1" />
+                                            Client Rule
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex items-center space-x-2 text-xs text-gray-400">
+                                    <span className="font-medium text-gray-300">{primaryResource.name}</span>
+                                    {resourceCount > 1 && (
+                                        <span>+ {resourceCount - 1} more resource{resourceCount > 2 ? 's' : ''}</span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getSeverityColor(groupedFinding.severity)}`}>
+                                {groupedFinding.severity}
+                            </span>
+                        </div>
+                    </div>
+                </div>
 
-                        {/* ENHANCED Findings Tab */}
-                        {activeTab === 'findings' && (
-                            <div className="space-y-6">
-                                {loading && (
-                                    <div className="text-center py-12">
-                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-600 mx-auto mb-4"></div>
-                                        <p className="text-gray-400">Loading findings...</p>
-                                    </div>
-                                )}
-
-                                {error && (
-                                    <div className="bg-red-900 border border-red-700 rounded p-4">
-                                        <p className="text-red-200">{error}</p>
-                                        <button
-                                            onClick={loadFindings}
-                                            className="mt-2 px-3 py-1 bg-red-700 text-white rounded text-sm hover:bg-red-600 transition-colors"
-                                        >
-                                            Retry
-                                        </button>
-                                    </div>
-                                )}
-
-                                {!loading && !error && findings.length === 0 && (
-                                    <div className="text-center py-12">
-                                        <CheckCircle size={48} className="text-green-400 mx-auto mb-4" />
-                                        <h3 className="text-lg font-semibold text-white mb-2">No Issues Found</h3>
-                                        <p className="text-gray-400">This assessment found no governance issues.</p>
-                                    </div>
-                                )}
-
-                                {!loading && !error && Object.entries(findingsByCategory).map(([category, categoryFindings]) => (
-                                    <div key={category} className="bg-gray-800 rounded p-6 border border-gray-700">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <h3 className="text-lg font-semibold text-white capitalize">
-                                                {category} ({categoryFindings.length})
-                                            </h3>
-                                            <div className="flex items-center space-x-2">
-                                                <span className="text-sm text-gray-400">
-                                                    {categoryFindings.filter(f => (f.severity || f.Severity || '').toLowerCase() === 'high').length} High,{' '}
-                                                    {categoryFindings.filter(f => (f.severity || f.Severity || '').toLowerCase() === 'medium').length} Medium,{' '}
-                                                    {categoryFindings.filter(f => (f.severity || f.Severity || '').toLowerCase() === 'low').length} Low
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-3">
-                                            {categoryFindings.map((finding, index) => renderFindingCard(finding, index))}
+                {/* Expanded Content */}
+                {isExpanded && (
+                    <div className="border-t border-gray-600 p-4 space-y-4">
+                        {/* Affected Resources - Show First */}
+                        <div>
+                            <h5 className="font-medium text-white text-sm mb-2">Affected Resources ({resourceCount})</h5>
+                            <div className="space-y-2 max-h-32 overflow-y-auto">
+                                {groupedFinding.resources.map((resource, index) => (
+                                    <div key={resource.findingId || index} className="flex items-center space-x-3 p-2 bg-gray-700/50 rounded">
+                                        {getResourceIcon(resource.type)}
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-white truncate">{resource.name}</p>
+                                            <p className="text-xs text-gray-400">{resource.type}</p>
                                         </div>
                                     </div>
                                 ))}
                             </div>
-                        )}
+                        </div>
 
-                        {/* ENHANCED Recommendations Tab */}
-                        {activeTab === 'recommendations' && (
-                            <div className="space-y-6">
-                                <div className="bg-gray-800 rounded p-6 border border-gray-700">
+                        {/* Recommendation */}
+                        <div className="bg-gray-800/50 rounded p-3">
+                            <div className="flex items-start space-x-2">
+                                <Target size={16} className="text-blue-400 mt-0.5 flex-shrink-0" />
+                                <div>
+                                    <h5 className="font-medium text-white text-sm mb-1">Recommendation</h5>
+                                    <p className="text-gray-300 text-sm">{groupedFinding.recommendation}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Effort Only */}
+                        <div className="flex items-center space-x-2 text-sm">
+                            <Zap size={14} className="text-yellow-400" />
+                            <span className="text-gray-400">Estimated Effort:</span>
+                            <span className="text-white">{groupedFinding.estimatedEffort}</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const renderCategorySection = (category, categoryFindings) => {
+        const groupedFindings = groupSimilarFindings(categoryFindings);
+        const isExpanded = expandedCategories[category] !== false; // Default to expanded
+        const totalResources = categoryFindings.length;
+        const severityCounts = categoryFindings.reduce((acc, finding) => {
+            const severity = (finding.severity || finding.Severity || 'Medium').toLowerCase();
+            acc[severity] = (acc[severity] || 0) + 1;
+            return acc;
+        }, {});
+
+        return (
+            <div key={category} className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                <div 
+                    className="p-4 cursor-pointer hover:bg-gray-700/50 transition-colors border-b border-gray-700"
+                    onClick={() => toggleCategoryExpansion(category)}
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                            {isExpanded ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
+                            <div>
+                                <h3 className="text-lg font-semibold text-white capitalize flex items-center space-x-2">
+                                    <span>{category}</span>
+                                    <span className="text-sm text-gray-400">({totalResources} issues)</span>
+                                </h3>
+                                <div className="flex items-center space-x-4 text-sm text-gray-400 mt-1">
+                                    {severityCounts.critical && <span className="text-red-400">{severityCounts.critical} Critical</span>}
+                                    {severityCounts.high && <span className="text-red-400">{severityCounts.high} High</span>}
+                                    {severityCounts.medium && <span className="text-yellow-400">{severityCounts.medium} Medium</span>}
+                                    {severityCounts.low && <span className="text-blue-400">{severityCounts.low} Low</span>}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <span className="text-sm text-gray-400">{groupedFindings.length} groups</span>
+                        </div>
+                    </div>
+                </div>
+
+                {isExpanded && (
+                    <div className="p-4 space-y-3">
+                        {groupedFindings.map((groupedFinding, index) => 
+                            renderGroupedFinding(groupedFinding, category, index)
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    // This is where Part 2 will continue with the return statement
+    return createPortal(
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[50] p-4">
+        <div className="bg-gray-900 border border-gray-800 rounded-lg w-[95vw] h-[95vh] overflow-hidden flex flex-col">
+            {/* Enhanced Header with Client Preferences Badge */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-800 flex-shrink-0">
+                <div className="flex-1">
+                    <div className="flex items-center space-x-4 mb-2">
+                        <h2 className="text-xl font-semibold text-white">{assessment.name}</h2>
+                        {assessment.useClientPreferences && (
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-600 text-white">
+                                <Settings size={14} className="mr-1" />
+                                Client Preferences Applied
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex items-center space-x-4 text-sm text-gray-400">
+                        <div className="flex items-center space-x-1">
+                            <User size={14} />
+                            <span>{assessment.clientName || 'Unknown Client'}</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                            <Server size={14} />
+                            <span>{assessment.environment || 'Production'} Environment</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                            {getScoreIcon(assessment.score)}
+                            <span className={`font-medium ${getScoreColor(assessment.score)}`}>
+                                Score: {assessment.score ? `${assessment.score}%` : 'N/A'}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors">
+                    <X size={20} />
+                </button>
+            </div>
+
+            {/* Enhanced Tabs */}
+            <div className="border-b border-gray-800 flex-shrink-0">
+                <nav className="flex space-x-8 px-6">
+                    {[
+                        { id: 'overview', label: 'Overview', icon: BarChart3 },
+                        { id: 'findings', label: 'Findings', icon: AlertTriangle },
+                        { id: 'recommendations', label: 'Recommendations', icon: Target },
+                        { id: 'resources', label: 'Resources', icon: Server }
+                    ].map((tab) => (
+                        <button
+                            key={tab.id}
+                            onClick={() => handleTabChange(tab.id)}
+                            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors relative flex items-center space-x-2 ${
+                                activeTab === tab.id ? 'border-yellow-600 text-yellow-600' : 'border-transparent text-gray-500 hover:text-gray-300'
+                            }`}
+                        >
+                            <tab.icon size={16} />
+                            <span>{tab.label}</span>
+                            {tabLoading[tab.id] && (
+                                <div className="absolute -top-1 -right-1">
+                                    <div className="w-2 h-2 bg-yellow-600 rounded-full animate-pulse"></div>
+                                </div>
+                            )}
+                        </button>
+                    ))}
+                </nav>
+            </div>
+
+            {/* Enhanced Content Area */}
+            <div className="flex-1 overflow-y-auto">
+                <div className="p-6">
+                    {/* Enhanced Overview Tab */}
+                    {activeTab === 'overview' && (
+                        <div className="space-y-8">
+                            {/* Enhanced Score Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <div className="bg-gradient-to-br from-gray-800 to-gray-700 rounded-lg p-6 border border-gray-600">
                                     <div className="flex items-center justify-between mb-4">
-                                        <h3 className="text-lg font-semibold text-white">Priority Recommendations</h3>
-                                        <div className="flex space-x-2">
-                                            <button className="px-3 py-1 bg-gray-700 text-white rounded text-sm hover:bg-gray-600 transition-colors flex items-center space-x-1">
-                                                <Download size={14} />
-                                                <span>Export PDF</span>
-                                            </button>
-                                            <button className="px-3 py-1 bg-gray-700 text-white rounded text-sm hover:bg-gray-600 transition-colors flex items-center space-x-1">
-                                                <Download size={14} />
-                                                <span>Export DOCX</span>
-                                            </button>
+                                        <div className="p-3 bg-gray-600 rounded-lg">{getScoreIcon(assessment.score)}</div>
+                                        <div className="text-right">
+                                            <p className="text-3xl font-bold text-white">{assessment.score ? `${assessment.score}%` : 'N/A'}</p>
+                                            <p className="text-sm text-gray-400">Overall Score</p>
                                         </div>
                                     </div>
+                                    <div className="w-full bg-gray-600 rounded-full h-2">
+                                        <div 
+                                            className={`h-2 rounded-full transition-all duration-300 ${
+                                                assessment.score >= 80 ? 'bg-green-500' : assessment.score >= 60 ? 'bg-yellow-500' : assessment.score >= 40 ? 'bg-orange-500' : 'bg-red-500'
+                                            }`}
+                                            style={{ width: `${assessment.score || 0}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
 
-                                    <div className="space-y-4">
-                                        {/* High Priority Recommendations */}
-                                        <div className="bg-red-900/20 border border-red-700 rounded p-4">
-                                            <div className="flex items-center space-x-2 mb-3">
-                                                <XCircle size={16} className="text-red-400" />
-                                                <h4 className="font-medium text-white">Critical Issues Require Immediate Attention</h4>
-                                            </div>
-                                            <p className="text-gray-300 text-sm mb-3">
-                                                {findings.filter(f => {
-                                                    const sev = (f.severity || f.Severity || '').toLowerCase();
-                                                    return sev === 'critical' || sev === 'high';
-                                                }).length} critical/high severity issues found.
-                                                Address these immediately to improve security and compliance.
-                                            </p>
-                                            <div className="flex items-center justify-between text-sm">
-                                                <span className="text-red-300"><strong>Priority:</strong> Critical</span>
-                                                <span className="text-gray-400"><strong>Effort:</strong> High</span>
-                                                <span className="text-gray-400"><strong>Timeline:</strong> 1-2 weeks</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Tagging Recommendation */}
-                                        <div className="bg-yellow-900/20 border border-yellow-700 rounded p-4">
-                                            <div className="flex items-center space-x-2 mb-3">
-                                                <AlertTriangle size={16} className="text-yellow-400" />
-                                                <h4 className="font-medium text-white">Improve Resource Tagging Strategy</h4>
-                                            </div>
-                                            <p className="text-gray-300 text-sm mb-3">
-                                                Many resources lack proper tags for cost management and organization.
-                                                Implement a comprehensive tagging strategy for better governance.
-                                            </p>
-                                            <div className="flex items-center justify-between text-sm">
-                                                <span className="text-yellow-300"><strong>Priority:</strong> High</span>
-                                                <span className="text-gray-400"><strong>Effort:</strong> Medium</span>
-                                                <span className="text-gray-400"><strong>Timeline:</strong> 2-4 weeks</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Naming Convention Recommendation */}
-                                        <div className="bg-blue-900/20 border border-blue-700 rounded p-4">
-                                            <div className="flex items-center space-x-2 mb-3">
-                                                <FileText size={16} className="text-blue-400" />
-                                                <h4 className="font-medium text-white">Standardize Naming Conventions</h4>
-                                            </div>
-                                            <p className="text-gray-300 text-sm mb-3">
-                                                Current naming compliance: {Math.round(assessment.score || 0)}%.
-                                                Implement consistent naming patterns to improve resource identification and management.
-                                            </p>
-                                            <div className="flex items-center justify-between text-sm">
-                                                <span className="text-blue-300"><strong>Priority:</strong> Medium</span>
-                                                <span className="text-gray-400"><strong>Effort:</strong> Low</span>
-                                                <span className="text-gray-400"><strong>Timeline:</strong> 1-2 weeks</span>
-                                            </div>
+                                <div className="bg-gradient-to-br from-blue-900 to-blue-800 rounded-lg p-6 border border-blue-700">
+                                    <div className="flex items-center justify-between">
+                                        <div className="p-3 bg-blue-700 rounded-lg"><Server size={20} className="text-blue-200" /></div>
+                                        <div className="text-right">
+                                            <p className="text-3xl font-bold text-white">{assessment.resourceCount || 'N/A'}</p>
+                                            <p className="text-sm text-blue-200">Resources Analyzed</p>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Action Plan */}
-                                <div className="bg-gray-800 rounded p-6 border border-gray-700">
-                                    <h3 className="text-lg font-semibold text-white mb-4">Recommended Action Plan</h3>
-                                    <div className="space-y-3">
-                                        <div className="flex items-center space-x-3 p-3 bg-gray-700 rounded">
-                                            <div className="w-6 h-6 bg-red-600 text-white rounded-full flex items-center justify-center text-xs font-bold">1</div>
-                                            <span className="text-gray-300">Address all critical and high severity findings immediately</span>
+                                <div className="bg-gradient-to-br from-red-900 to-red-800 rounded-lg p-6 border border-red-700">
+                                    <div className="flex items-center justify-between">
+                                        <div className="p-3 bg-red-700 rounded-lg"><AlertTriangle size={20} className="text-red-200" /></div>
+                                        <div className="text-right">
+                                            <p className="text-3xl font-bold text-white">{assessment.issuesCount || findings.length}</p>
+                                            <p className="text-sm text-red-200">Issues Found</p>
                                         </div>
-                                        <div className="flex items-center space-x-3 p-3 bg-gray-700 rounded">
-                                            <div className="w-6 h-6 bg-yellow-600 text-black rounded-full flex items-center justify-center text-xs font-bold">2</div>
-                                            <span className="text-gray-300">Implement tagging strategy for untagged resources</span>
-                                        </div>
-                                        <div className="flex items-center space-x-3 p-3 bg-gray-700 rounded">
-                                            <div className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">3</div>
-                                            <span className="text-gray-300">Establish naming convention standards and update non-compliant resources</span>
-                                        </div>
-                                        <div className="flex items-center space-x-3 p-3 bg-gray-700 rounded">
-                                            <div className="w-6 h-6 bg-green-600 text-white rounded-full flex items-center justify-center text-xs font-bold">4</div>
-                                            <span className="text-gray-300">Schedule regular assessments to maintain compliance</span>
+                                    </div>
+                                </div>
+
+                                <div className="bg-gradient-to-br from-purple-900 to-purple-800 rounded-lg p-6 border border-purple-700">
+                                    <div className="flex items-center justify-between">
+                                        <div className="p-3 bg-purple-700 rounded-lg"><Shield size={20} className="text-purple-200" /></div>
+                                        <div className="text-right">
+                                            <p className="text-lg font-bold text-white">{assessment.type || 'Full'}</p>
+                                            <p className="text-sm text-purple-200">Assessment Type</p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        )}
 
-                        {/* NEW: Resources Tab */}
-                        {activeTab === 'resources' && (
-                            <div className="space-y-6">
-                                {/* Resources Header and Controls */}
-                                <div className="bg-gray-800 rounded p-6 border border-gray-700">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h3 className="text-lg font-semibold text-white">Azure Resources</h3>
-                                        <div className="flex space-x-2">
+                            {/* Enhanced Assessment Details */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                                    <h3 className="text-lg font-semibold text-white mb-6 flex items-center space-x-2">
+                                        <Activity size={20} className="text-yellow-600" />
+                                        <span>Assessment Details</span>
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div className="flex items-center space-x-3">
+                                            <User size={16} className="text-blue-400" />
+                                            <div>
+                                                <p className="text-sm text-gray-400">Client</p>
+                                                <p className="text-white font-medium">{assessment.clientName || 'Unknown Client'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center space-x-3">
+                                            <Calendar size={16} className="text-green-400" />
+                                            <div>
+                                                <p className="text-sm text-gray-400">Started</p>
+                                                <p className="text-white">{assessment.date || assessment.startedDate || 'Unknown'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center space-x-3">
+                                            <Clock size={16} className="text-purple-400" />
+                                            <div>
+                                                <p className="text-sm text-gray-400">Duration</p>
+                                                <p className="text-white">{getAssessmentDuration()}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center space-x-3">
+                                            <CheckCircle size={16} className="text-green-400" />
+                                            <div>
+                                                <p className="text-sm text-gray-400">Status</p>
+                                                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                                                    assessment.status === 'Completed' ? 'bg-green-700 text-white' : assessment.status === 'In Progress' ? 'bg-yellow-700 text-white' : 'bg-gray-700 text-white'
+                                                }`}>
+                                                    {assessment.status || 'Unknown'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center space-x-3">
+                                            <Server size={16} className="text-orange-400" />
+                                            <div>
+                                                <p className="text-sm text-gray-400">Environment</p>
+                                                <p className="text-white">{assessment.environment || 'Unknown'}</p>
+                                            </div>
+                                        </div>
+                                        {assessment.useClientPreferences && (
+                                            <div className="flex items-center space-x-3">
+                                                <Settings size={16} className="text-blue-400" />
+                                                <div>
+                                                    <p className="text-sm text-gray-400">Client Preferences</p>
+                                                    <p className="text-blue-400 font-medium">Applied</p>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Enhanced Findings Summary */}
+                                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
+                                        <TrendingUp size={20} className="text-yellow-600" />
+                                        <span>Findings Summary</span>
+                                    </h3>
+                                    <div className="space-y-3">
+                                        {['Critical', 'High', 'Medium', 'Low'].map(severity => {
+                                            const count = findings.filter(f => {
+                                                const findingSeverity = (f.severity || f.Severity || '').toLowerCase();
+                                                return findingSeverity === severity.toLowerCase();
+                                            }).length;
+                                            const percentage = findings.length > 0 ? Math.round((count / findings.length) * 100) : 0;
+                                            
+                                            return (
+                                                <div key={severity} className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
+                                                    <div className="flex items-center space-x-3">
+                                                        {getSeverityIcon(severity)}
+                                                        <span className="text-white font-medium">{severity}</span>
+                                                    </div>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-2xl font-bold text-white">{count}</span>
+                                                        <span className="text-sm text-gray-400">({percentage}%)</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Additional Insights */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
+                                        <BarChart3 size={20} className="text-yellow-600" />
+                                        <span>Resource Distribution</span>
+                                    </h3>
+                                    <div className="space-y-3">
+                                        {resourceFilters.ResourceTypes && Object.entries(resourceFilters.ResourceTypes).slice(0, 5).map(([type, count]) => (
+                                            <div key={type} className="flex items-center justify-between p-2 bg-gray-700 rounded">
+                                                <span className="text-gray-300 text-sm">{type}</span>
+                                                <span className="text-white font-medium">{count}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {assessment.useClientPreferences && (
+                                    <div className="bg-gradient-to-r from-blue-900/20 to-blue-800/20 rounded-lg p-6 border border-blue-700">
+                                        <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
+                                            <Settings size={20} className="text-blue-400" />
+                                            <span>Client-Specific Analysis</span>
+                                        </h3>
+                                        <div className="grid grid-cols-1 gap-4">
+                                            <div className="bg-gray-800/50 rounded-lg p-4">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <p className="text-sm text-gray-400">Custom Rules Applied</p>
+                                                        <p className="text-xl font-bold text-blue-400">{findings.filter(f => f.isClientSpecific).length}</p>
+                                                    </div>
+                                                    <Tag size={20} className="text-blue-400" />
+                                                </div>
+                                            </div>
+                                            <div className="bg-gray-800/50 rounded-lg p-4">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <p className="text-sm text-gray-400">Standards</p>
+                                                        <p className="text-xl font-bold text-blue-400">Enhanced</p>
+                                                    </div>
+                                                    <Shield size={20} className="text-blue-400" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Enhanced Findings Tab */}
+                    {activeTab === 'findings' && (
+                        <div className="space-y-6">
+                            {loading && (
+                                <div className="text-center py-12">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-600 mx-auto mb-4"></div>
+                                    <p className="text-gray-400">Loading findings...</p>
+                                </div>
+                            )}
+
+                            {error && (
+                                <div className="bg-red-900/20 border border-red-700 rounded-lg p-4">
+                                    <div className="flex items-center space-x-2 mb-2">
+                                        <XCircle size={20} className="text-red-400" />
+                                        <p className="text-red-200 font-medium">Error Loading Findings</p>
+                                    </div>
+                                    <p className="text-red-200 mb-3">{error}</p>
+                                    <button onClick={loadFindings} className="px-4 py-2 bg-red-700 text-white rounded-lg text-sm hover:bg-red-600 transition-colors">
+                                        Retry
+                                    </button>
+                                </div>
+                            )}
+
+                            {!loading && !error && findings.length === 0 && (
+                                <div className="text-center py-12">
+                                    <CheckCircle size={48} className="text-green-400 mx-auto mb-4" />
+                                    <h3 className="text-lg font-semibold text-white mb-2">No Issues Found</h3>
+                                    <p className="text-gray-400">This assessment found no governance issues.</p>
+                                </div>
+                            )}
+
+                            {!loading && !error && findings.length > 0 && (
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-lg font-semibold text-white">Governance Findings ({findings.length} total)</h3>
+                                        <div className="flex items-center space-x-2">
                                             <button
-                                                onClick={() => handleExport('csv')}
-                                                className="px-3 py-1 bg-gray-700 text-white rounded text-sm hover:bg-gray-600 transition-colors flex items-center space-x-1"
+                                                onClick={() => {
+                                                    const allExpanded = Object.keys(findingsByCategory).every(cat => expandedCategories[cat] !== false);
+                                                    const newState = {};
+                                                    Object.keys(findingsByCategory).forEach(cat => { newState[cat] = !allExpanded; });
+                                                    setExpandedCategories(newState);
+                                                }}
+                                                className="px-3 py-1 text-sm bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
                                             >
-                                                <Download size={14} />
-                                                <span>Export CSV</span>
-                                            </button>
-                                            <button
-                                                onClick={() => handleExport('xlsx')}
-                                                className="px-3 py-1 bg-yellow-600 text-black rounded text-sm hover:bg-yellow-700 transition-colors flex items-center space-x-1"
-                                            >
-                                                <Download size={14} />
-                                                <span>Export Excel</span>
+                                                {Object.keys(findingsByCategory).every(cat => expandedCategories[cat] !== false) ? 'Collapse All' : 'Expand All'}
                                             </button>
                                         </div>
                                     </div>
+                                    {Object.entries(findingsByCategory).map(([category, categoryFindings]) => renderCategorySection(category, categoryFindings))}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
-                                    {/* Search and Filters */}
-                                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
-                                        <div className="relative">
-                                            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                                            <input
-                                                type="text"
-                                                placeholder="Search resources..."
-                                                value={resourceSearch}
-                                                onChange={(e) => setResourceSearch(e.target.value)}
-                                                onKeyPress={(e) => e.key === 'Enter' && loadResources(1)}
-                                                className="w-full pl-10 pr-4 py-2 bg-gray-900 border border-gray-600 rounded text-white text-sm focus:border-yellow-600 focus:outline-none"
-                                            />
+                    {/* Enhanced Recommendations Tab */}
+                    {activeTab === 'recommendations' && (
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
+                                    <Target size={20} className="text-yellow-600" />
+                                    <span>Actionable Recommendations</span>
+                                </h3>
+                                <div className="flex space-x-2">
+                                    <button className="px-4 py-2 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-600 transition-colors flex items-center space-x-2">
+                                        <Download size={16} />
+                                        <span>Export PDF</span>
+                                    </button>
+                                    <button className="px-4 py-2 bg-yellow-600 text-black rounded-lg text-sm hover:bg-yellow-700 transition-colors flex items-center space-x-2">
+                                        <Download size={16} />
+                                        <span>Export DOCX</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {Object.entries(findingsByCategory).map(([category, categoryFindings]) => {
+                                const severityCounts = categoryFindings.reduce((acc, finding) => {
+                                    const severity = (finding.severity || finding.Severity || 'Medium').toLowerCase();
+                                    acc[severity] = (acc[severity] || 0) + 1;
+                                    return acc;
+                                }, {});
+
+                                let recommendations = [];
+                                if (category.toLowerCase().includes('naming')) {
+                                    recommendations.push({
+                                        title: "Implement Consistent Naming Standards",
+                                        description: `${categoryFindings.length} resources don't follow naming conventions. Establish and enforce a standardized naming pattern across all Azure resources.`,
+                                        actions: [
+                                            "Define naming convention policy (e.g., [env]-[app]-[resource]-[instance])",
+                                            "Use Azure Policy to enforce naming standards",
+                                            "Create resource naming templates",
+                                            "Update existing non-compliant resources"
+                                        ],
+                                        priority: severityCounts.high > 0 ? 'High' : severityCounts.medium > 0 ? 'Medium' : 'Low'
+                                    });
+                                } else if (category.toLowerCase().includes('tagging')) {
+                                    recommendations.push({
+                                        title: "Deploy Comprehensive Tagging Strategy",
+                                        description: `${categoryFindings.length} resources are missing required tags. Implement a mandatory tagging policy for cost management and governance.`,
+                                        actions: [
+                                            "Define required tags: Environment, Owner, CostCenter, Project",
+                                            "Create Azure Policy to enforce mandatory tags",
+                                            "Set up automated tagging for new resources",
+                                            "Bulk tag existing untagged resources"
+                                        ],
+                                        priority: severityCounts.high > 0 ? 'High' : 'Medium'
+                                    });
+                                } else {
+                                    recommendations.push({
+                                        title: `Address ${category} Issues`,
+                                        description: `${categoryFindings.length} ${category.toLowerCase()} issues require attention to improve governance compliance.`,
+                                        actions: [
+                                            "Review and assess each individual finding",
+                                            "Prioritize fixes based on business impact",
+                                            "Implement remediation plan",
+                                            "Monitor ongoing compliance"
+                                        ],
+                                        priority: severityCounts.critical > 0 ? 'Critical' : severityCounts.high > 0 ? 'High' : 'Medium'
+                                    });
+                                }
+
+                                return recommendations.map((rec, index) => (
+                                    <div key={`${category}-${index}`} className={`rounded-lg p-6 border ${
+                                        rec.priority === 'Critical' ? 'bg-red-900/20 border-red-700' :
+                                        rec.priority === 'High' ? 'bg-orange-900/20 border-orange-700' :
+                                        rec.priority === 'Medium' ? 'bg-yellow-900/20 border-yellow-700' : 'bg-blue-900/20 border-blue-700'
+                                    }`}>
+                                        <div className="flex items-start space-x-4">
+                                            <div className={`p-3 rounded-lg ${
+                                                rec.priority === 'Critical' ? 'bg-red-700' :
+                                                rec.priority === 'High' ? 'bg-orange-700' :
+                                                rec.priority === 'Medium' ? 'bg-yellow-700' : 'bg-blue-700'
+                                            }`}>
+                                                {rec.priority === 'Critical' ? <AlertCircle size={20} className="text-white" /> :
+                                                 rec.priority === 'High' ? <AlertTriangle size={20} className="text-white" /> :
+                                                 rec.priority === 'Medium' ? <AlertTriangle size={20} className="text-black" /> :
+                                                 <CheckCircle size={20} className="text-white" />}
+                                            </div>
+                                            <div className="flex-1">
+                                                <div className="flex items-center space-x-3 mb-2">
+                                                    <h4 className="text-lg font-semibold text-white">{rec.title}</h4>
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                        rec.priority === 'Critical' ? 'bg-red-600 text-white' :
+                                                        rec.priority === 'High' ? 'bg-orange-600 text-white' :
+                                                        rec.priority === 'Medium' ? 'bg-yellow-600 text-black' : 'bg-blue-600 text-white'
+                                                    }`}>
+                                                        {rec.priority} Priority
+                                                    </span>
+                                                </div>
+                                                <p className="text-gray-300 mb-4">{rec.description}</p>
+                                                <div>
+                                                    <h5 className="font-medium text-white mb-2">Action Items:</h5>
+                                                    <ul className="space-y-1">
+                                                        {rec.actions.map((action, actionIndex) => (
+                                                            <li key={actionIndex} className="flex items-start space-x-2">
+                                                                <span className="text-gray-400 mt-1">•</span>
+                                                                <span className="text-gray-300 text-sm">{action}</span>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            </div>
                                         </div>
+                                    </div>
+                                ));
+                            })}
 
-                                        <select
-                                            value={selectedFilters.resourceType}
-                                            onChange={(e) => setSelectedFilters(prev => ({ ...prev, resourceType: e.target.value }))}
-                                            className="px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white text-sm focus:border-yellow-600 focus:outline-none"
-                                        >
-                                            <option value="">All Types</option>
-                                            {Object.entries(resourceFilters.ResourceTypes || {}).map(([type, count]) => (
-                                                <option key={type} value={type}>{type} ({count})</option>
-                                            ))}
-                                        </select>
+                            {assessment.useClientPreferences && (
+                                <div className="bg-gradient-to-r from-blue-900/20 to-blue-800/20 rounded-lg p-6 border border-blue-700">
+                                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
+                                        <User size={20} className="text-blue-400" />
+                                        <span>Client-Specific Guidance</span>
+                                    </h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="bg-gray-800/50 rounded-lg p-4">
+                                            <h4 className="font-medium text-white mb-2">Applied Standards</h4>
+                                            <ul className="text-sm text-gray-300 space-y-1">
+                                                <li>• Priority Tags: Environment, Application, Schedule</li>
+                                                <li>• Naming: Environment prefix requirements</li>
+                                                <li>• Compliance: Enhanced security standards</li>
+                                            </ul>
+                                        </div>
+                                        <div className="bg-gray-800/50 rounded-lg p-4">
+                                            <h4 className="font-medium text-white mb-2">Next Steps</h4>
+                                            <ul className="text-sm text-gray-300 space-y-1">
+                                                <li>• Schedule client review meeting</li>
+                                                <li>• Prioritize client-specific findings</li>
+                                                <li>• Implement enhanced monitoring</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
-                                        <select
-                                            value={selectedFilters.resourceGroup}
-                                            onChange={(e) => setSelectedFilters(prev => ({ ...prev, resourceGroup: e.target.value }))}
-                                            className="px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white text-sm focus:border-yellow-600 focus:outline-none"
-                                        >
-                                            <option value="">All Resource Groups</option>
-                                            {Object.entries(resourceFilters.ResourceGroups || {}).map(([rg, count]) => (
-                                                <option key={rg} value={rg}>{rg} ({count})</option>
-                                            ))}
-                                        </select>
-
-                                        <select
-                                            value={selectedFilters.location}
-                                            onChange={(e) => setSelectedFilters(prev => ({ ...prev, location: e.target.value }))}
-                                            className="px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white text-sm focus:border-yellow-600 focus:outline-none"
-                                        >
-                                            <option value="">All Locations</option>
-                                            {Object.entries(resourceFilters.Locations || {}).map(([loc, count]) => (
-                                                <option key={loc} value={loc}>{loc} ({count})</option>
-                                            ))}
-                                        </select>
-
-                                        <button
-                                            onClick={() => loadResources(1)}
-                                            className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-black rounded text-sm font-medium transition-colors"
-                                        >
-                                            Apply Filters
+                    {/* Enhanced Resources Tab */}
+                    {activeTab === 'resources' && (
+                        <div className="space-y-6">
+                            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
+                                        <Server size={20} className="text-yellow-600" />
+                                        <span>Azure Resources</span>
+                                    </h3>
+                                    <div className="flex space-x-2">
+                                        <button onClick={() => handleExport('csv')} className="px-4 py-2 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-600 transition-colors flex items-center space-x-2">
+                                            <Download size={16} />
+                                            <span>Export CSV</span>
+                                        </button>
+                                        <button onClick={() => handleExport('xlsx')} className="px-4 py-2 bg-yellow-600 text-black rounded-lg text-sm hover:bg-yellow-700 transition-colors flex items-center space-x-2">
+                                            <Download size={16} />
+                                            <span>Export Excel</span>
                                         </button>
                                     </div>
+                                </div>
 
-                                    {/* Resource Count and Clear Filters */}
-                                    <div className="flex items-center justify-between text-sm text-gray-400 mb-4">
-                                        <span>
-                                            Showing {resources.length} of {resourceTotalCount} resources
-                                        </span>
+                                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+                                    <div className="relative">
+                                        <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search resources..."
+                                            value={resourceSearch}
+                                            onChange={(e) => setResourceSearch(e.target.value)}
+                                            onKeyPress={(e) => e.key === 'Enter' && loadResources(1)}
+                                            className="w-full pl-10 pr-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:border-yellow-600 focus:outline-none"
+                                        />
+                                    </div>
+
+                                    <select value={selectedFilters.resourceType} onChange={(e) => setSelectedFilters(prev => ({ ...prev, resourceType: e.target.value }))} className="px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:border-yellow-600 focus:outline-none">
+                                        <option value="">All Types</option>
+                                        {Object.entries(resourceFilters.ResourceTypes || {}).map(([type, count]) => (
+                                            <option key={type} value={type}>{type} ({count})</option>
+                                        ))}
+                                    </select>
+
+                                    <select value={selectedFilters.resourceGroup} onChange={(e) => setSelectedFilters(prev => ({ ...prev, resourceGroup: e.target.value }))} className="px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:border-yellow-600 focus:outline-none">
+                                        <option value="">All Resource Groups</option>
+                                        {Object.entries(resourceFilters.ResourceGroups || {}).map(([rg, count]) => (
+                                            <option key={rg} value={rg}>{rg} ({count})</option>
+                                        ))}
+                                    </select>
+
+                                    <select value={selectedFilters.location} onChange={(e) => setSelectedFilters(prev => ({ ...prev, location: e.target.value }))} className="px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:border-yellow-600 focus:outline-none">
+                                        <option value="">All Locations</option>
+                                        {Object.entries(resourceFilters.Locations || {}).map(([loc, count]) => (
+                                            <option key={loc} value={loc}>{loc} ({count})</option>
+                                        ))}
+                                    </select>
+
+                                    <button onClick={() => loadResources(1)} className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-black rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2">
+                                        <Filter size={16} />
+                                        <span>Apply Filters</span>
+                                    </button>
+                                </div>
+
+                                <div className="flex items-center justify-between text-sm text-gray-400 mb-4">
+                                    <span className="flex items-center space-x-2">
+                                        <span>Showing {resources.length} of {resourceTotalCount} resources</span>
+                                        {(Object.keys(selectedFilters).some(key => selectedFilters[key]) || resourceSearch) && (
+                                            <span className="px-2 py-1 bg-yellow-600 text-black text-xs rounded-full">Filtered</span>
+                                        )}
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            setSelectedFilters({ resourceType: '', resourceGroup: '', location: '', environment: '' });
+                                            setResourceSearch('');
+                                            loadResources(1, true);
+                                        }}
+                                        className="text-yellow-600 hover:text-yellow-500 transition-colors flex items-center space-x-1"
+                                    >
+                                        <X size={14} />
+                                        <span>Clear Filters</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {tabLoading.resources ? (
+                                <div className="text-center py-12">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-600 mx-auto mb-4"></div>
+                                    <p className="text-gray-400">Loading resources...</p>
+                                </div>
+                            ) : resources.length > 0 ? (
+                                <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-gray-700">
+                                                <tr>
+                                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                                        <div className="flex items-center space-x-2">
+                                                            <Server size={16} />
+                                                            <span>Resource</span>
+                                                        </div>
+                                                    </th>
+                                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                                        <div className="flex items-center space-x-2">
+                                                            <FileText size={16} />
+                                                            <span>Type</span>
+                                                        </div>
+                                                    </th>
+                                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                                        <div className="flex items-center space-x-2">
+                                                            <Folder size={16} />
+                                                            <span>Resource Group</span>
+                                                        </div>
+                                                    </th>
+                                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                                        <div className="flex items-center space-x-2">
+                                                            <MapPin size={16} />
+                                                            <span>Location</span>
+                                                        </div>
+                                                    </th>
+                                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                                        <div className="flex items-center space-x-2">
+                                                            <Activity size={16} />
+                                                            <span>Environment</span>
+                                                        </div>
+                                                    </th>
+                                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                                        <div className="flex items-center space-x-2">
+                                                            <Tag size={16} />
+                                                            <span>Compliance</span>
+                                                        </div>
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-700">
+                                                {resources.map((resource, index) => {
+                                                    const complianceScore = resource.TagCount > 0 ? Math.min(100, (resource.TagCount / 5) * 100) : 0;
+                                                    const hasIssues = findings.some(f => (f.resourceName || f.ResourceName) === resource.Name);
+
+                                                    return (
+                                                        <tr key={resource.Id || index} className="hover:bg-gray-700/50 transition-colors">
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex items-center space-x-3">
+                                                                    <div className="relative">
+                                                                        {getResourceIcon(resource.ResourceTypeName)}
+                                                                        {hasIssues && (<div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-gray-800"></div>)}
+                                                                    </div>
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <p className="text-sm font-medium text-white truncate">{resource.Name}</p>
+                                                                        {resource.Kind && resource.Kind !== "" && resource.Kind !== "null" && (
+                                                                            <p className="text-xs text-gray-400 truncate">{resource.Kind}</p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-700 text-gray-300">
+                                                                    {resource.ResourceTypeName}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <span className="text-sm text-gray-300">{resource.ResourceGroup || 'N/A'}</span>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <span className="text-sm text-gray-300">{resource.Location || 'N/A'}</span>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                {resource.Environment ? (
+                                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                                        resource.Environment.toLowerCase() === 'production' || resource.Environment.toLowerCase() === 'prod' ? 'bg-red-600 text-white' :
+                                                                        resource.Environment.toLowerCase() === 'development' || resource.Environment.toLowerCase() === 'dev' ? 'bg-blue-600 text-white' :
+                                                                        resource.Environment.toLowerCase() === 'staging' || resource.Environment.toLowerCase() === 'test' ? 'bg-yellow-600 text-black' : 'bg-gray-600 text-white'
+                                                                    }`}>
+                                                                        {resource.Environment}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-700 text-gray-400">Unknown</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex items-center space-x-3">
+                                                                    <div className="flex items-center space-x-2">
+                                                                        <div className="w-16 bg-gray-700 rounded-full h-2">
+                                                                            <div 
+                                                                                className={`h-2 rounded-full transition-all duration-300 ${
+                                                                                    complianceScore >= 80 ? 'bg-green-500' : complianceScore >= 60 ? 'bg-yellow-500' : complianceScore >= 40 ? 'bg-orange-500' : 'bg-red-500'
+                                                                                }`}
+                                                                                style={{ width: `${complianceScore}%` }}
+                                                                            ></div>
+                                                                        </div>
+                                                                        <span className="text-xs text-gray-400">{Math.round(complianceScore)}%</span>
+                                                                    </div>
+                                                                    <div className="text-sm text-gray-300">{resource.TagCount} tags</div>
+                                                                    {hasIssues && (
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                const resourceIssues = findings.filter(f => (f.resourceName || f.ResourceName) === resource.Name);
+                                                                                alert(`Issues for ${resource.Name}:\n\n${resourceIssues.map(issue => `• ${issue.issue || issue.Issue || 'Governance issue'}`).join('\n')}`);
+                                                                            }}
+                                                                            className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-700 text-white hover:bg-red-600 transition-colors cursor-pointer"
+                                                                        >
+                                                                            Issues
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                                {resource.TagCount > 0 && resource.Tags && Object.keys(resource.Tags).length > 0 && (
+                                                                    <div className="flex flex-wrap gap-1 mt-2">
+                                                                        {Object.entries(resource.Tags).slice(0, 3).map(([key, value]) => (
+                                                                            <span key={key} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-600 text-gray-200">
+                                                                                {key}: {value}
+                                                                            </span>
+                                                                        ))}
+                                                                        {resource.TagCount > 3 && (<span className="text-xs text-gray-400">+{resource.TagCount - 3} more</span>)}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {resourceTotalPages > 1 && (
+                                        <div className="px-6 py-4 bg-gray-700 border-t border-gray-600 flex items-center justify-between">
+                                            <div className="text-sm text-gray-400">
+                                                Showing {((resourcePage - 1) * 50) + 1} to {Math.min(resourcePage * 50, resourceTotalCount)} of {resourceTotalCount} resources
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <button onClick={() => loadResources(resourcePage - 1)} disabled={resourcePage <= 1} className="p-2 rounded-lg hover:bg-gray-600 text-gray-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                                    <ChevronLeft size={16} />
+                                                </button>
+                                                <div className="flex items-center space-x-1">
+                                                    {[...Array(Math.min(5, resourceTotalPages))].map((_, i) => {
+                                                        const pageNum = Math.max(1, Math.min(resourcePage - 2, resourceTotalPages - 4)) + i;
+                                                        if (pageNum > resourceTotalPages) return null;
+                                                        return (
+                                                            <button
+                                                                key={pageNum}
+                                                                onClick={() => loadResources(pageNum)}
+                                                                className={`px-3 py-1 rounded-lg text-sm transition-colors ${
+                                                                    pageNum === resourcePage ? 'bg-yellow-600 text-black' : 'text-gray-400 hover:text-white hover:bg-gray-600'
+                                                                }`}
+                                                            >
+                                                                {pageNum}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <button onClick={() => loadResources(resourcePage + 1)} disabled={resourcePage >= resourceTotalPages} className="p-2 rounded-lg hover:bg-gray-600 text-gray-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                                    <ChevronRight size={16} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="text-center py-12 bg-gray-800 rounded-lg border border-gray-700">
+                                    <Server size={48} className="text-gray-600 mx-auto mb-4" />
+                                    <h3 className="text-lg font-semibold text-white mb-2">No Resources Found</h3>
+                                    <p className="text-gray-400 mb-4">
+                                        {Object.keys(selectedFilters).some(key => selectedFilters[key]) || resourceSearch
+                                            ? "Try adjusting your search or filters to see more resources."
+                                            : "No Azure resources were found for this assessment."
+                                        }
+                                    </p>
+                                    {(Object.keys(selectedFilters).some(key => selectedFilters[key]) || resourceSearch) && (
                                         <button
                                             onClick={() => {
                                                 setSelectedFilters({ resourceType: '', resourceGroup: '', location: '', environment: '' });
                                                 setResourceSearch('');
                                                 loadResources(1, true);
                                             }}
-                                            className="text-yellow-600 hover:text-yellow-500 transition-colors"
+                                            className="px-4 py-2 bg-yellow-600 text-black rounded-lg hover:bg-yellow-700 transition-colors"
                                         >
-                                            Clear Filters
+                                            Clear All Filters
                                         </button>
-                                    </div>
+                                    )}
                                 </div>
-
-                                {/* Resources Table */}
-                                {tabLoading.resources ? (
-                                    <div className="text-center py-12">
-                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-600 mx-auto mb-4"></div>
-                                        <p className="text-gray-400">Loading resources...</p>
-                                    </div>
-                                ) : resources.length > 0 ? (
-                                    <div className="bg-gray-800 rounded border border-gray-700 overflow-hidden">
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full">
-                                                <thead className="bg-gray-700">
-                                                    <tr>
-                                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Resource</th>
-                                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Type</th>
-                                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Resource Group</th>
-                                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Location</th>
-                                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Environment</th>
-                                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Tags</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-gray-700">
-                                                    {resources.map((resource, index) => {
-                                                        // Debug log for table rendering
-                                                        if (index === 0) {
-                                                            console.log('[TABLE DEBUG] Rendering first resource:', {
-                                                                Name: resource.Name,
-                                                                ResourceTypeName: resource.ResourceTypeName,
-                                                                ResourceGroup: resource.ResourceGroup,
-                                                                Location: resource.Location,
-                                                                Environment: resource.Environment,
-                                                                TagCount: resource.TagCount
-                                                            });
-                                                        }
-
-                                                        return (
-                                                            <tr key={resource.Id || index} className="hover:bg-gray-700 transition-colors">
-                                                                <td className="px-4 py-3">
-                                                                    <div className="flex items-center space-x-3">
-                                                                        {getResourceIcon(resource.ResourceTypeName)}
-                                                                        <div>
-                                                                            <p className="text-sm font-medium text-white">{resource.Name}</p>
-                                                                            {resource.Kind && resource.Kind !== "" && resource.Kind !== "null" && (
-                                                                                <p className="text-xs text-gray-400">{resource.Kind}</p>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-4 py-3">
-                                                                    <span className="text-sm text-gray-300">{resource.ResourceTypeName}</span>
-                                                                </td>
-                                                                <td className="px-4 py-3">
-                                                                    <span className="text-sm text-gray-300">{resource.ResourceGroup || 'N/A'}</span>
-                                                                </td>
-                                                                <td className="px-4 py-3">
-                                                                    <span className="text-sm text-gray-300">{resource.Location || 'N/A'}</span>
-                                                                </td>
-                                                                <td className="px-4 py-3">
-                                                                    {resource.Environment ? (
-                                                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-600 text-white">
-                                                                            {resource.Environment}
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span className="text-gray-500 text-sm">Unknown</span>
-                                                                    )}
-                                                                </td>
-                                                                <td className="px-4 py-3">
-                                                                    <div className="flex items-center space-x-2">
-                                                                        <span className="text-sm text-gray-300">{resource.TagCount} tags</span>
-                                                                        {resource.TagCount > 0 && resource.Tags && Object.keys(resource.Tags).length > 0 && (
-                                                                            <div className="flex flex-wrap gap-1">
-                                                                                {Object.entries(resource.Tags).slice(0, 2).map(([key, value]) => (
-                                                                                    <span key={key} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-600 text-gray-200">
-                                                                                        {key}: {value}
-                                                                                    </span>
-                                                                                ))}
-                                                                                {resource.TagCount > 2 && (
-                                                                                    <span className="text-xs text-gray-400">+{resource.TagCount - 2} more</span>
-                                                                                )}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-
-                                        {/* Pagination */}
-                                        {resourceTotalPages > 1 && (
-                                            <div className="px-4 py-3 bg-gray-700 border-t border-gray-600 flex items-center justify-between">
-                                                <div className="text-sm text-gray-400">
-                                                    Page {resourcePage} of {resourceTotalPages}
-                                                </div>
-                                                <div className="flex items-center space-x-2">
-                                                    <button
-                                                        onClick={() => loadResources(resourcePage - 1)}
-                                                        disabled={resourcePage <= 1}
-                                                        className="p-2 rounded hover:bg-gray-600 text-gray-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        <ChevronLeft size={16} />
-                                                    </button>
-                                                    <span className="text-sm text-gray-300">
-                                                        {resourcePage} / {resourceTotalPages}
-                                                    </span>
-                                                    <button
-                                                        onClick={() => loadResources(resourcePage + 1)}
-                                                        disabled={resourcePage >= resourceTotalPages}
-                                                        className="p-2 rounded hover:bg-gray-600 text-gray-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        <ChevronRight size={16} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-12">
-                                        <Server size={48} className="text-gray-600 mx-auto mb-4" />
-                                        <h3 className="text-lg font-semibold text-white mb-2">No Resources Found</h3>
-                                        <p className="text-gray-400">
-                                            {Object.keys(selectedFilters).some(key => selectedFilters[key]) || resourceSearch
-                                                ? "Try adjusting your search or filters."
-                                                : "No Azure resources were found for this assessment."
-                                            }
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
+                            )}
+                        </div>
+                    )}
                 </div>
+            </div>
 
-                {/* Footer */}
-                <div className="border-t border-gray-800 p-6 flex justify-between items-center flex-shrink-0">
-                    <div className="text-sm text-gray-400">
-                        Last updated: {new Date().toLocaleDateString()}
-                    </div>
-                    <div className="flex space-x-3">
-                        <button
-                            onClick={onClose}
-                            className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
-                        >
-                            Close
-                        </button>
-                        <button className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-black rounded font-medium transition-colors">
-                            Export Report
-                        </button>
-                    </div>
+            {/* Enhanced Footer */}
+            <div className="border-t border-gray-800 p-6 flex justify-between items-center flex-shrink-0 bg-gray-900/50">
+                <div className="flex items-center space-x-4 text-sm text-gray-400">
+                    <span>Last updated: {assessment.completedDate ? new Date(assessment.completedDate).toLocaleDateString() : new Date().toLocaleDateString()}</span>
+                    {assessment.useClientPreferences && (
+                        <span className="flex items-center space-x-1">
+                            <Settings size={14} className="text-blue-400" />
+                            <span className="text-blue-400">Client preferences applied</span>
+                        </span>
+                    )}
+                </div>
+                <div className="flex space-x-3">
+                    <button onClick={onClose} className="px-4 py-2 text-gray-300 hover:text-white transition-colors">Close</button>
+                    <button className="px-6 py-2 bg-yellow-600 hover:bg-yellow-700 text-black rounded-lg font-medium transition-colors flex items-center space-x-2">
+                        <Download size={16} />
+                        <span>Export Report</span>
+                    </button>
                 </div>
             </div>
         </div>
-        , document.body
+    </div>
+    , document.body
     );
 };
 

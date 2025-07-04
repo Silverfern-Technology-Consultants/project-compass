@@ -63,6 +63,8 @@ public class ClientScopedAssessmentRequest
         IncludeRecommendations = true
     };
 
+    public bool UseClientPreferences { get; set; } = false;
+
     // REMOVED: CustomerId, OrganizationId, ClientId, SubscriptionIds
     // These will be resolved automatically by the controller
 }

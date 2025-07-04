@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Plus, AlertCircle, RefreshCw, Search, Filter, Grid, List } from 'lucide-react';
+import { Building2, Plus, AlertCircle, RefreshCw, Search, Filter, Grid, List, X, SortAsc } from 'lucide-react';
 import { useClient } from '../../contexts/ClientContext';
 import { useAuth } from '../../contexts/AuthContext';
 import ClientCard from '../ui/ClientCard';
@@ -7,6 +7,7 @@ import AddClientModal from '../modals/AddClientModal';
 import EditClientModal from '../modals/EditClientModal';
 import ManageSubscriptionsModal from '../modals/ManageSubscriptionsModal';
 import ClientDetailsModal from '../modals/ClientDetailsModal';
+import ClientPreferencesModal from '../modals/ClientPreferencesModal';
 
 const MyClientsPage = () => {
     const { clients, isLoading, error, loadClients } = useClient();
@@ -15,10 +16,16 @@ const MyClientsPage = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
     const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
+    const [sortBy, setSortBy] = useState('name'); // 'name', 'lastActivity', 'assessmentCount'
+    const [sortOrder, setSortOrder] = useState('asc'); // 'asc' or 'desc'
+    const [activeFilters, setActiveFilters] = useState([]);
+
+    // Modal states
     const [showAddModal, setShowAddModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [showSubscriptionsModal, setShowSubscriptionsModal] = useState(false);
     const [showDetailsModal, setShowDetailsModal] = useState(false);
+    const [showPreferencesModal, setShowPreferencesModal] = useState(false);
     const [selectedClient, setSelectedClient] = useState(null);
     const [hasLoaded, setHasLoaded] = useState(false);
 
@@ -29,8 +36,7 @@ const MyClientsPage = () => {
             setHasLoaded(true);
             loadClients().finally(() => setLocalLoading(false));
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [hasLoaded, isLoading, localLoading]); // Removed loadClients from dependencies
+    }, [hasLoaded, isLoading, localLoading]);
 
     const handleRefresh = async () => {
         setLocalLoading(true);
@@ -41,31 +47,13 @@ const MyClientsPage = () => {
         }
     };
 
-    const handleAddClient = () => {
-        setShowAddModal(true);
-    };
-
-    const handleEditClient = (client) => {
-        setSelectedClient(client);
-        setShowEditModal(true);
-    };
-
-    const handleManageSubscriptions = (client) => {
-        setSelectedClient(client);
-        setShowSubscriptionsModal(true);
-    };
-
-    const handleViewDetails = (client) => {
-        setSelectedClient(client);
-        setShowDetailsModal(true);
-    };
-
-    const handleClientAdded = () => {
-        loadClients(); // Refresh the client list
-    };
-
-    const handleClientUpdated = () => {
-        loadClients(); // Refresh the client list
+    // Get unique industries for filter chips
+    const getUniqueIndustries = () => {
+        const industries = clients
+            .map(client => client.Industry)
+            .filter(Boolean)
+            .filter((industry, index, arr) => arr.indexOf(industry) === index);
+        return industries.sort();
     };
 
     // Filter and search clients
@@ -74,24 +62,115 @@ const MyClientsPage = () => {
             client.Name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             client.Industry?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             client.ContactName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            client.ContactEmail?.toLowerCase().includes(searchTerm.toLowerCase());
+            client.ContactEmail?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            client.Description?.toLowerCase().includes(searchTerm.toLowerCase());
 
-        const matchesFilter = filterStatus === 'all' ||
+        const matchesStatus = filterStatus === 'all' ||
             client.Status?.toLowerCase() === filterStatus.toLowerCase();
 
-        return matchesSearch && matchesFilter;
+        const matchesActiveFilters = activeFilters.every(filter => {
+            if (filter.type === 'industry') {
+                return client.Industry === filter.value;
+            }
+            if (filter.type === 'hasPreferences') {
+                return client.HasPreferences === true;
+            }
+            if (filter.type === 'hasAssessments') {
+                return (client.AssessmentCount || 0) > 0;
+            }
+            return true;
+        });
+
+        return matchesSearch && matchesStatus && matchesActiveFilters;
     });
+
+    // Sort clients
+    const sortedClients = [...filteredClients].sort((a, b) => {
+        let aValue, bValue;
+
+        switch (sortBy) {
+            case 'name':
+                aValue = a.Name.toLowerCase();
+                bValue = b.Name.toLowerCase();
+                break;
+            case 'assessmentCount':
+                aValue = a.AssessmentCount || 0;
+                bValue = b.AssessmentCount || 0;
+                break;
+            case 'lastActivity':
+                // Placeholder - would use actual last activity date
+                aValue = a.LastActivityDate || a.CreatedDate;
+                bValue = b.LastActivityDate || b.CreatedDate;
+                break;
+            default:
+                aValue = a.Name.toLowerCase();
+                bValue = b.Name.toLowerCase();
+        }
+
+        if (sortOrder === 'asc') {
+            return aValue > bValue ? 1 : -1;
+        } else {
+            return aValue < bValue ? 1 : -1;
+        }
+    });
+
+    const addFilter = (type, value, label) => {
+        const newFilter = { type, value, label };
+        if (!activeFilters.some(f => f.type === type && f.value === value)) {
+            setActiveFilters([...activeFilters, newFilter]);
+        }
+    };
+
+    const removeFilter = (filterToRemove) => {
+        setActiveFilters(activeFilters.filter(f =>
+            !(f.type === filterToRemove.type && f.value === filterToRemove.value)
+        ));
+    };
+
+    const clearAllFilters = () => {
+        setActiveFilters([]);
+        setFilterStatus('all');
+        setSearchTerm('');
+    };
+
+    const toggleSort = (newSortBy) => {
+        if (sortBy === newSortBy) {
+            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortBy(newSortBy);
+            setSortOrder('asc');
+        }
+    };
+
+    // Event handlers
+    const handleAddClient = () => setShowAddModal(true);
+    const handleEditClient = (client) => { setSelectedClient(client); setShowEditModal(true); };
+    const handleManageSubscriptions = (client) => { setSelectedClient(client); setShowSubscriptionsModal(true); };
+    const handleViewDetails = (client) => { setSelectedClient(client); setShowDetailsModal(true); };
+    const handleManagePreferences = (client) => { setSelectedClient(client); setShowPreferencesModal(true); };
+    const handleNewAssessment = (client) => {
+        // Navigate to new assessment page with client pre-selected
+        console.log('Navigate to new assessment for client:', client.Name);
+    };
+
+    const handleClientAdded = () => loadClients();
+    const handleClientUpdated = () => loadClients();
+    const handlePreferencesUpdated = () => {
+        console.log('Client preferences updated successfully');
+        loadClients(); // Refresh to update HasPreferences flag
+    };
 
     const getClientStats = () => {
         return {
             totalClients: clients.length,
             activeClients: clients.filter(c => c.Status?.toLowerCase() === 'active').length,
             inactiveClients: clients.filter(c => c.Status?.toLowerCase() === 'inactive').length,
-            filteredCount: filteredClients.length
+            filteredCount: sortedClients.length
         };
     };
 
     const stats = getClientStats();
+    const uniqueIndustries = getUniqueIndustries();
 
     if ((isLoading || localLoading) && !hasLoaded) {
         return (
@@ -218,7 +297,65 @@ const MyClientsPage = () => {
                 </div>
             </div>
 
-            {/* Search and Filter Bar */}
+            {/* Quick Filter Chips */}
+            <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-gray-400">Quick filters:</span>
+
+                {/* Industry filters */}
+                {uniqueIndustries.slice(0, 5).map(industry => (
+                    <button
+                        key={industry}
+                        onClick={() => addFilter('industry', industry, industry)}
+                        className="px-3 py-1 bg-blue-900/30 hover:bg-blue-900/50 text-blue-300 text-sm rounded-full border border-blue-800 transition-colors"
+                    >
+                        {industry}
+                    </button>
+                ))}
+
+                {/* Special filters */}
+                <button
+                    onClick={() => addFilter('hasPreferences', true, 'Has Preferences')}
+                    className="px-3 py-1 bg-purple-900/30 hover:bg-purple-900/50 text-purple-300 text-sm rounded-full border border-purple-800 transition-colors"
+                >
+                    Has Preferences
+                </button>
+
+                <button
+                    onClick={() => addFilter('hasAssessments', true, 'Has Assessments')}
+                    className="px-3 py-1 bg-green-900/30 hover:bg-green-900/50 text-green-300 text-sm rounded-full border border-green-800 transition-colors"
+                >
+                    Has Assessments
+                </button>
+            </div>
+
+            {/* Active Filters */}
+            {activeFilters.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-gray-400">Active filters:</span>
+                    {activeFilters.map((filter, index) => (
+                        <div
+                            key={index}
+                            className="flex items-center space-x-2 px-3 py-1 bg-yellow-900/30 text-yellow-300 text-sm rounded-full border border-yellow-800"
+                        >
+                            <span>{filter.label}</span>
+                            <button
+                                onClick={() => removeFilter(filter)}
+                                className="text-yellow-400 hover:text-yellow-200"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                    ))}
+                    <button
+                        onClick={clearAllFilters}
+                        className="px-3 py-1 text-gray-400 hover:text-white text-sm transition-colors"
+                    >
+                        Clear all
+                    </button>
+                </div>
+            )}
+
+            {/* Search, Filter, and Sort Bar */}
             <div className="bg-gray-900 border border-gray-800 rounded p-4">
                 <div className="flex items-center justify-between space-x-4">
                     <div className="flex items-center space-x-4 flex-1">
@@ -232,6 +369,14 @@ const MyClientsPage = () => {
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-600"
                             />
+                            {searchTerm && (
+                                <button
+                                    onClick={() => setSearchTerm('')}
+                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+                                >
+                                    <X size={16} />
+                                </button>
+                            )}
                         </div>
 
                         {/* Status Filter */}
@@ -247,6 +392,27 @@ const MyClientsPage = () => {
                                 <option value="inactive">Inactive</option>
                                 <option value="pending">Pending</option>
                                 <option value="suspended">Suspended</option>
+                            </select>
+                        </div>
+
+                        {/* Sort Options */}
+                        <div className="flex items-center space-x-2">
+                            <SortAsc size={18} className="text-gray-400" />
+                            <select
+                                value={`${sortBy}-${sortOrder}`}
+                                onChange={(e) => {
+                                    const [newSortBy, newSortOrder] = e.target.value.split('-');
+                                    setSortBy(newSortBy);
+                                    setSortOrder(newSortOrder);
+                                }}
+                                className="px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-yellow-600"
+                            >
+                                <option value="name-asc">Name A-Z</option>
+                                <option value="name-desc">Name Z-A</option>
+                                <option value="assessmentCount-desc">Most Assessments</option>
+                                <option value="assessmentCount-asc">Least Assessments</option>
+                                <option value="lastActivity-desc">Recently Active</option>
+                                <option value="lastActivity-asc">Least Active</option>
                             </select>
                         </div>
                     </div>
@@ -276,10 +442,10 @@ const MyClientsPage = () => {
             </div>
 
             {/* Client List */}
-            {filteredClients.length === 0 ? (
+            {sortedClients.length === 0 ? (
                 <div className="bg-gray-900 border border-gray-800 rounded p-12 text-center">
                     <div className="max-w-md mx-auto">
-                        {searchTerm || filterStatus !== 'all' ? (
+                        {searchTerm || filterStatus !== 'all' || activeFilters.length > 0 ? (
                             <>
                                 <div className="w-16 h-16 bg-gray-600 rounded-full flex items-center justify-center mx-auto mb-6">
                                     <Search size={32} className="text-gray-400" />
@@ -290,7 +456,7 @@ const MyClientsPage = () => {
                                 </p>
                                 <div className="flex justify-center space-x-3">
                                     <button
-                                        onClick={() => { setSearchTerm(''); setFilterStatus('all'); }}
+                                        onClick={clearAllFilters}
                                         className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded"
                                     >
                                         Clear Filters
@@ -329,24 +495,28 @@ const MyClientsPage = () => {
                         ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6'
                         : 'space-y-4'
                 }>
-                    {filteredClients.map((client) => (
+                    {sortedClients.map((client) => (
                         <ClientCard
                             key={client.ClientId}
                             client={client}
+                            viewMode={viewMode}
                             onEdit={handleEditClient}
                             onManageSubscriptions={handleManageSubscriptions}
                             onViewDetails={handleViewDetails}
+                            onManagePreferences={handleManagePreferences}
+                            onNewAssessment={handleNewAssessment}
                         />
                     ))}
                 </div>
             )}
 
             {/* Results Summary */}
-            {filteredClients.length > 0 && (searchTerm || filterStatus !== 'all') && (
+            {sortedClients.length > 0 && (searchTerm || filterStatus !== 'all' || activeFilters.length > 0) && (
                 <div className="text-center text-sm text-gray-400">
-                    Showing {filteredClients.length} of {clients.length} clients
+                    Showing {sortedClients.length} of {clients.length} clients
                     {searchTerm && ` matching "${searchTerm}"`}
                     {filterStatus !== 'all' && ` with status "${filterStatus}"`}
+                    {activeFilters.length > 0 && ` with ${activeFilters.length} filter${activeFilters.length > 1 ? 's' : ''}`}
                 </div>
             )}
 
@@ -376,6 +546,13 @@ const MyClientsPage = () => {
                 client={selectedClient}
                 onEdit={handleEditClient}
                 onManageSubscriptions={handleManageSubscriptions}
+            />
+
+            <ClientPreferencesModal
+                isOpen={showPreferencesModal}
+                onClose={() => setShowPreferencesModal(false)}
+                client={selectedClient}
+                onPreferencesUpdated={handlePreferencesUpdated}
             />
         </div>
     );

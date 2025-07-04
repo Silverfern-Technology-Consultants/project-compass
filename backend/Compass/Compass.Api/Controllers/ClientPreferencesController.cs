@@ -224,15 +224,17 @@ public class ClientPreferencesController : ControllerBase
     }
 
     private ClientPreferences CreatePreferencesFromRequest(
-        Guid clientId,
-        Guid organizationId,
-        CreateClientPreferencesRequest request,
-        Guid customerId)
+    Guid clientId,
+    Guid organizationId,
+    CreateClientPreferencesRequest request,
+    Guid customerId)
     {
         return new ClientPreferences
         {
             ClientId = clientId,
             OrganizationId = organizationId,
+
+            // Legacy fields (for backward compatibility)
             AllowedNamingPatterns = request.AllowedNamingPatterns?.Any() == true
                 ? JsonSerializer.Serialize(request.AllowedNamingPatterns)
                 : null,
@@ -247,6 +249,24 @@ public class ClientPreferencesController : ControllerBase
             ComplianceFrameworks = request.ComplianceFrameworks?.Any() == true
                 ? JsonSerializer.Serialize(request.ComplianceFrameworks)
                 : null,
+
+            // NEW: Enhanced fields
+            NamingStyle = request.NamingStyle,
+            TaggingApproach = request.TaggingApproach,
+            EnvironmentSize = request.EnvironmentSize,
+            OrganizationMethod = request.OrganizationMethod,
+            EnvironmentIndicatorLevel = request.EnvironmentIndicatorLevel,
+            SelectedTags = request.SelectedTags?.Any() == true
+                ? JsonSerializer.Serialize(request.SelectedTags)
+                : null,
+            CustomTags = request.CustomTags?.Any() == true
+                ? JsonSerializer.Serialize(request.CustomTags)
+                : null,
+            SelectedCompliances = request.SelectedCompliances?.Any() == true
+                ? JsonSerializer.Serialize(request.SelectedCompliances)
+                : null,
+            NoSpecificRequirements = request.NoSpecificRequirements,
+
             CreatedByCustomerId = customerId
         };
     }
@@ -256,6 +276,7 @@ public class ClientPreferencesController : ControllerBase
         CreateClientPreferencesRequest request,
         Guid customerId)
     {
+        // Legacy fields (for backward compatibility)
         existing.AllowedNamingPatterns = request.AllowedNamingPatterns?.Any() == true
             ? JsonSerializer.Serialize(request.AllowedNamingPatterns)
             : null;
@@ -270,6 +291,24 @@ public class ClientPreferencesController : ControllerBase
         existing.ComplianceFrameworks = request.ComplianceFrameworks?.Any() == true
             ? JsonSerializer.Serialize(request.ComplianceFrameworks)
             : null;
+
+        // NEW: Enhanced fields
+        existing.NamingStyle = request.NamingStyle;
+        existing.TaggingApproach = request.TaggingApproach;
+        existing.EnvironmentSize = request.EnvironmentSize;
+        existing.OrganizationMethod = request.OrganizationMethod;
+        existing.EnvironmentIndicatorLevel = request.EnvironmentIndicatorLevel;
+        existing.SelectedTags = request.SelectedTags?.Any() == true
+            ? JsonSerializer.Serialize(request.SelectedTags)
+            : null;
+        existing.CustomTags = request.CustomTags?.Any() == true
+            ? JsonSerializer.Serialize(request.CustomTags)
+            : null;
+        existing.SelectedCompliances = request.SelectedCompliances?.Any() == true
+            ? JsonSerializer.Serialize(request.SelectedCompliances)
+            : null;
+        existing.NoSpecificRequirements = request.NoSpecificRequirements;
+
         existing.LastModifiedByCustomerId = customerId;
 
         return existing;
@@ -282,6 +321,8 @@ public class ClientPreferencesController : ControllerBase
             ClientPreferencesId = preferences.ClientPreferencesId,
             ClientId = preferences.ClientId,
             ClientName = preferences.Client?.Name ?? "Unknown Client",
+
+            // Legacy fields (for backward compatibility)
             AllowedNamingPatterns = !string.IsNullOrEmpty(preferences.AllowedNamingPatterns)
                 ? JsonSerializer.Deserialize<List<string>>(preferences.AllowedNamingPatterns) ?? new List<string>()
                 : new List<string>(),
@@ -296,6 +337,24 @@ public class ClientPreferencesController : ControllerBase
             ComplianceFrameworks = !string.IsNullOrEmpty(preferences.ComplianceFrameworks)
                 ? JsonSerializer.Deserialize<List<string>>(preferences.ComplianceFrameworks) ?? new List<string>()
                 : new List<string>(),
+
+            // NEW: Enhanced fields
+            NamingStyle = preferences.NamingStyle,
+            TaggingApproach = preferences.TaggingApproach,
+            EnvironmentSize = preferences.EnvironmentSize,
+            OrganizationMethod = preferences.OrganizationMethod,
+            EnvironmentIndicatorLevel = preferences.EnvironmentIndicatorLevel,
+            SelectedTags = !string.IsNullOrEmpty(preferences.SelectedTags)
+                ? JsonSerializer.Deserialize<List<string>>(preferences.SelectedTags) ?? new List<string>()
+                : new List<string>(),
+            CustomTags = !string.IsNullOrEmpty(preferences.CustomTags)
+                ? JsonSerializer.Deserialize<List<string>>(preferences.CustomTags) ?? new List<string>()
+                : new List<string>(),
+            SelectedCompliances = !string.IsNullOrEmpty(preferences.SelectedCompliances)
+                ? JsonSerializer.Deserialize<List<string>>(preferences.SelectedCompliances) ?? new List<string>()
+                : new List<string>(),
+            NoSpecificRequirements = preferences.NoSpecificRequirements,
+
             CreatedDate = preferences.CreatedDate,
             LastModifiedDate = preferences.LastModifiedDate,
             IsActive = preferences.IsActive
@@ -306,12 +365,25 @@ public class ClientPreferencesController : ControllerBase
 // DTOs for the API
 public class CreateClientPreferencesRequest
 {
+    // Legacy fields (for backward compatibility)
     public List<string> AllowedNamingPatterns { get; set; } = new();
     public List<string> RequiredNamingElements { get; set; } = new();
     public bool EnvironmentIndicators { get; set; } = false;
     public List<string> RequiredTags { get; set; } = new();
     public bool EnforceTagCompliance { get; set; } = true;
     public List<string> ComplianceFrameworks { get; set; } = new();
+
+    // NEW: Enhanced fields to match frontend structure
+    public string? NamingStyle { get; set; } // 'standardized', 'mixed', 'legacy'
+    public string? TaggingApproach { get; set; } // 'comprehensive', 'basic', 'minimal', 'custom'
+    public string? EnvironmentSize { get; set; } // 'small', 'medium', 'large', 'enterprise'
+    public string? OrganizationMethod { get; set; } // 'environment', 'application', 'business-unit'
+    public string? EnvironmentIndicatorLevel { get; set; } // 'required', 'recommended', 'optional', 'none'
+
+    public List<string> SelectedTags { get; set; } = new(); // Combined standard + custom tags
+    public List<string> CustomTags { get; set; } = new(); // User-defined custom tags
+    public List<string> SelectedCompliances { get; set; } = new(); // Selected compliance frameworks
+    public bool NoSpecificRequirements { get; set; } = false; // No specific compliance requirements
 }
 
 public class ClientPreferencesResponse
@@ -319,12 +391,29 @@ public class ClientPreferencesResponse
     public Guid ClientPreferencesId { get; set; }
     public Guid ClientId { get; set; }
     public string ClientName { get; set; } = string.Empty;
+
+    // Legacy fields (for backward compatibility)
     public List<string> AllowedNamingPatterns { get; set; } = new();
     public List<string> RequiredNamingElements { get; set; } = new();
     public bool EnvironmentIndicators { get; set; }
     public List<string> RequiredTags { get; set; } = new();
     public bool EnforceTagCompliance { get; set; }
     public List<string> ComplianceFrameworks { get; set; } = new();
+
+    // NEW: Enhanced fields
+    public string? NamingStyle { get; set; }
+    public string? TaggingApproach { get; set; }
+    public string? EnvironmentSize { get; set; }
+    public string? OrganizationMethod { get; set; }
+    public string? EnvironmentIndicatorLevel { get; set; }
+
+    public List<string> SelectedTags { get; set; } = new();
+    public List<string> CustomTags { get; set; } = new();
+    public List<string> SelectedCompliances { get; set; } = new();
+    public bool NoSpecificRequirements { get; set; }
+    public bool HasPreferences { get; set; }
+
+    // Audit fields
     public DateTime CreatedDate { get; set; }
     public DateTime? LastModifiedDate { get; set; }
     public bool IsActive { get; set; }

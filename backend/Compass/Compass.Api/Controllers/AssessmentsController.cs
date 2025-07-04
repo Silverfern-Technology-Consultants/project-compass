@@ -393,7 +393,8 @@ public class AssessmentsController : ControllerBase
                 Name = request.Name,
                 SubscriptionIds = environment.SubscriptionIds.ToArray(), // ✅ Resolved from environment
                 Type = (AssessmentType)request.Type,
-                Options = request.Options
+                Options = request.Options,
+                UseClientPreferences = request.UseClientPreferences // ✅ NEW: Pass client preference flag
             };
 
             // Step 8: Start the assessment

@@ -4,8 +4,9 @@ using System.Text.RegularExpressions;
 
 namespace Compass.Core.Services;
 
-public interface INamingConventionAnalyzer
+public interface INamingConventionAnalyzer : IPreferenceAwareNamingAnalyzer
 {
+    // Keep existing method for backward compatibility
     Task<NamingConventionResults> AnalyzeNamingConventionsAsync(List<AzureResource> resources, CancellationToken cancellationToken = default);
 }
 
@@ -59,10 +60,36 @@ public class NamingConventionAnalyzer : INamingConventionAnalyzer
         _logger = logger;
     }
 
+    // Standard analysis method (backward compatibility)
     public Task<NamingConventionResults> AnalyzeNamingConventionsAsync(List<AzureResource> resources, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Starting enhanced naming convention analysis for {ResourceCount} resources", resources.Count);
+        _logger.LogInformation("Starting standard naming convention analysis for {ResourceCount} resources", resources.Count);
+        var results = AnalyzeNamingConventionsSync(resources, null);
+        return Task.FromResult(results);
+    }
 
+    // Preference-aware analysis method (implements IPreferenceAwareNamingAnalyzer)
+    public Task<NamingConventionResults> AnalyzeNamingConventionsAsync(
+        List<AzureResource> resources,
+        ClientAssessmentConfiguration? clientConfig = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (clientConfig != null)
+        {
+            _logger.LogInformation("Starting client-preference-aware naming analysis for {ResourceCount} resources with client {ClientName}",
+                resources.Count, clientConfig.ClientName);
+            var results = AnalyzeWithClientPreferences(resources, clientConfig);
+            return Task.FromResult(results);
+        }
+
+        _logger.LogInformation("Starting standard naming convention analysis for {ResourceCount} resources", resources.Count);
+        var standardResults = AnalyzeNamingConventionsSync(resources, null);
+        return Task.FromResult(standardResults);
+    }
+
+    // Synchronous analysis method
+    private NamingConventionResults AnalyzeNamingConventionsSync(List<AzureResource> resources, ClientAssessmentConfiguration? clientConfig)
+    {
         var results = new NamingConventionResults
         {
             TotalResources = resources.Count
@@ -82,12 +109,357 @@ public class NamingConventionAnalyzer : INamingConventionAnalyzer
             ? Math.Round((decimal)results.CompliantResources / results.TotalResources * 100, 2)
             : 100m;
 
-        _logger.LogInformation("Enhanced naming convention analysis completed. Score: {Score}%, Violations: {ViolationCount}",
+        _logger.LogInformation("Standard naming convention analysis completed. Score: {Score}%, Violations: {ViolationCount}",
             results.Score, results.Violations.Count);
 
-        return Task.FromResult(results);
+        return results;
     }
 
+    // Client preference-aware analysis
+    private NamingConventionResults AnalyzeWithClientPreferences(
+        List<AzureResource> resources,
+        ClientAssessmentConfiguration clientConfig)
+    {
+        _logger.LogInformation("Running client-preference-aware naming analysis for {ResourceCount} resources", resources.Count);
+
+        var results = new NamingConventionResults
+        {
+            TotalResources = resources.Count
+        };
+
+        // Enhanced pattern analysis with client preferences
+        results.PatternDistribution = AnalyzePatternDistributionWithPreferences(resources, clientConfig);
+        results.PatternsByResourceType = AnalyzePatternsByResourceTypeWithPreferences(resources, clientConfig);
+        results.EnvironmentIndicators = AnalyzeEnvironmentIndicatorsWithPreferences(resources, clientConfig);
+        results.Consistency = AnalyzeConsistencyAgainstPreferences(resources, clientConfig);
+        results.Violations = FindNamingViolationsAgainstPreferences(resources, clientConfig).ToList();
+        results.RepresentativeExamples = GenerateRepresentativeExamples(resources);
+
+        // Calculate compliance score based on client preferences
+        results.CompliantResources = results.TotalResources - results.Violations.Count;
+        results.Score = CalculatePreferenceBasedScore(results, clientConfig);
+
+        _logger.LogInformation("Client-preference-aware naming analysis completed. Score: {Score}%, Violations: {ViolationCount}, Client compliance: {ClientCompliance}%",
+            results.Score, results.Violations.Count, results.Consistency.ClientPreferenceCompliance);
+
+        return results;
+    }
+
+    // Preference-aware analysis methods
+    private Dictionary<string, NamingPatternStats> AnalyzePatternDistributionWithPreferences(
+        List<AzureResource> resources,
+        ClientAssessmentConfiguration clientConfig)
+    {
+        var patternStats = AnalyzePatternDistribution(resources);
+        var allowedPatterns = clientConfig.GetEffectiveNamingPatterns();
+
+        if (allowedPatterns.Any())
+        {
+            _logger.LogInformation("Client prefers naming patterns: {Patterns}", string.Join(", ", allowedPatterns));
+
+            // Mark patterns as compliant/non-compliant based on client preferences
+            foreach (var stat in patternStats.Values)
+            {
+                // Note: We can't modify the base NamingPatternStats class to add compliance info
+                // So we'll handle this in the scoring logic instead
+                if (allowedPatterns.Contains(stat.Pattern))
+                {
+                    _logger.LogDebug("Pattern {Pattern} is client-preferred ({Count} resources)",
+                        stat.Pattern, stat.Count);
+                }
+            }
+        }
+
+        return patternStats;
+    }
+
+    private Dictionary<string, NamingPatternAnalysis> AnalyzePatternsByResourceTypeWithPreferences(
+        List<AzureResource> resources,
+        ClientAssessmentConfiguration clientConfig)
+    {
+        var patternsByType = AnalyzePatternsByResourceType(resources);
+        var allowedPatterns = clientConfig.GetEffectiveNamingPatterns();
+
+        if (allowedPatterns.Any())
+        {
+            foreach (var analysis in patternsByType.Values)
+            {
+                // Adjust consistency score based on client preference compliance
+                if (!string.IsNullOrEmpty(analysis.MostCommonPattern) && !allowedPatterns.Contains(analysis.MostCommonPattern))
+                {
+                    analysis.ConsistencyScore *= 0.7m; // Reduce score for non-preferred patterns
+                    _logger.LogDebug("Reduced consistency score for {ResourceType} - pattern {Pattern} not client-preferred",
+                        analysis.ResourceType, analysis.MostCommonPattern);
+                }
+            }
+        }
+
+        return patternsByType;
+    }
+
+    private EnvironmentIndicatorAnalysis AnalyzeEnvironmentIndicatorsWithPreferences(
+        List<AzureResource> resources,
+        ClientAssessmentConfiguration clientConfig)
+    {
+        var analysis = AnalyzeEnvironmentIndicators(resources);
+
+        // Use client-specific environment patterns if available
+        var expectedPatterns = clientConfig.GetExpectedEnvironmentPatterns();
+        if (expectedPatterns.Any())
+        {
+            _logger.LogInformation("Using client-specific environment patterns: {Patterns}",
+                string.Join(", ", expectedPatterns));
+
+            // Re-analyze with client-specific patterns
+            analysis = new EnvironmentIndicatorAnalysis();
+            foreach (var resource in resources)
+            {
+                var detectedEnv = DetectEnvironmentFromName(resource.Name, expectedPatterns);
+                if (!string.IsNullOrEmpty(detectedEnv))
+                {
+                    analysis.ResourcesWithEnvironmentIndicators++;
+                    analysis.EnvironmentDistribution[detectedEnv] =
+                        analysis.EnvironmentDistribution.GetValueOrDefault(detectedEnv, 0) + 1;
+                }
+            }
+
+            analysis.PercentageWithEnvironmentIndicators = resources.Count > 0
+                ? Math.Round((decimal)analysis.ResourcesWithEnvironmentIndicators / resources.Count * 100, 2)
+                : 0m;
+        }
+
+        // Check if this meets client requirements
+        if (clientConfig.AreEnvironmentIndicatorsRequired())
+        {
+            var requiredThreshold = clientConfig.EnvironmentIndicatorLevel == "required" ? 90m : 70m;
+            analysis.MeetsClientRequirements = analysis.PercentageWithEnvironmentIndicators >= requiredThreshold;
+
+            _logger.LogInformation("Environment indicator compliance: {Percentage}% (required: {Threshold}%, meets requirement: {Meets})",
+                analysis.PercentageWithEnvironmentIndicators, requiredThreshold, analysis.MeetsClientRequirements);
+        }
+
+        return analysis;
+    }
+
+    private NamingConsistencyMetrics AnalyzeConsistencyAgainstPreferences(
+        List<AzureResource> resources,
+        ClientAssessmentConfiguration clientConfig)
+    {
+        var metrics = new NamingConsistencyMetrics();
+
+        // Analyze pattern consistency against client preferences
+        var allowedPatterns = clientConfig.GetEffectiveNamingPatterns();
+
+        if (allowedPatterns.Any())
+        {
+            // Calculate compliance with client's preferred patterns
+            var compliantResources = 0;
+            foreach (var resource in resources)
+            {
+                var pattern = ClassifyNamingPattern(resource.Name);
+                if (allowedPatterns.Contains(pattern))
+                {
+                    compliantResources++;
+                }
+            }
+
+            metrics.ClientPreferenceCompliance = resources.Count > 0
+                ? Math.Round((decimal)compliantResources / resources.Count * 100, 2)
+                : 100m;
+
+            metrics.OverallConsistency = metrics.ClientPreferenceCompliance;
+
+            _logger.LogInformation("Client preference compliance calculated: {Compliance}% ({Compliant}/{Total} resources)",
+                metrics.ClientPreferenceCompliance, compliantResources, resources.Count);
+        }
+        else
+        {
+            // Fallback to standard consistency analysis
+            var patternDistribution = AnalyzePatternDistribution(resources);
+            var topPattern = patternDistribution.Values.OrderByDescending(p => p.Count).FirstOrDefault();
+            metrics.OverallConsistency = topPattern?.Percentage ?? 0m;
+            metrics.ClientPreferenceCompliance = 0m; // No preferences to comply with
+        }
+
+        // Environment prefix analysis based on client requirements
+        if (clientConfig.AreEnvironmentIndicatorsRequired())
+        {
+            var envAnalysis = AnalyzeEnvironmentIndicatorsWithPreferences(resources, clientConfig);
+            metrics.UsesEnvironmentPrefixes = envAnalysis.PercentageWithEnvironmentIndicators > 50;
+        }
+
+        return metrics;
+    }
+
+    private IEnumerable<NamingViolation> FindNamingViolationsAgainstPreferences(
+        List<AzureResource> resources,
+        ClientAssessmentConfiguration clientConfig)
+    {
+        var allowedPatterns = clientConfig.GetEffectiveNamingPatterns();
+        var envPatternsRequired = clientConfig.AreEnvironmentIndicatorsRequired();
+        var expectedEnvPatterns = clientConfig.GetExpectedEnvironmentPatterns();
+
+        foreach (var resource in resources)
+        {
+            // Check against client's preferred naming patterns
+            if (allowedPatterns.Any())
+            {
+                var resourcePattern = ClassifyNamingPattern(resource.Name);
+                if (!allowedPatterns.Contains(resourcePattern))
+                {
+                    var severity = clientConfig.AdjustViolationSeverity("Medium", "ClientPreferenceViolation");
+                    yield return new NamingViolation
+                    {
+                        ResourceId = resource.Id,
+                        ResourceName = resource.Name,
+                        ResourceType = resource.Type,
+                        ViolationType = "ClientPreferenceViolation",
+                        Issue = $"Resource naming pattern '{resourcePattern}' doesn't match client's preferred patterns: {string.Join(", ", allowedPatterns)}",
+                        SuggestedName = ConvertToClientPreferredPattern(resource.Name, allowedPatterns.First()),
+                        Severity = severity
+                    };
+                }
+            }
+
+            // Check for required environment indicators
+            if (envPatternsRequired)
+            {
+                var hasEnvironmentIndicator = expectedEnvPatterns.Any(env =>
+                    resource.Name.ToLowerInvariant().Contains(env.ToLowerInvariant()));
+
+                if (!hasEnvironmentIndicator)
+                {
+                    var severity = clientConfig.AdjustViolationSeverity("High", "MissingRequiredElement");
+                    yield return new NamingViolation
+                    {
+                        ResourceId = resource.Id,
+                        ResourceName = resource.Name,
+                        ResourceType = resource.Type,
+                        ViolationType = "MissingRequiredElement",
+                        Issue = $"Resource name doesn't include required environment indicator. Expected patterns: {string.Join(", ", expectedEnvPatterns)}",
+                        SuggestedName = $"{resource.Name}-{expectedEnvPatterns.FirstOrDefault() ?? "env"}",
+                        Severity = severity
+                    };
+                }
+            }
+
+            // Standard violations (invalid characters, length, etc.)
+            foreach (var violation in FindStandardViolations(resource, clientConfig))
+            {
+                yield return violation;
+            }
+        }
+    }
+
+    private IEnumerable<NamingViolation> FindStandardViolations(AzureResource resource, ClientAssessmentConfiguration? clientConfig = null)
+    {
+        // Invalid characters
+        if (Regex.IsMatch(resource.Name, @"[^a-zA-Z0-9\-_\.]"))
+        {
+            var severity = clientConfig?.AdjustViolationSeverity("High", "InvalidCharacters") ?? "High";
+            yield return new NamingViolation
+            {
+                ResourceId = resource.Id,
+                ResourceName = resource.Name,
+                ResourceType = resource.Type,
+                ViolationType = "InvalidCharacters",
+                Issue = "Resource name contains invalid characters",
+                SuggestedName = Regex.Replace(resource.Name, @"[^a-zA-Z0-9\-_\.]", ""),
+                Severity = severity
+            };
+        }
+
+        // Length violations
+        if (resource.Name.Length > 63)
+        {
+            var severity = clientConfig?.AdjustViolationSeverity("Medium", "NameTooLong") ?? "Medium";
+            yield return new NamingViolation
+            {
+                ResourceId = resource.Id,
+                ResourceName = resource.Name,
+                ResourceType = resource.Type,
+                ViolationType = "NameTooLong",
+                Issue = "Resource name exceeds maximum length of 63 characters",
+                SuggestedName = resource.Name.Substring(0, 60) + "...",
+                Severity = severity
+            };
+        }
+
+        // Resource type prefix violations (only if not overridden by client preferences)
+        var resourceType = resource.Type.ToLowerInvariant();
+        if (_resourceTypePrefixes.TryGetValue(resourceType, out var recommendedPrefixes))
+        {
+            var hasCorrectPrefix = recommendedPrefixes.Any(prefix =>
+                resource.Name.ToLowerInvariant().StartsWith(prefix));
+
+            if (!hasCorrectPrefix)
+            {
+                var severity = clientConfig?.AdjustViolationSeverity("Medium", "MissingResourceTypePrefix") ?? "Medium";
+                yield return new NamingViolation
+                {
+                    ResourceId = resource.Id,
+                    ResourceName = resource.Name,
+                    ResourceType = resource.Type,
+                    ViolationType = "MissingResourceTypePrefix",
+                    Issue = $"Resource name doesn't start with recommended prefix: {string.Join(", ", recommendedPrefixes)}",
+                    SuggestedName = $"{recommendedPrefixes[0]}-{resource.Name.ToLowerInvariant()}",
+                    Severity = severity
+                };
+            }
+        }
+    }
+
+    private decimal CalculatePreferenceBasedScore(NamingConventionResults results, ClientAssessmentConfiguration clientConfig)
+    {
+        var scoringFactors = new List<decimal>();
+
+        // Client preference compliance (50% weight if preferences exist)
+        if (clientConfig.HasNamingPreferences && results.Consistency.ClientPreferenceCompliance > 0)
+        {
+            scoringFactors.Add(results.Consistency.ClientPreferenceCompliance * 0.5m);
+            _logger.LogDebug("Client preference compliance score: {Score}%", results.Consistency.ClientPreferenceCompliance);
+        }
+        else
+        {
+            // Fall back to pattern consistency if no preferences
+            scoringFactors.Add(results.Consistency.OverallConsistency * 0.5m);
+        }
+
+        // Environment indicator compliance (25% weight if required)
+        if (clientConfig.AreEnvironmentIndicatorsRequired())
+        {
+            var envCompliance = results.EnvironmentIndicators.MeetsClientRequirements ? 100m :
+                results.EnvironmentIndicators.PercentageWithEnvironmentIndicators;
+            scoringFactors.Add(envCompliance * 0.25m);
+            _logger.LogDebug("Environment indicator compliance score: {Score}%", envCompliance);
+        }
+        else
+        {
+            // No requirement, so full points
+            scoringFactors.Add(100m * 0.25m);
+        }
+
+        // Standard violations penalty (25% weight)
+        var standardViolations = results.Violations.Count(v =>
+            v.ViolationType == "InvalidCharacters" ||
+            v.ViolationType == "NameTooLong" ||
+            v.ViolationType == "MissingResourceTypePrefix");
+
+        var violationPenalty = results.TotalResources > 0
+            ? (decimal)standardViolations / results.TotalResources * 100
+            : 0m;
+        scoringFactors.Add((100 - violationPenalty) * 0.25m);
+        _logger.LogDebug("Standard violations penalty: {Penalty}% ({Violations}/{Total} violations)",
+            violationPenalty, standardViolations, results.TotalResources);
+
+        var finalScore = Math.Round(scoringFactors.Sum(), 2);
+        _logger.LogInformation("Preference-based score calculated: {Score}% (factors: {Factors})",
+            finalScore, string.Join(", ", scoringFactors.Select(f => f.ToString("F1"))));
+
+        return finalScore;
+    }
+
+    // Standard analysis methods (unchanged from original)
     private Dictionary<string, NamingPatternStats> AnalyzePatternDistribution(List<AzureResource> resources)
     {
         var patternStats = new Dictionary<string, NamingPatternStats>
@@ -208,7 +580,7 @@ public class NamingConventionAnalyzer : INamingConventionAnalyzer
 
         foreach (var resource in resources)
         {
-            var detectedEnv = DetectEnvironmentFromName(resource.Name);
+            var detectedEnv = DetectEnvironmentFromName(resource.Name, _commonEnvironments.ToList());
             if (!string.IsNullOrEmpty(detectedEnv))
             {
                 analysis.ResourcesWithEnvironmentIndicators++;
@@ -224,17 +596,10 @@ public class NamingConventionAnalyzer : INamingConventionAnalyzer
         return analysis;
     }
 
-    private string? DetectEnvironmentFromName(string name)
+    private string? DetectEnvironmentFromName(string name, List<string> environmentPatterns)
     {
         var nameLower = name.ToLowerInvariant();
-
-        foreach (var env in _commonEnvironments)
-        {
-            if (nameLower.Contains(env))
-                return env;
-        }
-
-        return null;
+        return environmentPatterns.FirstOrDefault(env => nameLower.Contains(env.ToLowerInvariant()));
     }
 
     private NamingConsistencyMetrics AnalyzeOverallConsistency(List<AzureResource> resources)
@@ -253,14 +618,12 @@ public class NamingConventionAnalyzer : INamingConventionAnalyzer
             var topPattern = topTwoPatterns.First();
             metrics.DominantPattern = topPattern.Pattern;
             metrics.DominantPatternPercentage = topPattern.Percentage;
-
-            // Overall consistency is higher if top pattern dominates
             metrics.OverallConsistency = topPattern.Percentage;
         }
 
         // Environment prefix usage
         var envAnalysis = AnalyzeEnvironmentIndicators(resources);
-        metrics.UsesEnvironmentPrefixes = envAnalysis.PercentageWithEnvironmentIndicators > 30; // 30% threshold
+        metrics.UsesEnvironmentPrefixes = envAnalysis.PercentageWithEnvironmentIndicators > 30;
 
         // Resource type prefix usage
         var prefixCount = 0;
@@ -275,7 +638,7 @@ public class NamingConventionAnalyzer : INamingConventionAnalyzer
                 }
             }
         }
-        metrics.UsesResourceTypePrefixes = prefixCount > resources.Count * 0.3; // 30% threshold
+        metrics.UsesResourceTypePrefixes = prefixCount > resources.Count * 0.3;
         metrics.ResourceTypePrefixPercentage = resources.Count > 0
             ? Math.Round((decimal)prefixCount / resources.Count * 100, 2)
             : 0m;
@@ -287,7 +650,7 @@ public class NamingConventionAnalyzer : INamingConventionAnalyzer
     {
         var examples = new Dictionary<string, List<string>>();
 
-        foreach (var resource in resources.Take(50)) // Limit to avoid too many examples
+        foreach (var resource in resources.Take(50))
         {
             var pattern = ClassifyNamingPattern(resource.Name);
             if (!examples.ContainsKey(pattern))
@@ -295,7 +658,7 @@ public class NamingConventionAnalyzer : INamingConventionAnalyzer
                 examples[pattern] = new List<string>();
             }
 
-            if (examples[pattern].Count < 3) // Max 3 examples per pattern
+            if (examples[pattern].Count < 3)
             {
                 examples[pattern].Add(resource.Name);
             }
@@ -308,59 +671,13 @@ public class NamingConventionAnalyzer : INamingConventionAnalyzer
     {
         foreach (var resource in resources)
         {
-            // Check for recommended prefixes
-            var resourceType = resource.Type.ToLowerInvariant();
-            if (_resourceTypePrefixes.TryGetValue(resourceType, out var recommendedPrefixes))
+            foreach (var violation in FindStandardViolations(resource))
             {
-                var hasCorrectPrefix = recommendedPrefixes.Any(prefix =>
-                    resource.Name.ToLowerInvariant().StartsWith(prefix));
-
-                if (!hasCorrectPrefix)
-                {
-                    yield return new NamingViolation
-                    {
-                        ResourceId = resource.Id,
-                        ResourceName = resource.Name,
-                        ResourceType = resource.Type,
-                        ViolationType = "MissingResourceTypePrefix",
-                        Issue = $"Resource name doesn't start with recommended prefix: {string.Join(", ", recommendedPrefixes)}",
-                        SuggestedName = $"{recommendedPrefixes[0]}-{resource.Name.ToLowerInvariant()}",
-                        Severity = "Medium"
-                    };
-                }
-            }
-
-            // Check for invalid characters
-            if (Regex.IsMatch(resource.Name, @"[^a-zA-Z0-9\-_\.]"))
-            {
-                yield return new NamingViolation
-                {
-                    ResourceId = resource.Id,
-                    ResourceName = resource.Name,
-                    ResourceType = resource.Type,
-                    ViolationType = "InvalidCharacters",
-                    Issue = "Resource name contains invalid characters (only letters, numbers, hyphens, underscores, and periods are recommended)",
-                    SuggestedName = Regex.Replace(resource.Name, @"[^a-zA-Z0-9\-_\.]", ""),
-                    Severity = "High"
-                };
-            }
-
-            // Check for length violations
-            if (resource.Name.Length > 63)
-            {
-                yield return new NamingViolation
-                {
-                    ResourceId = resource.Id,
-                    ResourceName = resource.Name,
-                    ResourceType = resource.Type,
-                    ViolationType = "NameTooLong",
-                    Issue = "Resource name exceeds recommended maximum length of 63 characters",
-                    SuggestedName = resource.Name.Substring(0, 60) + "...",
-                    Severity = "Medium"
-                };
+                yield return violation;
             }
 
             // Check for pattern inconsistency within resource type
+            var resourceType = resource.Type.ToLowerInvariant();
             if (patternsByType.TryGetValue(resourceType, out var typeAnalysis) &&
                 typeAnalysis.ConsistencyScore < 70) // Less than 70% consistency
             {
@@ -382,6 +699,20 @@ public class NamingConventionAnalyzer : INamingConventionAnalyzer
         }
     }
 
+    private string ConvertToClientPreferredPattern(string name, string targetPattern)
+    {
+        return targetPattern.ToLowerInvariant() switch
+        {
+            "lowercase" => name.ToLowerInvariant(),
+            "uppercase" => name.ToUpperInvariant(),
+            "kebab-case" => Regex.Replace(name, @"[_\s]+", "-").ToLowerInvariant(),
+            "snake_case" => Regex.Replace(name, @"[-\s]+", "_").ToLowerInvariant(),
+            "camelcase" => ConvertToCamelCase(name),
+            "pascalcase" => ConvertToPascalCase(name),
+            _ => name.ToLowerInvariant()
+        };
+    }
+
     private string ConvertToPattern(string name, string? targetPattern)
     {
         if (string.IsNullOrEmpty(targetPattern))
@@ -395,5 +726,35 @@ public class NamingConventionAnalyzer : INamingConventionAnalyzer
             "snake_case" => Regex.Replace(name, @"[-\s]+", "_").ToLowerInvariant(),
             _ => name.ToLowerInvariant()
         };
+    }
+
+    private string ConvertToCamelCase(string name)
+    {
+        var words = Regex.Split(name, @"[-_\s]+");
+        if (!words.Any()) return name;
+
+        var result = words[0].ToLowerInvariant();
+        for (int i = 1; i < words.Length; i++)
+        {
+            if (words[i].Length > 0)
+            {
+                result += char.ToUpperInvariant(words[i][0]) + words[i].Substring(1).ToLowerInvariant();
+            }
+        }
+        return result;
+    }
+
+    private string ConvertToPascalCase(string name)
+    {
+        var words = Regex.Split(name, @"[-_\s]+");
+        var result = "";
+        foreach (var word in words)
+        {
+            if (word.Length > 0)
+            {
+                result += char.ToUpperInvariant(word[0]) + word.Substring(1).ToLowerInvariant();
+            }
+        }
+        return result;
     }
 }

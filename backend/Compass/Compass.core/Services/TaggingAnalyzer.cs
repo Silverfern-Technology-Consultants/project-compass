@@ -3,8 +3,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Compass.Core.Services;
 
-public interface ITaggingAnalyzer
+public interface ITaggingAnalyzer : IPreferenceAwareTaggingAnalyzer
 {
+    // Keep existing method for backward compatibility
     Task<TaggingResults> AnalyzeTaggingAsync(List<AzureResource> resources, CancellationToken cancellationToken = default);
 }
 
@@ -12,7 +13,7 @@ public class TaggingAnalyzer : ITaggingAnalyzer
 {
     private readonly ILogger<TaggingAnalyzer> _logger;
 
-    // Common required tags based on best practices
+    // Default required tags based on best practices
     private readonly string[] _commonRequiredTags =
     {
         "Environment",
@@ -47,10 +48,74 @@ public class TaggingAnalyzer : ITaggingAnalyzer
         _logger = logger;
     }
 
+    // Standard analysis method (backward compatibility)
     public Task<TaggingResults> AnalyzeTaggingAsync(List<AzureResource> resources, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Starting tagging analysis for {ResourceCount} resources", resources.Count);
+        _logger.LogInformation("Starting standard tagging analysis for {ResourceCount} resources", resources.Count);
+        var results = AnalyzeTaggingSync(resources, null);
+        return Task.FromResult(results);
+    }
 
+    // Preference-aware analysis method (implements IPreferenceAwareTaggingAnalyzer)
+    public Task<TaggingResults> AnalyzeTaggingAsync(
+        List<AzureResource> resources,
+        ClientAssessmentConfiguration? clientConfig = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (clientConfig != null && clientConfig.HasTaggingPreferences)
+        {
+            _logger.LogInformation("Starting client-preference-aware tagging analysis for {ResourceCount} resources with client {ClientName}",
+                resources.Count, clientConfig.ClientName);
+            var results = AnalyzeWithClientPreferences(resources, clientConfig);
+            return Task.FromResult(results);
+        }
+
+        _logger.LogInformation("Starting standard tagging analysis for {ResourceCount} resources", resources.Count);
+        var standardResults = AnalyzeTaggingSync(resources, null);
+        return Task.FromResult(standardResults);
+    }
+
+    // Client preference-aware analysis
+    private TaggingResults AnalyzeWithClientPreferences(
+        List<AzureResource> resources,
+        ClientAssessmentConfiguration clientConfig)
+    {
+        _logger.LogInformation("Running client-preference-aware tagging analysis for {ResourceCount} resources", resources.Count);
+
+        var results = new TaggingResults
+        {
+            TotalResources = resources.Count,
+            TaggedResources = resources.Count(r => r.HasTags)
+        };
+
+        results.TagCoveragePercentage = results.TotalResources > 0
+            ? Math.Round((decimal)results.TaggedResources / results.TotalResources * 100, 2)
+            : 100m;
+
+        // Use client-specific required tags
+        var clientRequiredTags = clientConfig.GetEffectiveRequiredTags();
+
+        // Analyze tag usage frequency
+        results.TagUsageFrequency = AnalyzeTagUsageFrequency(resources);
+
+        // Find missing required tags based on client preferences
+        results.MissingRequiredTags = FindMissingRequiredTags(resources, clientRequiredTags);
+
+        // Find violations with client preference context
+        results.Violations = FindTaggingViolationsWithPreferences(resources, clientConfig).ToList();
+
+        // Calculate score based on client preferences
+        results.Score = CalculatePreferenceBasedTaggingScore(results, clientConfig);
+
+        _logger.LogInformation("Client-preference-aware tagging analysis completed. Score: {Score}%, Coverage: {Coverage}%, Client tags: {ClientTags}",
+            results.Score, results.TagCoveragePercentage, string.Join(", ", clientRequiredTags));
+
+        return results;
+    }
+
+    // Standard analysis method (synchronous)
+    private TaggingResults AnalyzeTaggingSync(List<AzureResource> resources, ClientAssessmentConfiguration? clientConfig)
+    {
         var results = new TaggingResults
         {
             TotalResources = resources.Count,
@@ -65,7 +130,7 @@ public class TaggingAnalyzer : ITaggingAnalyzer
         results.TagUsageFrequency = AnalyzeTagUsageFrequency(resources);
 
         // Find missing required tags
-        results.MissingRequiredTags = FindMissingRequiredTags(resources);
+        results.MissingRequiredTags = FindMissingRequiredTags(resources, _commonRequiredTags);
 
         // Find violations
         results.Violations = FindTaggingViolations(resources).ToList();
@@ -73,10 +138,10 @@ public class TaggingAnalyzer : ITaggingAnalyzer
         // Calculate overall score
         results.Score = CalculateTaggingScore(results);
 
-        _logger.LogInformation("Tagging analysis completed. Score: {Score}%, Coverage: {Coverage}%",
+        _logger.LogInformation("Standard tagging analysis completed. Score: {Score}%, Coverage: {Coverage}%",
             results.Score, results.TagCoveragePercentage);
 
-        return Task.FromResult(results);
+        return results;
     }
 
     private Dictionary<string, int> AnalyzeTagUsageFrequency(List<AzureResource> resources)
@@ -102,11 +167,11 @@ public class TaggingAnalyzer : ITaggingAnalyzer
             .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
     }
 
-    private List<string> FindMissingRequiredTags(List<AzureResource> resources)
+    private List<string> FindMissingRequiredTags(List<AzureResource> resources, IEnumerable<string> requiredTags)
     {
         var missingTags = new List<string>();
 
-        foreach (var requiredTag in _commonRequiredTags)
+        foreach (var requiredTag in requiredTags)
         {
             var resourcesWithTag = resources.Count(r =>
                 r.Tags.Keys.Any(k => k.Equals(requiredTag, StringComparison.OrdinalIgnoreCase)));
@@ -119,6 +184,93 @@ public class TaggingAnalyzer : ITaggingAnalyzer
         }
 
         return missingTags;
+    }
+
+    private IEnumerable<TaggingViolation> FindTaggingViolationsWithPreferences(
+        List<AzureResource> resources,
+        ClientAssessmentConfiguration clientConfig)
+    {
+        var clientRequiredTags = clientConfig.GetEffectiveRequiredTags();
+        var enforcementStrict = clientConfig.EnforceTagCompliance;
+
+        foreach (var resource in resources)
+        {
+            // Check if critical resource types are missing tags entirely
+            if (ShouldRequireTags(resource.Type) && !resource.HasTags)
+            {
+                var severity = enforcementStrict ? "High" : "Medium";
+                yield return new TaggingViolation
+                {
+                    ResourceId = resource.Id,
+                    ResourceName = resource.Name,
+                    ResourceType = resource.Type,
+                    ViolationType = "NoTags",
+                    Issue = "Critical resource type has no tags",
+                    MissingTags = clientRequiredTags.ToList(),
+                    Severity = severity
+                };
+                continue;
+            }
+
+            // Check for missing client-required tags
+            var missingClientTags = new List<string>();
+            foreach (var requiredTag in clientRequiredTags)
+            {
+                if (!resource.Tags.Keys.Any(k => k.Equals(requiredTag, StringComparison.OrdinalIgnoreCase)))
+                {
+                    missingClientTags.Add(requiredTag);
+                }
+            }
+
+            if (missingClientTags.Any())
+            {
+                var severity = enforcementStrict ? "High" :
+                              missingClientTags.Count > 2 ? "High" : "Medium";
+                yield return new TaggingViolation
+                {
+                    ResourceId = resource.Id,
+                    ResourceName = resource.Name,
+                    ResourceType = resource.Type,
+                    ViolationType = "MissingClientRequiredTags",
+                    Issue = $"Missing client-required tags: {string.Join(", ", missingClientTags)}",
+                    MissingTags = missingClientTags,
+                    Severity = severity
+                };
+            }
+
+            // Check for empty tag values
+            var emptyTags = resource.Tags.Where(kvp => string.IsNullOrWhiteSpace(kvp.Value)).ToList();
+            if (emptyTags.Any())
+            {
+                var severity = enforcementStrict ? "High" : "Medium";
+                yield return new TaggingViolation
+                {
+                    ResourceId = resource.Id,
+                    ResourceName = resource.Name,
+                    ResourceType = resource.Type,
+                    ViolationType = "EmptyTagValues",
+                    Issue = $"Tags with empty values: {string.Join(", ", emptyTags.Select(t => t.Key))}",
+                    MissingTags = emptyTags.Select(t => t.Key).ToList(),
+                    Severity = severity
+                };
+            }
+
+            // Check for inconsistent tag naming (case sensitivity)
+            var inconsistentTags = FindInconsistentTagNames(resource.Tags.Keys);
+            if (inconsistentTags.Any())
+            {
+                yield return new TaggingViolation
+                {
+                    ResourceId = resource.Id,
+                    ResourceName = resource.Name,
+                    ResourceType = resource.Type,
+                    ViolationType = "InconsistentTagNaming",
+                    Issue = $"Inconsistent tag naming: {string.Join(", ", inconsistentTags)}",
+                    MissingTags = inconsistentTags,
+                    Severity = "Low"
+                };
+            }
+        }
     }
 
     private IEnumerable<TaggingViolation> FindTaggingViolations(List<AzureResource> resources)
@@ -216,6 +368,44 @@ public class TaggingAnalyzer : ITaggingAnalyzer
         }
 
         return inconsistent;
+    }
+
+    private decimal CalculatePreferenceBasedTaggingScore(TaggingResults results, ClientAssessmentConfiguration clientConfig)
+    {
+        var scoringFactors = new List<decimal>();
+
+        // Tag coverage (30% weight)
+        scoringFactors.Add(results.TagCoveragePercentage * 0.3m);
+
+        // Client-required tag coverage (40% weight)
+        var clientRequiredTags = clientConfig.GetEffectiveRequiredTags();
+        var clientTagCoverage = 100m;
+        if (clientRequiredTags.Any())
+        {
+            clientTagCoverage = (decimal)(clientRequiredTags.Count() - results.MissingRequiredTags.Count) / clientRequiredTags.Count() * 100;
+        }
+        scoringFactors.Add(clientTagCoverage * 0.4m);
+
+        // Violation penalty (30% weight)
+        var violationPenalty = 0m;
+        if (results.TotalResources > 0)
+        {
+            var highSeverityViolations = results.Violations.Count(v => v.Severity == "High");
+            var mediumSeverityViolations = results.Violations.Count(v => v.Severity == "Medium");
+            var lowSeverityViolations = results.Violations.Count(v => v.Severity == "Low");
+
+            // Adjust penalty based on client enforcement level
+            var penaltyMultiplier = clientConfig.EnforceTagCompliance ? 1.5m : 1.0m;
+            violationPenalty = (highSeverityViolations * 10 + mediumSeverityViolations * 5 + lowSeverityViolations * 2) * penaltyMultiplier;
+            violationPenalty = Math.Min(violationPenalty, 100); // Cap at 100%
+        }
+        scoringFactors.Add((100 - violationPenalty) * 0.3m);
+
+        var finalScore = Math.Round(scoringFactors.Sum(), 2);
+        _logger.LogInformation("Preference-based tagging score calculated: {Score}% (coverage: {Coverage}%, client compliance: {ClientCompliance}%)",
+            finalScore, results.TagCoveragePercentage, clientTagCoverage);
+
+        return finalScore;
     }
 
     private decimal CalculateTaggingScore(TaggingResults results)

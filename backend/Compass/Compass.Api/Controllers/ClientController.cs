@@ -17,17 +17,20 @@ public class ClientController : ControllerBase
     private readonly CompassDbContext _context;
     private readonly IClientRepository _clientRepository;
     private readonly IAssessmentRepository _assessmentRepository;
+    private readonly IClientPreferencesRepository _clientPreferencesRepository;  // ADD THIS
     private readonly ILogger<ClientController> _logger;
 
     public ClientController(
         CompassDbContext context,
         IClientRepository clientRepository,
         IAssessmentRepository assessmentRepository,
+        IClientPreferencesRepository clientPreferencesRepository,  // ADD THIS
         ILogger<ClientController> logger)
     {
         _context = context;
         _clientRepository = clientRepository;
         _assessmentRepository = assessmentRepository;
+        _clientPreferencesRepository = clientPreferencesRepository;  // ADD THIS
         _logger = logger;
     }
 
@@ -46,13 +49,23 @@ public class ClientController : ControllerBase
                 ? await _clientRepository.GetActiveByOrganizationIdAsync(organizationId.Value)
                 : await _clientRepository.SearchClientsAsync(organizationId.Value, search);
 
+            var clientList = clients.ToList();
             var clientSummaries = new List<ClientSummaryDto>();
 
-            foreach (var client in clients)
+            // EFFICIENT APPROACH: Get all clients with preferences in one query
+            var clientIds = clientList.Select(c => c.ClientId).ToList();
+            var clientsWithPreferences = await _context.ClientPreferences
+                .Where(cp => clientIds.Contains(cp.ClientId) &&
+                            cp.OrganizationId == organizationId.Value &&
+                            cp.IsActive)
+                .Select(cp => cp.ClientId)
+                .ToHashSetAsync();
+
+            foreach (var client in clientList)
             {
                 // Get client statistics
                 var assessmentCount = await _context.Assessments
-                .CountAsync(a => a.ClientId == client.ClientId);
+                    .CountAsync(a => a.ClientId == client.ClientId);
 
                 var environmentCount = await _context.AzureEnvironments
                     .CountAsync(e => e.ClientId == client.ClientId);
@@ -73,8 +86,13 @@ public class ClientController : ControllerBase
                     ClientId = client.ClientId,
                     Name = client.Name,
                     Industry = client.Industry,
+                    Description = client.Description,  // Add missing fields
                     ContactName = client.ContactName,
                     ContactEmail = client.ContactEmail,
+                    ContactPhone = client.ContactPhone,  // Add missing fields
+                    City = client.City,  // Add missing fields
+                    State = client.State,  // Add missing fields
+                    Country = client.Country,  // Add missing fields
                     Status = client.Status,
                     ContractStartDate = client.ContractStartDate,
                     ContractEndDate = client.ContractEndDate,
@@ -82,7 +100,10 @@ public class ClientController : ControllerBase
                     EnvironmentCount = environmentCount,
                     SubscriptionCount = subscriptionCount,
                     CreatedDate = client.CreatedDate,
-                    HasActiveContract = client.HasActiveContract
+                    HasActiveContract = client.HasActiveContract,
+
+                    // CHECK IF CLIENT HAS PREFERENCES
+                    HasPreferences = clientsWithPreferences.Contains(client.ClientId)
                 });
             }
 
@@ -649,8 +670,13 @@ public class ClientSummaryDto
     public Guid ClientId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Industry { get; set; }
+    public string? Description { get; set; }  // Add this field that was missing
     public string? ContactName { get; set; }
     public string? ContactEmail { get; set; }
+    public string? ContactPhone { get; set; }  // Add this field that was missing
+    public string? City { get; set; }  // Add this field that was missing
+    public string? State { get; set; }  // Add this field that was missing
+    public string? Country { get; set; }  // Add this field that was missing
     public string Status { get; set; } = string.Empty;
     public DateTime? ContractStartDate { get; set; }
     public DateTime? ContractEndDate { get; set; }
@@ -659,6 +685,9 @@ public class ClientSummaryDto
     public int SubscriptionCount { get; set; }
     public DateTime CreatedDate { get; set; }
     public bool HasActiveContract { get; set; }
+
+    // ADD THIS FIELD
+    public bool HasPreferences { get; set; }
 }
 
 public class ClientDetailDto : ClientSummaryDto

@@ -97,13 +97,26 @@ public class ClientPreferencesRepository : IClientPreferencesRepository
                 throw new InvalidOperationException($"Client preferences with ID {clientPreferences.ClientPreferencesId} not found");
             }
 
-            // Update properties
+            // Update legacy properties
             existingPreferences.AllowedNamingPatterns = clientPreferences.AllowedNamingPatterns;
             existingPreferences.RequiredNamingElements = clientPreferences.RequiredNamingElements;
             existingPreferences.EnvironmentIndicators = clientPreferences.EnvironmentIndicators;
             existingPreferences.RequiredTags = clientPreferences.RequiredTags;
             existingPreferences.EnforceTagCompliance = clientPreferences.EnforceTagCompliance;
             existingPreferences.ComplianceFrameworks = clientPreferences.ComplianceFrameworks;
+
+            // Update NEW enhanced properties
+            existingPreferences.NamingStyle = clientPreferences.NamingStyle;
+            existingPreferences.TaggingApproach = clientPreferences.TaggingApproach;
+            existingPreferences.EnvironmentSize = clientPreferences.EnvironmentSize;
+            existingPreferences.OrganizationMethod = clientPreferences.OrganizationMethod;
+            existingPreferences.EnvironmentIndicatorLevel = clientPreferences.EnvironmentIndicatorLevel;
+            existingPreferences.SelectedTags = clientPreferences.SelectedTags;
+            existingPreferences.CustomTags = clientPreferences.CustomTags;
+            existingPreferences.SelectedCompliances = clientPreferences.SelectedCompliances;
+            existingPreferences.NoSpecificRequirements = clientPreferences.NoSpecificRequirements;
+
+            // Update audit fields
             existingPreferences.LastModifiedDate = DateTime.UtcNow;
             existingPreferences.LastModifiedByCustomerId = clientPreferences.LastModifiedByCustomerId;
 

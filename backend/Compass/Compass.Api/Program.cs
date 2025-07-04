@@ -56,7 +56,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "Compass API",
         Version = "v1",
-        Description = "Azure Governance Assessment Platform API"
+        Description = "Azure Governance Assessment Platform API with Client Preferences"
     });
 
     // Add JWT Authentication to Swagger
@@ -91,7 +91,7 @@ builder.Services.AddHttpContextAccessor();
 //DB Seeder
 builder.Services.AddScoped<TestDataSeeder>();
 
-// Organization Data Migration Service - NEW
+// Organization Data Migration Service
 builder.Services.AddScoped<OrganizationDataMigrationService>();
 
 // Add DbContext - Key Vault connection string required
@@ -173,32 +173,44 @@ builder.Services.Configure<Compass.Core.Services.EmailOptions>(options =>
     options.NotificationsAddress = emailSection["NotificationsAddress"] ?? "";
 });
 
-// Register repositories
+// ===== REPOSITORY REGISTRATIONS =====
 builder.Services.AddScoped<IAssessmentRepository, AssessmentRepository>();
 builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
 builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
 builder.Services.AddScoped<IUsageMetricRepository, UsageMetricRepository>();
 builder.Services.AddScoped<IClientRepository, ClientRepository>();
-builder.Services.AddScoped<Compass.Data.Repositories.IClientPreferencesRepository, Compass.Data.Repositories.ClientPreferencesRepository>();
 
+// ===== CLIENT PREFERENCES REPOSITORY (NEW) =====
+builder.Services.AddScoped<IClientPreferencesRepository, ClientPreferencesRepository>();
 
-// Register services
+// ===== ASSESSMENT SERVICES WITH CLIENT PREFERENCES SUPPORT =====
+// Assessment Orchestrator (with client preferences support)
 builder.Services.AddScoped<IAssessmentOrchestrator, AssessmentOrchestrator>();
-builder.Services.AddScoped<IAzureResourceGraphService, AzureResourceGraphService>();
+
+// Assessment Analyzers - Use preference-aware versions
 builder.Services.AddScoped<INamingConventionAnalyzer, NamingConventionAnalyzer>();
+builder.Services.AddScoped<IPreferenceAwareNamingAnalyzer, PreferenceAwareNamingAnalyzer>();
+
+// Standard analyzers (TODO: Create preference-aware tagging analyzer)
 builder.Services.AddScoped<ITaggingAnalyzer, TaggingAnalyzer>();
+
 builder.Services.AddScoped<IDependencyAnalyzer, DependencyAnalyzer>();
+
+// ===== AZURE SERVICES =====
+builder.Services.AddScoped<IAzureResourceGraphService, AzureResourceGraphService>();
+
+// ===== BUSINESS SERVICES =====
 builder.Services.AddScoped<ILicenseValidationService, LicenseValidationService>();
 builder.Services.AddScoped<IUsageTrackingService, UsageTrackingService>();
 builder.Services.AddScoped<IClientService, ClientService>();
 
-// Register authentication services
+// ===== AUTHENTICATION SERVICES =====
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
-// Register MFA service
+// ===== MFA SERVICES =====
 builder.Services.AddScoped<IMfaService, MfaService>();
 
 // Add CORS
@@ -219,6 +231,7 @@ builder.Services.AddLogging(logging =>
 {
     logging.AddConsole();
     logging.AddDebug();
+    logging.SetMinimumLevel(LogLevel.Information);
 });
 
 // Add health checks
@@ -235,6 +248,7 @@ if (app.Environment.IsDevelopment())
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Compass API v1");
         c.DisplayRequestDuration();
+        c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
     });
 }
 
@@ -252,19 +266,26 @@ app.MapGet("/health", () => Results.Ok(new
 {
     Status = "Healthy",
     Timestamp = DateTime.UtcNow,
-    Version = "1.0.0"
+    Version = "1.0.0",
+    Features = new[]
+    {
+        "Client Preferences System",
+        "Preference-Aware Assessments",
+        "OAuth Integration",
+        "Multi-Tenant Architecture"
+    }
 }));
 
 app.MapHealthChecks("/health/db");
 
-// Organization migration status endpoint - NEW
+// Organization migration status endpoint
 app.MapGet("/admin/migration-status", async (OrganizationDataMigrationService migrationService) =>
 {
     var status = await migrationService.GetMigrationStatus();
     return Results.Ok(status);
 });
 
-// Organization migration endpoint - NEW  
+// Organization migration endpoint
 app.MapPost("/admin/migrate-organizations", async (OrganizationDataMigrationService migrationService) =>
 {
     try
@@ -277,5 +298,34 @@ app.MapPost("/admin/migrate-organizations", async (OrganizationDataMigrationServ
         return Results.Problem($"Migration failed: {ex.Message}");
     }
 });
+
+// Client Preferences API status endpoint (for development/testing)
+app.MapGet("/api/client-preferences/status", () => Results.Ok(new
+{
+    Status = "Client Preferences System Active",
+    Features = new[]
+    {
+        "Template-based preference configuration",
+        "Preference-aware assessment analysis",
+        "Enhanced recommendations",
+        "Organization-scoped security",
+        "Real-time preference validation"
+    },
+    Endpoints = new[]
+    {
+        "GET /api/ClientPreferences/client/{clientId}",
+        "POST /api/ClientPreferences/client/{clientId}",
+        "DELETE /api/ClientPreferences/client/{clientId}",
+        "GET /api/ClientPreferences/client/{clientId}/exists",
+        "GET /api/ClientPreferences"
+    }
+}));
+
+// Log startup information
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("Compass API starting up with Client Preferences integration");
+logger.LogInformation("Key Vault: {KeyVaultName}", keyVaultName);
+logger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);
+logger.LogInformation("Client Preferences System: ACTIVE");
 
 app.Run();

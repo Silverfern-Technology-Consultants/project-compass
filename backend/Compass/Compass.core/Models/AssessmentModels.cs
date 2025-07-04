@@ -368,15 +368,257 @@ public class ImplementationPreferences
 
 public class ClientAssessmentConfiguration
 {
-    public Guid CustomerId { get; set; }
-    public List<string> RequiredTags { get; set; } = new();
-    public List<string> NamingConventions { get; set; } = new();
-    public List<string> ComplianceFrameworks { get; set; } = new();
-    public bool EnvironmentSeparationRequired { get; set; }
-    public DateTime ConfigurationDate { get; set; }
+    public Guid ClientId { get; set; }
+    public string ClientName { get; set; } = string.Empty;
 
-    // Missing properties that PreferenceAwareNamingAnalyzer expects:
+    // Legacy naming preferences (for backward compatibility)
     public List<string> AllowedNamingPatterns { get; set; } = new();
     public List<string> RequiredNamingElements { get; set; } = new();
-    public bool EnvironmentIndicators { get; set; }
+    public bool EnvironmentIndicators { get; set; } = false;
+
+    // Enhanced naming preferences
+    public string? NamingStyle { get; set; } // 'standardized', 'mixed', 'legacy'
+    public string? EnvironmentSize { get; set; } // 'small', 'medium', 'large', 'enterprise'
+    public string? OrganizationMethod { get; set; } // 'environment', 'application', 'business-unit'
+    public string? EnvironmentIndicatorLevel { get; set; } // 'required', 'recommended', 'optional', 'none'
+
+    // Legacy tagging preferences (for backward compatibility)
+    public List<string> RequiredTags { get; set; } = new();
+    public bool EnforceTagCompliance { get; set; } = true;
+
+    // Enhanced tagging preferences
+    public string? TaggingApproach { get; set; } // 'comprehensive', 'basic', 'minimal', 'custom'
+    public List<string> SelectedTags { get; set; } = new(); // Combined standard + custom tags
+    public List<string> CustomTags { get; set; } = new(); // User-defined custom tags
+
+    // Compliance preferences
+    public List<string> ComplianceFrameworks { get; set; } = new(); // Legacy
+    public List<string> SelectedCompliances { get; set; } = new(); // Enhanced
+    public bool NoSpecificRequirements { get; set; } = false;
+
+    // Legacy properties (keep for backward compatibility)
+    public Guid CustomerId { get; set; } // Legacy - use ClientId instead
+    public List<string> NamingConventions { get; set; } = new(); // Legacy - use AllowedNamingPatterns
+    public bool EnvironmentSeparationRequired { get; set; } // Legacy - use EnvironmentIndicators
+    public DateTime ConfigurationDate { get; set; } = DateTime.UtcNow;
+
+    // Helper methods
+    public bool HasNamingPreferences => AllowedNamingPatterns.Any() || RequiredNamingElements.Any() || !string.IsNullOrEmpty(NamingStyle);
+    public bool HasTaggingPreferences => RequiredTags.Any() || SelectedTags.Any() || !string.IsNullOrEmpty(TaggingApproach);
+    public bool HasCompliancePreferences => ComplianceFrameworks.Any() || SelectedCompliances.Any();
+
+    /// <summary>
+    /// Get effective required tags combining legacy and enhanced settings
+    /// </summary>
+    public List<string> GetEffectiveRequiredTags()
+    {
+        var effectiveTags = new List<string>();
+
+        // Add legacy required tags
+        effectiveTags.AddRange(RequiredTags);
+
+        // Add enhanced selected tags
+        effectiveTags.AddRange(SelectedTags);
+
+        // Add custom tags
+        effectiveTags.AddRange(CustomTags);
+
+        return effectiveTags.Distinct().ToList();
+    }
+
+    /// <summary>
+    /// Get effective naming patterns combining legacy and enhanced settings
+    /// </summary>
+    public List<string> GetEffectiveNamingPatterns()
+    {
+        var effectivePatterns = new List<string>();
+
+        // Add explicit allowed patterns
+        effectivePatterns.AddRange(AllowedNamingPatterns);
+
+        // Add legacy naming conventions
+        effectivePatterns.AddRange(NamingConventions);
+
+        // Infer patterns from naming style
+        if (!string.IsNullOrEmpty(NamingStyle))
+        {
+            switch (NamingStyle.ToLowerInvariant())
+            {
+                case "standardized":
+                    effectivePatterns.AddRange(new[] { "Kebab-case", "Lowercase" });
+                    break;
+                case "legacy":
+                    effectivePatterns.AddRange(new[] { "Other", "Uppercase", "Lowercase" });
+                    break;
+                case "mixed":
+                    // Allow multiple patterns for mixed environments
+                    break;
+            }
+        }
+
+        return effectivePatterns.Distinct().ToList();
+    }
+
+    /// <summary>
+    /// Check if environment indicators are required based on preferences
+    /// </summary>
+    public bool AreEnvironmentIndicatorsRequired()
+    {
+        return EnvironmentIndicators ||
+               EnvironmentSeparationRequired || // Legacy
+               EnvironmentIndicatorLevel == "required" ||
+               RequiredNamingElements.Contains("Environment indicator");
+    }
+
+    /// <summary>
+    /// Get the strictness level for compliance checking
+    /// </summary>
+    public string GetComplianceStrictnessLevel()
+    {
+        if (NoSpecificRequirements) return "none";
+        if (SelectedCompliances.Any(c => c.Contains("SOC") || c.Contains("PCI") || c.Contains("HIPAA"))) return "high";
+        if (ComplianceFrameworks.Any(c => c.Contains("SOC") || c.Contains("PCI") || c.Contains("HIPAA"))) return "high";
+        if (SelectedCompliances.Any() || ComplianceFrameworks.Any()) return "medium";
+        return "low";
+    }
+
+    /// <summary>
+    /// Get tagging enforcement level based on client preferences
+    /// </summary>
+    public string GetTaggingEnforcementLevel()
+    {
+        if (!EnforceTagCompliance) return "none";
+
+        return TaggingApproach?.ToLowerInvariant() switch
+        {
+            "comprehensive" => "strict",
+            "basic" => "moderate",
+            "minimal" => "light",
+            "custom" => "custom",
+            _ => "moderate"
+        };
+    }
+
+    /// <summary>
+    /// Get expected environment patterns based on organization method
+    /// </summary>
+    public List<string> GetExpectedEnvironmentPatterns()
+    {
+        var patterns = new List<string>();
+
+        if (AreEnvironmentIndicatorsRequired())
+        {
+            switch (OrganizationMethod?.ToLowerInvariant())
+            {
+                case "environment":
+                    patterns.AddRange(new[] { "dev", "test", "staging", "prod", "production" });
+                    break;
+                case "application":
+                    patterns.AddRange(new[] { "app", "web", "api", "db", "cache" });
+                    break;
+                case "business-unit":
+                    patterns.AddRange(new[] { "hr", "finance", "ops", "sales", "marketing" });
+                    break;
+                default:
+                    patterns.AddRange(new[] { "dev", "test", "prod" });
+                    break;
+            }
+        }
+
+        return patterns;
+    }
+
+    /// <summary>
+    /// Get severity adjustment for violations based on client preferences
+    /// </summary>
+    public string AdjustViolationSeverity(string baseSeverity, string violationType)
+    {
+        // Increase severity for client preference violations
+        if (violationType.Contains("ClientPreference") || violationType.Contains("RequiredElement"))
+        {
+            return baseSeverity switch
+            {
+                "Low" => "Medium",
+                "Medium" => "High",
+                "High" => "Critical",
+                _ => baseSeverity
+            };
+        }
+
+        // Adjust based on compliance strictness
+        var strictnessLevel = GetComplianceStrictnessLevel();
+        if (strictnessLevel == "high" && (violationType.Contains("Tag") || violationType.Contains("Naming")))
+        {
+            return baseSeverity switch
+            {
+                "Low" => "Medium",
+                "Medium" => "High",
+                _ => baseSeverity
+            };
+        }
+
+        return baseSeverity;
+    }
+
+    /// <summary>
+    /// Generate client-specific recommendations based on preferences
+    /// </summary>
+    public List<string> GenerateClientSpecificRecommendations(string category)
+    {
+        var recommendations = new List<string>();
+
+        switch (category.ToLowerInvariant())
+        {
+            case "naming":
+            case "namingconvention":
+                if (HasNamingPreferences)
+                {
+                    var patterns = GetEffectiveNamingPatterns();
+                    if (patterns.Any())
+                    {
+                        recommendations.Add($"Apply client-preferred naming patterns: {string.Join(", ", patterns)}");
+                    }
+
+                    if (AreEnvironmentIndicatorsRequired())
+                    {
+                        var envPatterns = GetExpectedEnvironmentPatterns();
+                        recommendations.Add($"Include environment indicators: {string.Join(", ", envPatterns)}");
+                    }
+                }
+                break;
+
+            case "tagging":
+                if (HasTaggingPreferences)
+                {
+                    var requiredTags = GetEffectiveRequiredTags();
+                    if (requiredTags.Any())
+                    {
+                        recommendations.Add($"Apply client-required tags: {string.Join(", ", requiredTags.Take(5))}");
+                    }
+
+                    var enforcementLevel = GetTaggingEnforcementLevel();
+                    if (enforcementLevel != "none")
+                    {
+                        recommendations.Add($"Follow {enforcementLevel} tagging enforcement as per client preferences");
+                    }
+                }
+                break;
+
+            case "compliance":
+                if (HasCompliancePreferences && !NoSpecificRequirements)
+                {
+                    if (SelectedCompliances.Any() || ComplianceFrameworks.Any())
+                    {
+                        var allCompliances = SelectedCompliances.Concat(ComplianceFrameworks).Distinct();
+                        recommendations.Add($"Ensure compliance with: {string.Join(", ", allCompliances)}");
+                    }
+
+                    var strictness = GetComplianceStrictnessLevel();
+                    recommendations.Add($"Apply {strictness} compliance standards as specified by client");
+                }
+                break;
+        }
+
+        return recommendations;
+    }
 }

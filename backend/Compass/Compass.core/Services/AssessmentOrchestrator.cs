@@ -20,7 +20,8 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
     private readonly ITaggingAnalyzer _taggingAnalyzer;
     private readonly IDependencyAnalyzer _dependencyAnalyzer;
     private readonly IAssessmentRepository _assessmentRepository;
-    private readonly IOAuthService _oauthService; // NEW: Added OAuth service
+    private readonly IOAuthService _oauthService;
+    private readonly IClientPreferencesRepository _clientPreferencesRepository; // NEW
     private readonly ILogger<AssessmentOrchestrator> _logger;
 
     public AssessmentOrchestrator(
@@ -29,7 +30,8 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         ITaggingAnalyzer taggingAnalyzer,
         IDependencyAnalyzer dependencyAnalyzer,
         IAssessmentRepository assessmentRepository,
-        IOAuthService oauthService, // NEW: Added OAuth service parameter
+        IOAuthService oauthService,
+        IClientPreferencesRepository clientPreferencesRepository, // NEW
         ILogger<AssessmentOrchestrator> logger)
     {
         _resourceGraphService = resourceGraphService;
@@ -37,7 +39,8 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         _taggingAnalyzer = taggingAnalyzer;
         _dependencyAnalyzer = dependencyAnalyzer;
         _assessmentRepository = assessmentRepository;
-        _oauthService = oauthService; // NEW: Assign OAuth service
+        _oauthService = oauthService;
+        _clientPreferencesRepository = clientPreferencesRepository; // NEW
         _logger = logger;
     }
 
@@ -55,8 +58,8 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
             Status = AssessmentStatus.Pending.ToString(),
             StartedDate = DateTime.UtcNow,
             CustomerId = request.CustomerId,
-            OrganizationId = request.OrganizationId, // ✅ NEW: Set organization ID
-            CustomerName = "Organization Member" // Will be updated with actual customer name from context
+            OrganizationId = request.OrganizationId,
+            CustomerName = "Organization Member"
         };
 
         await _assessmentRepository.CreateAsync(assessment);
@@ -101,7 +104,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         // Update status to InProgress
         await _assessmentRepository.UpdateStatusAsync(assessmentId, AssessmentStatus.InProgress.ToString());
 
-        // NEW: Get environment details to check for OAuth credentials
+        // Get environment details to check for OAuth credentials
         var environment = await _assessmentRepository.GetEnvironmentByIdAsync(request.EnvironmentId);
         if (environment == null)
         {
@@ -111,7 +114,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
             return;
         }
 
-        // FIXED: Handle nullable OrganizationId
+        // Handle nullable OrganizationId
         if (!request.OrganizationId.HasValue)
         {
             _logger.LogError("OrganizationId is null for assessment {AssessmentId}", assessmentId);
@@ -121,7 +124,42 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
 
         var organizationId = request.OrganizationId.Value;
 
-        // 1. Collect Azure resources - FIXED: Use OAuth if available
+        // NEW: Get client preferences for preference-aware analysis
+        ClientAssessmentConfiguration? clientConfig = null;
+        if (environment.ClientId.HasValue && request.UseClientPreferences)
+        {
+            try
+            {
+                var clientPreferences = await _clientPreferencesRepository.GetByClientIdAsync(environment.ClientId.Value, organizationId);
+                if (clientPreferences != null)
+                {
+                    clientConfig = MapToClientConfig(clientPreferences);
+                    _logger.LogInformation("Using client preferences for assessment {AssessmentId}, client {ClientId}. Naming style: {NamingStyle}, Tagging approach: {TaggingApproach}",
+                        assessmentId, environment.ClientId.Value, clientConfig.NamingStyle, clientConfig.TaggingApproach);
+                }
+                else
+                {
+                    _logger.LogInformation("No client preferences found for assessment {AssessmentId}, client {ClientId}, using default analysis",
+                        assessmentId, environment.ClientId.Value);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to retrieve client preferences for assessment {AssessmentId}, continuing with default analysis",
+                    assessmentId);
+            }
+        }
+        else if (environment.ClientId.HasValue && !request.UseClientPreferences)
+        {
+            _logger.LogInformation("Client preferences disabled for assessment {AssessmentId}, client {ClientId}, using standard analysis",
+                assessmentId, environment.ClientId.Value);
+        }
+        else
+        {
+            _logger.LogInformation("No client associated with assessment {AssessmentId}, using standard analysis", assessmentId);
+        }
+
+        // 1. Collect Azure resources - Use OAuth if available
         List<AzureResource> resources;
         bool oauthAttempted = false;
 
@@ -209,28 +247,70 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
 
         _logger.LogInformation("Found {ResourceCount} resources for enhanced assessment {AssessmentId}", resources.Count, assessmentId);
 
-        // NEW: Save resources to database for historical data
+        // Save resources to database for historical data
         await SaveAssessmentResourcesAsync(assessmentId, resources);
 
-        // 2. Run enhanced analyses based on assessment type
+        // 2. Run enhanced analyses based on assessment type with client preferences
         NamingConventionResults? namingResults = null;
         TaggingResults? taggingResults = null;
         DependencyAnalysisResults? dependencyResults = null;
 
         if (request.Type == AssessmentType.NamingConvention || request.Type == AssessmentType.Full)
         {
-            _logger.LogInformation("Running enhanced naming convention analysis...");
-            namingResults = await _namingAnalyzer.AnalyzeNamingConventionsAsync(resources, cancellationToken);
-            _logger.LogInformation("Enhanced naming analysis completed. Score: {Score}%, Pattern Distribution: {PatternCount} patterns detected",
-                namingResults.Score, namingResults.PatternDistribution.Count);
+            if (clientConfig != null)
+            {
+                _logger.LogInformation("Running preference-aware naming convention analysis with client config: {AllowedPatterns} patterns, {RequiredElements} required elements",
+                    string.Join(", ", clientConfig.GetEffectiveNamingPatterns()),
+                    string.Join(", ", clientConfig.RequiredNamingElements));
+
+                // Use PreferenceAwareNamingAnalyzer
+                if (_namingAnalyzer is IPreferenceAwareNamingAnalyzer preferenceAwareAnalyzer)
+                {
+                    namingResults = await preferenceAwareAnalyzer.AnalyzeNamingConventionsAsync(resources, clientConfig, cancellationToken);
+                    _logger.LogInformation("Client-preference-aware naming analysis completed. Score: {Score}%, Pattern compliance: {Compliance}%",
+                        namingResults.Score, namingResults.Consistency.ClientPreferenceCompliance);
+                }
+                else
+                {
+                    _logger.LogWarning("PreferenceAwareNamingAnalyzer not available, falling back to standard analysis");
+                    namingResults = await _namingAnalyzer.AnalyzeNamingConventionsAsync(resources, cancellationToken);
+                }
+            }
+            else
+            {
+                _logger.LogInformation("Running standard naming convention analysis...");
+                namingResults = await _namingAnalyzer.AnalyzeNamingConventionsAsync(resources, cancellationToken);
+                _logger.LogInformation("Standard naming analysis completed. Score: {Score}%, Pattern Distribution: {PatternCount} patterns detected",
+                    namingResults.Score, namingResults.PatternDistribution.Count);
+            }
         }
 
         if (request.Type == AssessmentType.Tagging || request.Type == AssessmentType.Full)
         {
-            _logger.LogInformation("Running enhanced tagging analysis...");
-            taggingResults = await _taggingAnalyzer.AnalyzeTaggingAsync(resources, cancellationToken);
-            _logger.LogInformation("Enhanced tagging analysis completed. Score: {Score}%, Coverage: {Coverage}%",
-                taggingResults.Score, taggingResults.TagCoveragePercentage);
+            if (clientConfig != null)
+            {
+                _logger.LogInformation("Running preference-aware tagging analysis with {TagCount} required tags",
+                    clientConfig.GetEffectiveRequiredTags().Count);
+
+                // Use enhanced tagging analyzer if available
+                if (_taggingAnalyzer is IPreferenceAwareTaggingAnalyzer preferenceAwareTagAnalyzer)
+                {
+                    taggingResults = await preferenceAwareTagAnalyzer.AnalyzeTaggingAsync(resources, clientConfig, cancellationToken);
+                    _logger.LogInformation("Client-preference-aware tagging analysis completed. Score: {Score}%", taggingResults.Score);
+                }
+                else
+                {
+                    _logger.LogWarning("PreferenceAwareTaggingAnalyzer not available, falling back to standard analysis");
+                    taggingResults = await _taggingAnalyzer.AnalyzeTaggingAsync(resources, cancellationToken);
+                }
+            }
+            else
+            {
+                _logger.LogInformation("Running standard tagging analysis...");
+                taggingResults = await _taggingAnalyzer.AnalyzeTaggingAsync(resources, cancellationToken);
+                _logger.LogInformation("Standard tagging analysis completed. Score: {Score}%, Coverage: {Coverage}%",
+                    taggingResults.Score, taggingResults.TagCoveragePercentage);
+            }
         }
 
         // 3. Always run dependency analysis for comprehensive insights
@@ -244,29 +324,89 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         // 4. Calculate overall score
         var overallScore = CalculateOverallScore(namingResults, taggingResults, request.Type);
 
-        // 5. Save enhanced findings
-        await SaveEnhancedAssessmentFindings(assessmentId, namingResults, taggingResults, dependencyResults);
+        // 5. Save enhanced findings with client preference context
+        await SaveEnhancedAssessmentFindings(assessmentId, namingResults, taggingResults, dependencyResults, clientConfig);
 
         // 6. Complete assessment
         await _assessmentRepository.UpdateAssessmentAsync(assessmentId, overallScore, AssessmentStatus.Completed.ToString(), DateTime.UtcNow);
 
-        _logger.LogInformation("Enhanced assessment {AssessmentId} completed successfully with score {Score}%. Analyzed {ResourceCount} resources with detailed dependency mapping",
-            assessmentId, overallScore, resources.Count);
+        var analysisType = clientConfig != null ? "client-preference-aware" : "standard";
+        var preferenceStatus = environment.ClientId.HasValue ?
+            (request.UseClientPreferences ? "enabled" : "disabled") : "not-applicable";
+
+        _logger.LogInformation("Enhanced {AnalysisType} assessment {AssessmentId} completed successfully with score {Score}%. " +
+            "Analyzed {ResourceCount} resources with detailed dependency mapping. " +
+            "Client preferences: {PreferenceStatus}",
+            analysisType, assessmentId, overallScore, resources.Count, preferenceStatus);
+    }
+
+    // NEW: Helper method to map ClientPreferences entity to ClientAssessmentConfiguration
+    private ClientAssessmentConfiguration MapToClientConfig(Compass.Data.Entities.ClientPreferences preferences)
+    {
+        var config = new ClientAssessmentConfiguration
+        {
+            ClientId = preferences.ClientId,
+            ClientName = preferences.Client?.Name ?? "Unknown Client",
+
+            // Legacy fields mapping
+            AllowedNamingPatterns = !string.IsNullOrEmpty(preferences.AllowedNamingPatterns)
+                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(preferences.AllowedNamingPatterns) ?? new List<string>()
+                : new List<string>(),
+            RequiredNamingElements = !string.IsNullOrEmpty(preferences.RequiredNamingElements)
+                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(preferences.RequiredNamingElements) ?? new List<string>()
+                : new List<string>(),
+            EnvironmentIndicators = preferences.EnvironmentIndicators,
+            RequiredTags = !string.IsNullOrEmpty(preferences.RequiredTags)
+                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(preferences.RequiredTags) ?? new List<string>()
+                : new List<string>(),
+            EnforceTagCompliance = preferences.EnforceTagCompliance,
+            ComplianceFrameworks = !string.IsNullOrEmpty(preferences.ComplianceFrameworks)
+                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(preferences.ComplianceFrameworks) ?? new List<string>()
+                : new List<string>(),
+
+            // Enhanced fields mapping
+            NamingStyle = preferences.NamingStyle,
+            TaggingApproach = preferences.TaggingApproach,
+            EnvironmentSize = preferences.EnvironmentSize,
+            OrganizationMethod = preferences.OrganizationMethod,
+            EnvironmentIndicatorLevel = preferences.EnvironmentIndicatorLevel,
+            SelectedTags = !string.IsNullOrEmpty(preferences.SelectedTags)
+                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(preferences.SelectedTags) ?? new List<string>()
+                : new List<string>(),
+            CustomTags = !string.IsNullOrEmpty(preferences.CustomTags)
+                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(preferences.CustomTags) ?? new List<string>()
+                : new List<string>(),
+            SelectedCompliances = !string.IsNullOrEmpty(preferences.SelectedCompliances)
+                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(preferences.SelectedCompliances) ?? new List<string>()
+                : new List<string>(),
+            NoSpecificRequirements = preferences.NoSpecificRequirements
+        };
+
+        return config;
     }
 
     private async Task SaveEnhancedAssessmentFindings(
         Guid assessmentId,
         NamingConventionResults? namingResults,
         TaggingResults? taggingResults,
-        DependencyAnalysisResults? dependencyResults)
+        DependencyAnalysisResults? dependencyResults,
+        ClientAssessmentConfiguration? clientConfig = null)
     {
         var findings = new List<AssessmentFinding>();
 
-        // Save enhanced naming convention findings
+        // Save enhanced naming convention findings with client preference context
         if (namingResults?.Violations != null)
         {
             foreach (var violation in namingResults.Violations)
             {
+                var recommendation = $"Suggested name: {violation.SuggestedName}";
+
+                // Enhance recommendations with client-specific guidance
+                if (clientConfig != null)
+                {
+                    recommendation = EnhanceRecommendationWithClientPreferences(violation, clientConfig);
+                }
+
                 findings.Add(new AssessmentFinding
                 {
                     Id = Guid.NewGuid(),
@@ -277,17 +417,31 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
                     ResourceType = violation.ResourceType,
                     Severity = violation.Severity,
                     Issue = violation.Issue,
-                    Recommendation = $"Suggested name: {violation.SuggestedName}",
+                    Recommendation = recommendation,
                     EstimatedEffort = GetEffortEstimate(violation.ViolationType)
                 });
             }
         }
 
-        // Save tagging findings
+        // Save tagging findings with client preference context
         if (taggingResults?.Violations != null)
         {
             foreach (var violation in taggingResults.Violations)
             {
+                var recommendation = violation.MissingTags.Any()
+                    ? $"Add missing tags: {string.Join(", ", violation.MissingTags)}"
+                    : "Review and fix tag values";
+
+                // Enhance recommendations with client-specific tagging guidance
+                if (clientConfig != null && clientConfig.HasTaggingPreferences)
+                {
+                    var clientTags = clientConfig.GetEffectiveRequiredTags();
+                    if (clientTags.Any())
+                    {
+                        recommendation += $". Based on client preferences, prioritize these tags: {string.Join(", ", clientTags.Take(5))}";
+                    }
+                }
+
                 findings.Add(new AssessmentFinding
                 {
                     Id = Guid.NewGuid(),
@@ -298,15 +452,13 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
                     ResourceType = violation.ResourceType,
                     Severity = violation.Severity,
                     Issue = violation.Issue,
-                    Recommendation = violation.MissingTags.Any()
-                        ? $"Add missing tags: {string.Join(", ", violation.MissingTags)}"
-                        : "Review and fix tag values",
+                    Recommendation = recommendation,
                     EstimatedEffort = violation.MissingTags.Count > 3 ? "High" : "Medium"
                 });
             }
         }
 
-        // Save dependency analysis findings
+        // Save dependency analysis findings (same as before)
         if (dependencyResults != null)
         {
             // Environment separation issues
@@ -329,7 +481,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
 
             // Resource group organization issues
             var inconsistentRGs = dependencyResults.ResourceGroupAnalysis.ResourceGroups
-                .Where(rg => rg.NamingPatterns.Count > 2) // More than 2 different naming patterns
+                .Where(rg => rg.NamingPatterns.Count > 2)
                 .ToList();
 
             foreach (var rg in inconsistentRGs)
@@ -349,7 +501,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
                 });
             }
 
-            // Complex dependency chains (VMs with many dependencies)
+            // Complex dependency chains
             var complexVMs = dependencyResults.VirtualMachineDependencies
                 .Where(vm => vm.NetworkInterfaces.Count + vm.PublicIPs.Count + vm.NetworkSecurityGroups.Count > 5)
                 .ToList();
@@ -374,10 +526,35 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
 
         if (findings.Any())
         {
-            _logger.LogInformation("Saving {FindingCount} enhanced findings for assessment {AssessmentId}", findings.Count, assessmentId);
+            var analysisType = clientConfig != null ? "preference-enhanced" : "standard";
+            _logger.LogInformation("Saving {FindingCount} {AnalysisType} findings for assessment {AssessmentId}",
+                findings.Count, analysisType, assessmentId);
             await _assessmentRepository.CreateFindingsAsync(findings);
         }
     }
+
+    // NEW: Enhance recommendations with client-specific guidance
+    private string EnhanceRecommendationWithClientPreferences(NamingViolation violation, ClientAssessmentConfiguration clientConfig)
+    {
+        var baseRecommendation = $"Suggested name: {violation.SuggestedName}";
+
+        if (violation.ViolationType == "ClientPreferenceViolation" && clientConfig.HasNamingPreferences)
+        {
+            var preferredPatterns = clientConfig.GetEffectiveNamingPatterns();
+            if (preferredPatterns.Any())
+            {
+                return $"{baseRecommendation}. Client prefers {string.Join(" or ", preferredPatterns)} naming pattern.";
+            }
+        }
+
+        if (violation.ViolationType == "MissingRequiredElement" && clientConfig.AreEnvironmentIndicatorsRequired())
+        {
+            return $"{baseRecommendation}. Client requires environment indicators in resource names (e.g., dev, test, prod).";
+        }
+
+        return baseRecommendation;
+    }
+
     private async Task SaveAssessmentResourcesAsync(Guid assessmentId, List<AzureResource> resources)
     {
         _logger.LogInformation("Saving {ResourceCount} resources for assessment {AssessmentId}", resources.Count, assessmentId);
@@ -407,11 +584,14 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         _logger.LogInformation("Successfully saved {ResourceCount} resources for assessment {AssessmentId}",
             assessmentResources.Count, assessmentId);
     }
+
     private string GetEffortEstimate(string violationType)
     {
         return violationType switch
         {
             "InvalidCharacters" => "High",
+            "ClientPreferenceViolation" => "Medium",
+            "MissingRequiredElement" => "High",
             "MissingResourceTypePrefix" => "Medium",
             "NameTooLong" => "Medium",
             "InconsistentPattern" => "Low",
@@ -471,17 +651,13 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
             Recommendations = GenerateEnhancedRecommendations(findings)
         };
 
-        // Add detailed metrics
         result.DetailedMetrics = GenerateDetailedMetrics(findings);
-
         return result;
     }
 
     private List<AssessmentRecommendation> GenerateEnhancedRecommendations(List<AssessmentFinding> findings)
     {
         var recommendations = new List<AssessmentRecommendation>();
-
-        // Group findings by category
         var findingsByCategory = findings.GroupBy(f => f.Category).ToList();
 
         foreach (var categoryGroup in findingsByCategory)
@@ -580,9 +756,12 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         if (violationTypes.Any(vt => vt.Key.Contains("character")))
             actionPlan += "4. Remove invalid characters from resource names\n";
 
-        actionPlan += "5. Create naming templates for each resource type\n";
-        actionPlan += "6. Implement Azure Policy to enforce standards\n";
-        actionPlan += "7. Plan phased rename of non-compliant resources";
+        if (violationTypes.Any(vt => vt.Key.Contains("preference")))
+            actionPlan += "5. Align with client-specific naming preferences\n";
+
+        actionPlan += "6. Create naming templates for each resource type\n";
+        actionPlan += "7. Implement Azure Policy to enforce standards\n";
+        actionPlan += "8. Plan phased rename of non-compliant resources";
 
         return actionPlan;
     }
@@ -607,6 +786,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
             var i when i.Contains("pattern") => "pattern",
             var i when i.Contains("character") => "character",
             var i when i.Contains("length") => "length",
+            var i when i.Contains("preference") => "preference",
             _ => "other"
         };
     }
