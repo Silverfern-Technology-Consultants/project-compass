@@ -91,6 +91,10 @@ builder.Services.AddHttpContextAccessor();
 //DB Seeder
 builder.Services.AddScoped<TestDataSeeder>();
 
+// ===== LOGIN ACTIVITY SERVICES (NEW) =====
+builder.Services.AddScoped<ILoginActivityRepository, LoginActivityRepository>();
+builder.Services.AddScoped<LoginActivityService>();
+
 // Organization Data Migration Service
 builder.Services.AddScoped<OrganizationDataMigrationService>();
 
@@ -179,8 +183,7 @@ builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
 builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
 builder.Services.AddScoped<IUsageMetricRepository, UsageMetricRepository>();
 builder.Services.AddScoped<IClientRepository, ClientRepository>();
-
-// ===== CLIENT PREFERENCES REPOSITORY (NEW) =====
+builder.Services.AddScoped<ILoginActivityRepository, LoginActivityRepository>();
 builder.Services.AddScoped<IClientPreferencesRepository, ClientPreferencesRepository>();
 
 // ===== ASSESSMENT SERVICES WITH CLIENT PREFERENCES SUPPORT =====
@@ -203,6 +206,7 @@ builder.Services.AddScoped<IAzureResourceGraphService, AzureResourceGraphService
 builder.Services.AddScoped<ILicenseValidationService, LicenseValidationService>();
 builder.Services.AddScoped<IUsageTrackingService, UsageTrackingService>();
 builder.Services.AddScoped<IClientService, ClientService>();
+builder.Services.AddScoped<LoginActivityService>();
 
 // ===== AUTHENTICATION SERVICES =====
 builder.Services.AddScoped<IAuthService, AuthService>();

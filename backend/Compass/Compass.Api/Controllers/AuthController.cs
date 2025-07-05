@@ -17,19 +17,22 @@ public class AuthController : ControllerBase
     private readonly IAuthService _authService;
     private readonly IMfaService _mfaService;
     private readonly ICustomerRepository _customerRepository;
-    private readonly CompassDbContext _context; // Add this for direct database access
+    private readonly CompassDbContext _context;
+    private readonly LoginActivityService _loginActivityService;
     private readonly ILogger<AuthController> _logger;
     public AuthController(
         IAuthService authService,
         IMfaService mfaService,
         ICustomerRepository customerRepository,
-        CompassDbContext context, // Add this parameter
+        CompassDbContext context,
+        LoginActivityService loginActivityService,
         ILogger<AuthController> logger)
     {
         _authService = authService;
         _mfaService = mfaService;
         _customerRepository = customerRepository;
-        _context = context; // Add this assignment
+        _context = context;
+        _loginActivityService = loginActivityService;
         _logger = logger;
     }
     [HttpPost("register")]
@@ -125,24 +128,26 @@ public class AuthController : ControllerBase
                     Message = "Invalid email or password"
                 });
             }
+
             if (!customer.EmailVerified)
             {
                 return Ok(new LoginResponse
                 {
                     Success = false,
-                    RequiresEmailVerification = true, // ✅ Add explicit flag
+                    RequiresEmailVerification = true,
                     Message = "Please verify your email address before logging in",
                     Customer = new CustomerDto
                     {
                         CustomerId = customer.CustomerId,
                         Email = customer.Email,
-                        EmailVerified = customer.EmailVerified, // ✅ Include EmailVerified
+                        EmailVerified = customer.EmailVerified,
                         FirstName = customer.FirstName,
                         LastName = customer.LastName,
                         CompanyName = customer.CompanyName
                     }
                 });
             }
+
             if (!customer.IsActive)
             {
                 return Ok(new LoginResponse
@@ -151,6 +156,19 @@ public class AuthController : ControllerBase
                     Message = "Account is deactivated"
                 });
             }
+
+            // Generate session ID for tracking
+            var sessionId = Guid.NewGuid().ToString();
+            var ipAddress = GetClientIpAddress();
+            var userAgent = Request.Headers["User-Agent"].ToString();
+
+            // Record initial login attempt (before MFA)
+            var loginActivity = await _loginActivityService.RecordLoginAsync(
+                customer.CustomerId,
+                ipAddress ?? "Unknown",
+                userAgent,
+                sessionId);
+
             // Check if MFA is required
             if (customer.IsMfaEnabled && !string.IsNullOrEmpty(customer.MfaSecret))
             {
@@ -161,9 +179,11 @@ public class AuthController : ControllerBase
                     {
                         Success = false,
                         RequiresMfa = true,
-                        Message = "MFA code required"
+                        Message = "MFA code required",
+                        SessionId = sessionId // Include session ID for MFA completion
                     });
                 }
+
                 // Validate MFA token
                 bool mfaValid = false;
                 if (request.IsBackupCode)
@@ -179,6 +199,9 @@ public class AuthController : ControllerBase
                             customer.MfaBackupCodes = JsonSerializer.Serialize(backupCodes);
                             customer.LastMfaUsedDate = DateTime.UtcNow;
                             await _customerRepository.UpdateAsync(customer);
+
+                            // Record MFA success
+                            await _loginActivityService.RecordMfaLoginAsync(customer.CustomerId, sessionId);
                         }
                     }
                 }
@@ -189,10 +212,17 @@ public class AuthController : ControllerBase
                     {
                         customer.LastMfaUsedDate = DateTime.UtcNow;
                         await _customerRepository.UpdateAsync(customer);
+
+                        // Record MFA success
+                        await _loginActivityService.RecordMfaLoginAsync(customer.CustomerId, sessionId);
                     }
                 }
+
                 if (!mfaValid)
                 {
+                    // Revoke the login session since MFA failed
+                    await _loginActivityService.RecordLogoutAsync(customer.CustomerId, sessionId);
+
                     return Ok(new LoginResponse
                     {
                         Success = false,
@@ -201,6 +231,7 @@ public class AuthController : ControllerBase
                     });
                 }
             }
+
             // Check if MFA setup is required
             if (customer.RequireMfaSetup)
             {
@@ -211,25 +242,28 @@ public class AuthController : ControllerBase
                     Token = token,
                     RequiresMfaSetup = true,
                     Message = "MFA setup required",
+                    SessionId = sessionId,
                     Customer = new CustomerDto
                     {
                         CustomerId = customer.CustomerId,
                         Email = customer.Email,
-                        EmailVerified = customer.EmailVerified, // ✅ Include EmailVerified
+                        EmailVerified = customer.EmailVerified,
                         FirstName = customer.FirstName,
                         LastName = customer.LastName,
                         CompanyName = customer.CompanyName
                     }
                 });
             }
+
             // Update last login info
-            var ipAddress = GetClientIpAddress();
             customer.LastLoginDate = DateTime.UtcNow;
             customer.LastLoginIP = ipAddress;
             await _customerRepository.UpdateAsync(customer);
+
             // Generate JWT token
             var jwtToken = await _authService.GenerateJwtTokenAsync(customer);
-            // ✅ CRITICAL FIX: Include EmailVerified in successful login response
+
+            // Successful login
             return Ok(new LoginResponse
             {
                 Success = true,
@@ -237,11 +271,12 @@ public class AuthController : ControllerBase
                 RequiresMfa = false,
                 RequiresMfaSetup = false,
                 Message = "Login successful",
+                SessionId = sessionId, // Include session ID in response
                 Customer = new CustomerDto
                 {
                     CustomerId = customer.CustomerId,
                     Email = customer.Email,
-                    EmailVerified = customer.EmailVerified, // ✅ This was missing!
+                    EmailVerified = customer.EmailVerified,
                     FirstName = customer.FirstName,
                     LastName = customer.LastName,
                     CompanyName = customer.CompanyName
@@ -371,11 +406,26 @@ public class AuthController : ControllerBase
         }
     }
     [HttpPost("logout")]
-    public ActionResult Logout()
+    [Authorize]
+    public async Task<ActionResult> Logout()
     {
-        // Since we're using stateless JWT, logout is handled client-side
-        // In a production app, you might want to maintain a token blacklist
-        return Ok(new { message = "Logged out successfully" });
+        try
+        {
+            var customerId = GetCurrentCustomerId();
+            var sessionId = HttpContext.Request.Headers["X-Session-Id"].FirstOrDefault();
+
+            if (customerId.HasValue && !string.IsNullOrEmpty(sessionId))
+            {
+                await _loginActivityService.RecordLogoutAsync(customerId.Value, sessionId);
+            }
+
+            return Ok(new { message = "Logged out successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Logout error");
+            return Ok(new { message = "Logged out successfully" }); // Don't expose errors on logout
+        }
     }
     [HttpPost("forgot-password")]
     public async Task<ActionResult> ForgotPassword([FromBody] Compass.Core.Models.ForgotPasswordRequest request)

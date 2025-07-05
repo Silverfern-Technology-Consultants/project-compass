@@ -22,7 +22,27 @@ const calculateStats = (assessments, selectedClient, isInternalSelected) => {
         ? Math.round(completedAssessments.reduce((sum, a) => sum + (a.score || 0), 0) / completedAssessments.length)
         : 0;
 
-    const totalIssues = contextAssessments.reduce((sum, a) => sum + (a.issuesCount || 0), 0);
+    // FIXED: Active issues should only be from the most recent assessment
+    // Group assessments by client and get the most recent one for each
+    const assessmentsByClient = contextAssessments.reduce((groups, assessment) => {
+        const clientKey = assessment.clientId || 'no-client';
+        if (!groups[clientKey]) {
+            groups[clientKey] = [];
+        }
+        groups[clientKey].push(assessment);
+        return groups;
+    }, {});
+
+    // Get the most recent assessment for each client
+    const mostRecentAssessments = Object.values(assessmentsByClient).map(clientAssessments => {
+        return clientAssessments.sort((a, b) =>
+            new Date(b.rawData?.startedDate || b.date || 0) - new Date(a.rawData?.startedDate || a.date || 0)
+        )[0];
+    });
+
+    // Calculate active issues only from most recent assessments
+    const activeIssues = mostRecentAssessments.reduce((sum, assessment) =>
+        sum + (assessment.issuesCount || 0), 0);
 
     const lastAssessment = contextAssessments.length > 0
         ? contextAssessments.sort((a, b) => new Date(b.rawData?.startedDate || 0) - new Date(a.rawData?.startedDate || 0))[0]
@@ -32,7 +52,7 @@ const calculateStats = (assessments, selectedClient, isInternalSelected) => {
         total: contextAssessments.length,
         completed: completedAssessments.length,
         avgScore,
-        totalIssues,
+        activeIssues, // Now only from most recent assessments per client
         lastAssessmentDate: lastAssessment?.date || 'Never'
     };
 };
@@ -612,20 +632,20 @@ const AssessmentsPage = () => {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm text-gray-400">Active Issues</p>
-                                <p className={`text-2xl font-bold ${stats.totalIssues > 50 ? 'text-red-400' :
-                                        stats.totalIssues > 20 ? 'text-yellow-400' :
-                                            stats.totalIssues > 0 ? 'text-blue-400' : 'text-green-400'
+                                <p className={`text-2xl font-bold ${stats.activeIssues > 50 ? 'text-red-400' :
+                                    stats.activeIssues > 20 ? 'text-yellow-400' :
+                                        stats.activeIssues > 0 ? 'text-orange-400' : 'text-green-400'
                                     }`}>
-                                    {stats.totalIssues}
+                                    {stats.activeIssues}
                                 </p>
                                 <p className="text-xs text-gray-500 mt-1">
-                                    Across all assessments
+                                    From latest assessments
                                 </p>
                             </div>
                             <AlertCircle size={24} className={
-                                stats.totalIssues > 50 ? 'text-red-400' :
-                                    stats.totalIssues > 20 ? 'text-yellow-400' :
-                                        stats.totalIssues > 0 ? 'text-blue-400' : 'text-green-400'
+                                stats.activeIssues > 50 ? 'text-red-400' :
+                                    stats.activeIssues > 20 ? 'text-yellow-400' :
+                                        stats.activeIssues > 0 ? 'text-orange-400' : 'text-green-400'
                             } />
                         </div>
                     </div>

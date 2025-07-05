@@ -9,37 +9,70 @@ public class CompassDbContext : DbContext
     {
     }
 
-    // ORGANIZATION DBSET
+    // DBSETS
     public DbSet<Organization> Organizations { get; set; }
-
-    // CLIENT PREFERENCES
     public DbSet<ClientPreferences> ClientPreferences { get; set; }
-
-    // NEW: CLIENT MANAGEMENT DBSETS
     public DbSet<Client> Clients { get; set; }
     public DbSet<ClientAccess> ClientAccess { get; set; }
-
-    // EXISTING DBSETS
     public DbSet<Customer> Customers { get; set; }
     public DbSet<Assessment> Assessments { get; set; }
     public DbSet<AssessmentFinding> AssessmentFindings { get; set; }
     public DbSet<AssessmentResource> AssessmentResources { get; set; }
-
-    // LICENSING DBSETS
     public DbSet<Subscription> Subscriptions { get; set; }
     public DbSet<UsageMetric> UsageMetrics { get; set; }
     public DbSet<UsageRecord> UsageRecords { get; set; }
     public DbSet<Invoice> Invoices { get; set; }
     public DbSet<LicenseFeature> LicenseFeatures { get; set; }
     public DbSet<SubscriptionFeature> SubscriptionFeatures { get; set; }
-
     public DbSet<AzureEnvironment> AzureEnvironments { get; set; }
-
-    // TEAM MANAGEMENT DBSET
     public DbSet<TeamInvitation> TeamInvitations { get; set; }
+    public DbSet<LoginActivity> LoginActivities { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<LoginActivity>(entity =>
+        {
+            entity.HasKey(e => e.LoginActivityId);
+
+            entity.Property(e => e.IpAddress).HasMaxLength(45); // IPv6 max length
+            entity.Property(e => e.UserAgent).HasMaxLength(500);
+            entity.Property(e => e.DeviceType).HasMaxLength(100);
+            entity.Property(e => e.Browser).HasMaxLength(100);
+            entity.Property(e => e.OperatingSystem).HasMaxLength(100);
+            entity.Property(e => e.Location).HasMaxLength(100);
+            entity.Property(e => e.SessionId).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Status).HasMaxLength(50).HasDefaultValue("Active");
+            entity.Property(e => e.LoginMethod).HasMaxLength(50).HasDefaultValue("Password");
+            entity.Property(e => e.SecurityNotes).HasMaxLength(500);
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.MfaUsed).HasDefaultValue(false);
+            entity.Property(e => e.SuspiciousActivity).HasDefaultValue(false);
+
+            // Customer relationship
+            entity.HasOne(e => e.Customer)
+                .WithMany() // Customer doesn't need navigation back to login activities
+                .HasForeignKey(e => e.CustomerId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Indexes for performance
+            entity.HasIndex(e => e.CustomerId)
+                .HasDatabaseName("IX_LoginActivities_CustomerId");
+
+            entity.HasIndex(e => new { e.CustomerId, e.IsActive, e.Status })
+                .HasDatabaseName("IX_LoginActivities_CustomerId_IsActive_Status");
+
+            entity.HasIndex(e => new { e.CustomerId, e.SessionId })
+                .HasDatabaseName("IX_LoginActivities_CustomerId_SessionId");
+
+            entity.HasIndex(e => e.LoginTime)
+                .HasDatabaseName("IX_LoginActivities_LoginTime");
+
+            entity.HasIndex(e => new { e.SuspiciousActivity, e.LoginTime })
+                .HasDatabaseName("IX_LoginActivities_SuspiciousActivity_LoginTime");
+
+            entity.HasIndex(e => e.IpAddress)
+                .HasDatabaseName("IX_LoginActivities_IpAddress");
+        });
         // ClientPreferences configuration
         modelBuilder.Entity<ClientPreferences>(entity =>
         {

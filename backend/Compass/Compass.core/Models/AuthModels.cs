@@ -131,4 +131,5 @@ public class LoginResponse
     public bool RequiresEmailVerification { get; set; } // ✅ ADDED: Missing RequiresEmailVerification property
     public string Message { get; set; } = string.Empty;
     public CustomerDto? Customer { get; set; }
+    public string? SessionId { get; set; }
 }

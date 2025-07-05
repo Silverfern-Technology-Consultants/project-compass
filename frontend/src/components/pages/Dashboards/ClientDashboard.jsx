@@ -139,7 +139,6 @@ const ClientDashboard = ({ client }) => {
             // Get all assessments using the correct method name
             const allAssessments = await assessmentApi.getAllAssessments();
 
-
             // Filter assessments for this client
             const clientAssessments = allAssessments.filter(assessment => {
                 const assessmentClientId = assessment.ClientId || assessment.clientId;
@@ -158,26 +157,47 @@ const ClientDashboard = ({ client }) => {
                     ? completedAssessments.reduce((sum, a) => sum + (a.OverallScore || a.overallScore || 0), 0) / completedAssessments.length
                     : 0;
 
-                const totalIssues = clientAssessments.reduce((sum, a) =>
-                    sum + (a.IssuesFound || a.issuesCount || 0), 0
-                );
+                // Get the most recent assessment (by date)
+                const mostRecentAssessment = clientAssessments.reduce((latest, current) => {
+                    const currentDate = new Date(current.StartedDate || current.createdDate || 0);
+                    const latestDate = new Date(latest?.StartedDate || latest?.createdDate || 0);
+                    return currentDate > latestDate ? current : latest;
+                }, null);
+
+                // Only count active issues from the most recent assessment
+                const activeIssues = mostRecentAssessment
+                    ? (mostRecentAssessment.IssuesFound || mostRecentAssessment.issuesCount || 0)
+                    : 0;
 
                 // Get the most recent assessment date
-                const mostRecentDate = clientAssessments.reduce((latest, assessment) => {
-                    const currentDate = new Date(assessment.StartedDate || assessment.createdDate || 0);
-                    const latestDate = new Date(latest || 0);
-                    return currentDate > latestDate ? (assessment.StartedDate || assessment.createdDate) : latest;
-                }, null);
+                const mostRecentDate = mostRecentAssessment
+                    ? (mostRecentAssessment.StartedDate || mostRecentAssessment.createdDate)
+                    : null;
+
+                // Format the date for display
+                const formattedDate = mostRecentDate
+                    ? new Date(mostRecentDate).toLocaleDateString()
+                    : 'Never';
 
                 // Update clientData with real stats
                 setClientData(prev => ({
                     ...prev,
                     assessmentsCount: clientAssessments.length,
                     currentScore: Math.round(averageScore),
-                    activeIssues: totalIssues,
-                    lastAssessmentDate: mostRecentDate
+                    activeIssues: activeIssues, // Only from latest assessment
+                    lastAssessmentDate: formattedDate,
+                    mostRecentAssessment: mostRecentAssessment // Store for reference
                 }));
+
+                console.log('[ClientDashboard] Updated stats:', {
+                    totalAssessments: clientAssessments.length,
+                    averageScore: Math.round(averageScore),
+                    activeIssuesFromLatest: activeIssues,
+                    mostRecentAssessmentName: mostRecentAssessment?.Name || mostRecentAssessment?.name,
+                    mostRecentDate: formattedDate
+                });
             } else {
+                console.log('[ClientDashboard] No assessments found for client:', clientId);
             }
         } catch (err) {
             console.error('[ClientDashboard] Failed to load real assessments:', err);
