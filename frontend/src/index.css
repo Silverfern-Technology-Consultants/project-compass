@@ -38,12 +38,27 @@ code {
     }
 
 /* Focus styles for accessibility */
-button:focus,
+button:focus-visible,
 input:focus,
 select:focus,
 textarea:focus {
     outline: 2px solid #ca8a04; /* yellow-600 */
     outline-offset: 2px;
+}
+/* Remove focus outline on mouse click for buttons */
+button:focus:not(:focus-visible) {
+    outline: none;
+}
+
+/* Ensure keyboard navigation still works */
+button:focus-visible {
+    outline: 2px solid #ca8a04; /* yellow-600 */
+    outline-offset: 2px;
+}
+
+/* Alternative approach - add this class to buttons that should auto-blur */
+.btn-auto-blur:focus {
+    outline: none;
 }
 
 /* Animation for loading states */

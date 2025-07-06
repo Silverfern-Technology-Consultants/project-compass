@@ -337,7 +337,9 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
             setActiveTab(savedTab);
 
             loadFindings();
-            loadClientPreferences(); // ADD THIS LINE TO THE EXISTING useEffect
+            loadClientPreferences();
+            // ADD THIS: Load resource filters immediately for overview tab
+            loadResourceFilters();
         }
     }, [isOpen, assessment]);
 
@@ -358,6 +360,28 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
             setError(errorInfo.message);
         } finally {
             setLoading(false);
+        }
+    };
+    const loadResourceFilters = async () => {
+        try {
+            console.log('[AssessmentDetailModal] Loading resource filters for overview');
+
+            // Use a minimal request to get just the filter data (first page, minimal data)
+            const params = new URLSearchParams({
+                page: '1',
+                limit: '1' // Minimal limit since we only need the filters
+            });
+
+            const response = await assessmentApi.getAssessmentResources(assessment.id, params.toString());
+
+            // Store only the filters for the overview tab
+            setResourceFilters(response.Filters || {});
+            setResourceTotalCount(response.TotalCount || 0);
+
+            console.log('[AssessmentDetailModal] Loaded resource filters:', response.Filters);
+        } catch (err) {
+            console.error('[AssessmentDetailModal] Error loading resource filters:', err);
+            // Don't show error for this background load
         }
     };
     const loadResources = async (page = 1, resetSearch = false) => {
@@ -407,10 +431,15 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
     };
 
     const handleTabChange = async (tab) => {
+        // ADD THIS: Remove focus from the clicked button
+        if (document.activeElement && document.activeElement.blur) {
+            document.activeElement.blur();
+        }
+
         setActiveTab(tab);
         setTabLoading(prev => ({ ...prev, [tab]: true }));
 
-        // NEW: Save tab state for this specific assessment
+        // Save tab state for this specific assessment
         const assessmentId = assessment.id || assessment.AssessmentId || assessment.assessmentId;
         setAssessmentTabStates(prev => ({
             ...prev,
