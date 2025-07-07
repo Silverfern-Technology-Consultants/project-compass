@@ -1,7 +1,14 @@
 {
-  "name": "compass-portal",
+  "name": "governance-guardian-portal",
   "version": "1.0.0",
+  "description": "Governance Guardian - Azure Assessment Platform for MSPs",
   "private": true,
+  "homepage": "https://fernworks.io/governance-guardian",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SilverfernTech/project-compass.git"
+  },
+  "author": "Silverfern Technology Consultants",
   "dependencies": {
     "@testing-library/jest-dom": "^5.16.4",
     "@testing-library/react": "^13.4.0",
@@ -19,7 +26,9 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "version:sync": "echo 'Frontend version: ' && node -p \"require('./package.json').version\"",
+    "version:bump": "npm version patch --no-git-tag-version"
   },
   "eslintConfig": {
     "extends": [
