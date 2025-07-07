@@ -7,14 +7,264 @@ public class AssessmentOptions
     public bool IncludeRecommendations { get; set; } = true;
     public string[]? ResourceTypesToInclude { get; set; }
     public string[]? ResourceTypesToExclude { get; set; }
+
+    // NEW: IAM-specific options
+    public bool AnalyzeEnterpriseApplications { get; set; } = false;
+    public bool AnalyzeStaleUsers { get; set; } = false;
+    public bool AnalyzeResourceIam { get; set; } = false;
+    public bool AnalyzeConditionalAccess { get; set; } = false;
+
+    // NEW: Business Continuity options
+    public bool AnalyzeBackupCoverage { get; set; } = false;
+    public bool AnalyzeRecoveryConfiguration { get; set; } = false;
+
+    // NEW: Security options
+    public bool AnalyzeNetworkSecurity { get; set; } = false;
+    public bool AnalyzeDefenderForCloud { get; set; } = false;
+}
+public class IdentityAccessResults
+{
+    public decimal Score { get; set; }
+    public int TotalApplications { get; set; }
+    public int RiskyApplications { get; set; }
+    public int InactiveUsers { get; set; }
+    public int UnmanagedDevices { get; set; }
+    public int OverprivilegedAssignments { get; set; }
+    public ConditionalAccessCoverage ConditionalAccessCoverage { get; set; } = new();
+    public List<IdentitySecurityFinding> SecurityFindings { get; set; } = new();
+    public Dictionary<string, object> DetailedMetrics { get; set; } = new();
 }
 
+public class ConditionalAccessCoverage
+{
+    public int TotalPolicies { get; set; }
+    public int EnabledPolicies { get; set; }
+    public decimal CoveragePercentage { get; set; }
+    public List<string> PolicyGaps { get; set; } = new();
+    public List<string> ConflictingPolicies { get; set; } = new();
+}
+public class BusinessContinuityResults
+{
+    public decimal Score { get; set; }
+    public BackupAnalysis BackupAnalysis { get; set; } = new();
+    public DisasterRecoveryAnalysis DisasterRecoveryAnalysis { get; set; } = new();
+    public List<BusinessContinuityFinding> Findings { get; set; } = new();
+}
+
+public class BackupAnalysis
+{
+    public int TotalResources { get; set; }
+    public int BackedUpResources { get; set; }
+    public decimal BackupCoveragePercentage { get; set; }
+    public Dictionary<string, int> BackupStatusByResourceType { get; set; } = new();
+    public List<string> UnbackedUpCriticalResources { get; set; } = new();
+}
+public class SecurityPostureResults
+{
+    public decimal Score { get; set; }
+    public NetworkSecurityAnalysis NetworkSecurity { get; set; } = new();
+    public DefenderForCloudAnalysis DefenderAnalysis { get; set; } = new();
+    public List<SecurityFinding> SecurityFindings { get; set; } = new();
+}
+
+public class NetworkSecurityAnalysis
+{
+    public int NetworkSecurityGroups { get; set; }
+    public int OpenToInternetRules { get; set; }
+    public int OverlyPermissiveRules { get; set; }
+    public List<string> HighRiskNetworkPaths { get; set; } = new();
+    public Dictionary<string, int> SecurityGroupsByCompliance { get; set; } = new();
+}
+
+public class DefenderForCloudAnalysis
+{
+    public bool IsEnabled { get; set; }
+    public decimal SecurityScore { get; set; }
+    public int HighSeverityRecommendations { get; set; }
+    public int MediumSeverityRecommendations { get; set; }
+    public Dictionary<string, string> DefenderPlansStatus { get; set; } = new();
+}
+
+public class SecurityFinding
+{
+    public string Category { get; set; } = string.Empty; // "Network", "DefenderForCloud"
+    public string ResourceId { get; set; } = string.Empty;
+    public string ResourceName { get; set; } = string.Empty;
+    public string SecurityControl { get; set; } = string.Empty;
+    public string Issue { get; set; } = string.Empty;
+    public string Recommendation { get; set; } = string.Empty;
+    public string Severity { get; set; } = string.Empty;
+    public string ComplianceFramework { get; set; } = string.Empty;
+}
+public class DisasterRecoveryAnalysis
+{
+    public bool HasDisasterRecoveryPlan { get; set; }
+    public int ReplicationEnabledResources { get; set; }
+    public List<string> SinglePointsOfFailure { get; set; } = new();
+    public Dictionary<string, string> RecoveryObjectives { get; set; } = new();
+}
+
+public class BusinessContinuityFinding
+{
+    public string Category { get; set; } = string.Empty; // "Backup", "DisasterRecovery"
+    public string ResourceId { get; set; } = string.Empty;
+    public string ResourceName { get; set; } = string.Empty;
+    public string Issue { get; set; } = string.Empty;
+    public string Recommendation { get; set; } = string.Empty;
+    public string Severity { get; set; } = string.Empty;
+    public string BusinessImpact { get; set; } = string.Empty;
+}
+
+public class IdentitySecurityFinding
+{
+    public string FindingType { get; set; } = string.Empty; // "ExcessivePermissions", "StaleUser", "UnmanagedDevice", etc.
+    public string ResourceId { get; set; } = string.Empty;
+    public string ResourceName { get; set; } = string.Empty;
+    public string Severity { get; set; } = string.Empty; // "Critical", "High", "Medium", "Low"
+    public string Description { get; set; } = string.Empty;
+    public string Recommendation { get; set; } = string.Empty;
+    public string BusinessImpact { get; set; } = string.Empty;
+    public Dictionary<string, string> AdditionalData { get; set; } = new();
+}
+public enum AssessmentCategory
+{
+    ResourceGovernance,
+    IdentityAccessManagement,
+    BusinessContinuity,
+    SecurityPosture
+}
 public enum AssessmentType
 {
+    // Resource Governance
     NamingConvention,
     Tagging,
-    Full
+    GovernanceFull,
+
+    // Identity & Access Management  
+    EnterpriseApplications,
+    StaleUsersDevices,
+    ResourceIamRbac,
+    ConditionalAccess,
+    IdentityFull,
+
+    // Business Continuity & Disaster Recovery
+    BackupCoverage,
+    RecoveryConfiguration,
+    BusinessContinuityFull,
+
+    // Security Posture
+    NetworkSecurity,
+    DefenderForCloud,
+    SecurityFull,
+
+    // Legacy (for backward compatibility)
+    Full // Maps to GovernanceFull
 }
+public static class AssessmentModelStructure
+{
+    public static readonly Dictionary<AssessmentCategory, List<AssessmentType>> CategoryModels = new()
+    {
+        [AssessmentCategory.ResourceGovernance] = new()
+        {
+            AssessmentType.NamingConvention,
+            AssessmentType.Tagging,
+            AssessmentType.GovernanceFull
+        },
+        [AssessmentCategory.IdentityAccessManagement] = new()
+        {
+            AssessmentType.EnterpriseApplications,
+            AssessmentType.StaleUsersDevices,
+            AssessmentType.ResourceIamRbac,
+            AssessmentType.ConditionalAccess,
+            AssessmentType.IdentityFull
+        },
+        [AssessmentCategory.BusinessContinuity] = new()
+        {
+            AssessmentType.BackupCoverage,
+            AssessmentType.RecoveryConfiguration,
+            AssessmentType.BusinessContinuityFull
+        },
+        [AssessmentCategory.SecurityPosture] = new()
+        {
+            AssessmentType.NetworkSecurity,
+            AssessmentType.DefenderForCloud,
+            AssessmentType.SecurityFull
+        }
+    };
+
+    public static readonly Dictionary<AssessmentType, AssessmentCategory> ModelToCategory =
+        CategoryModels.SelectMany(kvp => kvp.Value.Select(model => new { Model = model, Category = kvp.Key }))
+                     .ToDictionary(x => x.Model, x => x.Category);
+
+    public static readonly Dictionary<AssessmentType, string> ModelDescriptions = new()
+    {
+        // Resource Governance
+        [AssessmentType.NamingConvention] = "Analyze resource naming patterns and consistency",
+        [AssessmentType.Tagging] = "Evaluate tagging strategy and compliance",
+        [AssessmentType.GovernanceFull] = "Comprehensive governance assessment (naming + tagging)",
+
+        // Identity & Access Management
+        [AssessmentType.EnterpriseApplications] = "Review enterprise applications and app registrations for security risks",
+        [AssessmentType.StaleUsersDevices] = "Identify inactive users and unmanaged devices",
+        [AssessmentType.ResourceIamRbac] = "Analyze role assignments and permissions at resource level",
+        [AssessmentType.ConditionalAccess] = "Evaluate conditional access policies and coverage",
+        [AssessmentType.IdentityFull] = "Complete identity and access management security assessment",
+
+        // Business Continuity & Disaster Recovery
+        [AssessmentType.BackupCoverage] = "Analyze backup configuration and success rates",
+        [AssessmentType.RecoveryConfiguration] = "Review disaster recovery setup and procedures",
+        [AssessmentType.BusinessContinuityFull] = "Comprehensive business continuity and disaster recovery assessment",
+
+        // Security Posture
+        [AssessmentType.NetworkSecurity] = "Evaluate network security configuration and controls",
+        [AssessmentType.DefenderForCloud] = "Review Microsoft Defender for Cloud security posture",
+        [AssessmentType.SecurityFull] = "Complete security posture assessment",
+
+        // Legacy
+        [AssessmentType.Full] = "Legacy full assessment (maps to governance assessment)"
+    };
+
+    public static AssessmentCategory GetCategory(AssessmentType type)
+    {
+        // Handle legacy mapping
+        if (type == AssessmentType.Full)
+            return AssessmentCategory.ResourceGovernance;
+
+        return ModelToCategory.TryGetValue(type, out var category) ? category : AssessmentCategory.ResourceGovernance;
+    }
+
+    public static List<AssessmentType> GetModelsForCategory(AssessmentCategory category)
+    {
+        return CategoryModels.TryGetValue(category, out var models) ? models : new List<AssessmentType>();
+    }
+
+    public static string GetDescription(AssessmentType type)
+    {
+        return ModelDescriptions.TryGetValue(type, out var description) ? description : "Assessment model";
+    }
+
+    public static bool IsFullAssessment(AssessmentType type)
+    {
+        return type == AssessmentType.GovernanceFull ||
+               type == AssessmentType.IdentityFull ||
+               type == AssessmentType.BusinessContinuityFull ||
+               type == AssessmentType.SecurityFull ||
+               type == AssessmentType.Full;
+    }
+
+    public static List<AssessmentType> GetSubModelsForFull(AssessmentType fullType)
+    {
+        return fullType switch
+        {
+            AssessmentType.GovernanceFull or AssessmentType.Full => new() { AssessmentType.NamingConvention, AssessmentType.Tagging },
+            AssessmentType.IdentityFull => new() { AssessmentType.EnterpriseApplications, AssessmentType.StaleUsersDevices, AssessmentType.ResourceIamRbac, AssessmentType.ConditionalAccess },
+            AssessmentType.BusinessContinuityFull => new() { AssessmentType.BackupCoverage, AssessmentType.RecoveryConfiguration },
+            AssessmentType.SecurityFull => new() { AssessmentType.NetworkSecurity, AssessmentType.DefenderForCloud },
+            _ => new List<AssessmentType>()
+        };
+    }
+}
+
 public class ResourceListResponse
 {
     public List<ResourceDto> Resources { get; set; } = new();
@@ -70,20 +320,25 @@ public class AssessmentResult
     public Guid AssessmentId { get; set; }
     public Guid EnvironmentId { get; set; }
     public AssessmentType Type { get; set; }
+    public AssessmentCategory Category { get; set; } // NEW
     public AssessmentStatus Status { get; set; }
     public decimal OverallScore { get; set; }
     public DateTime StartedDate { get; set; }
     public DateTime? CompletedDate { get; set; }
     public string? ErrorMessage { get; set; }
 
+    // Existing results
     public NamingConventionResults? NamingResults { get; set; }
     public TaggingResults? TaggingResults { get; set; }
-    public List<AssessmentRecommendation> Recommendations { get; set; } = new();
 
+    // NEW: Enhanced results
+    public IdentityAccessResults? IdentityResults { get; set; }
+    public BusinessContinuityResults? BusinessContinuityResults { get; set; }
+    public SecurityPostureResults? SecurityResults { get; set; }
+
+    public List<AssessmentRecommendation> Recommendations { get; set; } = new();
     public int TotalResourcesAnalyzed { get; set; }
     public int IssuesFound { get; set; }
-
-    // Enhanced properties
     public DependencyAnalysisResults? DependencyAnalysis { get; set; }
     public Dictionary<string, object> DetailedMetrics { get; set; } = new();
 }

@@ -55,8 +55,8 @@ builder.Services.AddSwaggerGen(c =>
     c.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "Compass API",
-        Version = "v1",
-        Description = "Azure Governance Assessment Platform API with Client Preferences"
+        Version = "v2.0.0",
+        Description = "Azure Governance Assessment Platform API with Enhanced Security Analysis & Real NSG Rule Parsing"
     });
 
     // Add JWT Authentication to Swagger
@@ -194,9 +194,11 @@ builder.Services.AddScoped<IAssessmentOrchestrator, AssessmentOrchestrator>();
 builder.Services.AddScoped<INamingConventionAnalyzer, NamingConventionAnalyzer>();
 builder.Services.AddScoped<IPreferenceAwareNamingAnalyzer, PreferenceAwareNamingAnalyzer>();
 
-// Standard analyzers (TODO: Create preference-aware tagging analyzer)
+// Standard analyzers
 builder.Services.AddScoped<ITaggingAnalyzer, TaggingAnalyzer>();
-
+builder.Services.AddScoped<IIdentityAccessAssessmentAnalyzer, IdentityAccessAssessmentAnalyzer>();
+builder.Services.AddScoped<IBusinessContinuityAssessmentAnalyzer, BusinessContinuityAssessmentAnalyzer>();
+builder.Services.AddScoped<ISecurityPostureAssessmentAnalyzer, SecurityPostureAssessmentAnalyzer>();
 builder.Services.AddScoped<IDependencyAnalyzer, DependencyAnalyzer>();
 
 // ===== AZURE SERVICES =====

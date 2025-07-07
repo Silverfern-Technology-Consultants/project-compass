@@ -20,10 +20,21 @@ public interface IAssessmentRepository
     Task<List<Assessment>> GetByClientAndOrganizationAsync(Guid clientId, Guid organizationId, int limit = 10);
     Task<List<Assessment>> GetPendingAssessmentsAsync();
 
+    // NEW: Category-based filtering methods for Sprint 6
+    Task<List<Assessment>> GetByOrganizationAndCategoryAsync(Guid organizationId, string category, int limit = 10);
+    Task<List<Assessment>> GetByClientAndCategoryAsync(Guid clientId, string category, int limit = 10);
+    Task<List<Assessment>> GetByOrganizationCategoryAndTypeAsync(Guid organizationId, string category, string assessmentType, int limit = 10);
+    Task<Dictionary<string, int>> GetAssessmentCountsByCategoryAsync(Guid organizationId);
+    Task<Dictionary<string, int>> GetAssessmentCountsByTypeAsync(Guid organizationId, string category);
+
     // Client-specific methods
     Task<int> GetAssessmentCountByClientAsync(Guid clientId);
     Task<int> GetCompletedAssessmentCountByClientAsync(Guid clientId);
     Task<List<Assessment>> GetRecentAssessmentsByClientAsync(Guid clientId, int limit = 5);
+
+    // NEW: Category-specific client methods
+    Task<int> GetAssessmentCountByClientAndCategoryAsync(Guid clientId, string category);
+    Task<List<Assessment>> GetRecentAssessmentsByClientAndCategoryAsync(Guid clientId, string category, int limit = 5);
 
     // Status and update methods
     Task UpdateStatusAsync(Guid assessmentId, string status);
@@ -33,6 +44,10 @@ public interface IAssessmentRepository
     Task<List<AssessmentFinding>> GetFindingsByAssessmentIdAsync(Guid assessmentId);
     Task CreateFindingsAsync(List<AssessmentFinding> findings);
     Task UpdateFindingStatusAsync(Guid findingId, string status);
+
+    // NEW: Category-based findings methods
+    Task<List<AssessmentFinding>> GetFindingsByAssessmentAndCategoryAsync(Guid assessmentId, string category);
+    Task<Dictionary<string, int>> GetFindingCountsByCategoryAsync(Guid assessmentId);
 
     // Resources methods
     Task CreateResourcesAsync(List<AssessmentResource> resources);
@@ -49,6 +64,6 @@ public interface IAssessmentRepository
     Task<Dictionary<string, string>> GetResourceFiltersByAssessmentIdAsync(Guid assessmentId);
     Task<List<AssessmentResource>> GetAllResourcesByAssessmentIdAsync(Guid assessmentId);
 
-    // NEW: Environment lookup method for OAuth support
+    // Environment lookup method for OAuth support
     Task<AzureEnvironment?> GetEnvironmentByIdAsync(Guid environmentId);
 }

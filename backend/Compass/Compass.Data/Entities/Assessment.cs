@@ -11,12 +11,16 @@ public class Assessment
     // Organization scoping (existing)
     public Guid? OrganizationId { get; set; }
 
-    // NEW: Client scoping for MSP isolation
+    // Client scoping for MSP isolation (existing)
     public Guid? ClientId { get; set; }
 
     public Guid EnvironmentId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string AssessmentType { get; set; } = string.Empty;
+
+    // NEW: Assessment Category for Sprint 6
+    public string AssessmentCategory { get; set; } = string.Empty;
+
     public decimal? OverallScore { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime StartedDate { get; set; }
@@ -26,8 +30,7 @@ public class Assessment
     // Navigation properties
     public virtual Customer Customer { get; set; } = null!;
     public virtual Organization? Organization { get; set; }
-    public virtual Client? Client { get; set; } // NEW: Client navigation
+    public virtual Client? Client { get; set; }
     public virtual ICollection<AssessmentFinding> Findings { get; set; } = new List<AssessmentFinding>();
     public virtual ICollection<AssessmentResource> Resources { get; set; } = new List<AssessmentResource>();
-
 }

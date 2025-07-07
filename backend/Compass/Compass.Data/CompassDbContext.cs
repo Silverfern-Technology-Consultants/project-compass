@@ -310,6 +310,17 @@ public class CompassDbContext : DbContext
             entity.Property(e => e.OverallScore)
                 .HasColumnType("decimal(5,2)");
 
+            // NEW: AssessmentCategory configuration
+            entity.Property(e => e.AssessmentCategory)
+                .IsRequired()
+                .HasMaxLength(50)
+                .HasDefaultValue("ResourceGovernance");
+
+            // Updated: AssessmentType to support longer enum names
+            entity.Property(e => e.AssessmentType)
+                .IsRequired()
+                .HasMaxLength(100);
+
             entity.HasOne(e => e.Customer)
                 .WithMany(p => p.Assessments)
                 .HasForeignKey(d => d.CustomerId)
@@ -320,14 +331,24 @@ public class CompassDbContext : DbContext
                 .HasForeignKey(e => e.OrganizationId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // NEW: Client relationship
             entity.HasOne(e => e.Client)
                 .WithMany(c => c.Assessments)
                 .HasForeignKey(e => e.ClientId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // Indexes
             entity.HasIndex(e => e.OrganizationId);
-            entity.HasIndex(e => e.ClientId);  // NEW: Client index
+            entity.HasIndex(e => e.ClientId);
+
+            // NEW: Category-based indexing for Sprint 6
+            entity.HasIndex(e => e.AssessmentCategory)
+                .HasDatabaseName("IX_Assessments_AssessmentCategory");
+
+            entity.HasIndex(e => new { e.AssessmentCategory, e.AssessmentType })
+                .HasDatabaseName("IX_Assessments_Category_Type");
+
+            entity.HasIndex(e => new { e.OrganizationId, e.AssessmentCategory })
+                .HasDatabaseName("IX_Assessments_Organization_Category");
         });
 
         // AssessmentFinding configuration

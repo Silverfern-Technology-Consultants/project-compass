@@ -20,7 +20,7 @@ public class AssessmentRepository : IAssessmentRepository
             .Include(a => a.Findings)
             .Include(a => a.Customer)
             .Include(a => a.Organization)
-            .Include(a => a.Client) // Include client information
+            .Include(a => a.Client)
             .FirstOrDefaultAsync(a => a.Id == id);
     }
 
@@ -41,6 +41,7 @@ public class AssessmentRepository : IAssessmentRepository
     {
         var assessment = await _context.Assessments
             .Include(a => a.Findings)
+            .Include(a => a.Resources)
             .FirstOrDefaultAsync(a => a.Id == assessmentId);
 
         if (assessment != null)
@@ -48,6 +49,11 @@ public class AssessmentRepository : IAssessmentRepository
             if (assessment.Findings.Any())
             {
                 _context.AssessmentFindings.RemoveRange(assessment.Findings);
+            }
+
+            if (assessment.Resources.Any())
+            {
+                _context.AssessmentResources.RemoveRange(assessment.Resources);
             }
 
             _context.Assessments.Remove(assessment);
@@ -149,6 +155,61 @@ public class AssessmentRepository : IAssessmentRepository
             .ToListAsync();
     }
 
+    // NEW: Category-based filtering methods for Sprint 6
+    public async Task<List<Assessment>> GetByOrganizationAndCategoryAsync(Guid organizationId, string category, int limit = 10)
+    {
+        return await _context.Assessments
+            .Include(a => a.Customer)
+            .Include(a => a.Organization)
+            .Include(a => a.Client)
+            .Where(a => a.OrganizationId == organizationId && a.AssessmentCategory == category)
+            .OrderByDescending(a => a.StartedDate)
+            .Take(limit)
+            .ToListAsync();
+    }
+
+    public async Task<List<Assessment>> GetByClientAndCategoryAsync(Guid clientId, string category, int limit = 10)
+    {
+        return await _context.Assessments
+            .Include(a => a.Customer)
+            .Include(a => a.Organization)
+            .Include(a => a.Client)
+            .Where(a => a.ClientId == clientId && a.AssessmentCategory == category)
+            .OrderByDescending(a => a.StartedDate)
+            .Take(limit)
+            .ToListAsync();
+    }
+
+    public async Task<List<Assessment>> GetByOrganizationCategoryAndTypeAsync(Guid organizationId, string category, string assessmentType, int limit = 10)
+    {
+        return await _context.Assessments
+            .Include(a => a.Customer)
+            .Include(a => a.Organization)
+            .Include(a => a.Client)
+            .Where(a => a.OrganizationId == organizationId &&
+                       a.AssessmentCategory == category &&
+                       a.AssessmentType == assessmentType)
+            .OrderByDescending(a => a.StartedDate)
+            .Take(limit)
+            .ToListAsync();
+    }
+
+    public async Task<Dictionary<string, int>> GetAssessmentCountsByCategoryAsync(Guid organizationId)
+    {
+        return await _context.Assessments
+            .Where(a => a.OrganizationId == organizationId)
+            .GroupBy(a => a.AssessmentCategory)
+            .ToDictionaryAsync(g => g.Key, g => g.Count());
+    }
+
+    public async Task<Dictionary<string, int>> GetAssessmentCountsByTypeAsync(Guid organizationId, string category)
+    {
+        return await _context.Assessments
+            .Where(a => a.OrganizationId == organizationId && a.AssessmentCategory == category)
+            .GroupBy(a => a.AssessmentType)
+            .ToDictionaryAsync(g => g.Key, g => g.Count());
+    }
+
     // Client-specific methods
     public async Task<int> GetAssessmentCountByClientAsync(Guid clientId)
     {
@@ -167,6 +228,24 @@ public class AssessmentRepository : IAssessmentRepository
         return await _context.Assessments
             .Include(a => a.Customer)
             .Where(a => a.ClientId == clientId)
+            .OrderByDescending(a => a.StartedDate)
+            .Take(limit)
+            .ToListAsync();
+    }
+
+    // NEW: Category-specific client methods
+    public async Task<int> GetAssessmentCountByClientAndCategoryAsync(Guid clientId, string category)
+    {
+        return await _context.Assessments
+            .CountAsync(a => a.ClientId == clientId && a.AssessmentCategory == category);
+    }
+
+    public async Task<List<Assessment>> GetRecentAssessmentsByClientAndCategoryAsync(Guid clientId, string category, int limit = 5)
+    {
+        return await _context.Assessments
+            .Include(a => a.Customer)
+            .Include(a => a.Client)
+            .Where(a => a.ClientId == clientId && a.AssessmentCategory == category)
             .OrderByDescending(a => a.StartedDate)
             .Take(limit)
             .ToListAsync();
@@ -218,6 +297,24 @@ public class AssessmentRepository : IAssessmentRepository
         {
             await _context.SaveChangesAsync();
         }
+    }
+
+    // NEW: Category-based findings methods
+    public async Task<List<AssessmentFinding>> GetFindingsByAssessmentAndCategoryAsync(Guid assessmentId, string category)
+    {
+        return await _context.AssessmentFindings
+            .Where(f => f.AssessmentId == assessmentId && f.Category == category)
+            .OrderBy(f => f.Severity)
+            .ThenBy(f => f.ResourceName)
+            .ToListAsync();
+    }
+
+    public async Task<Dictionary<string, int>> GetFindingCountsByCategoryAsync(Guid assessmentId)
+    {
+        return await _context.AssessmentFindings
+            .Where(f => f.AssessmentId == assessmentId)
+            .GroupBy(f => f.Category)
+            .ToDictionaryAsync(g => g.Key, g => g.Count());
     }
 
     // Resources methods
@@ -334,7 +431,7 @@ public class AssessmentRepository : IAssessmentRepository
             .ToListAsync();
     }
 
-    // NEW: Environment lookup method for OAuth support
+    // Environment lookup method for OAuth support
     public async Task<AzureEnvironment?> GetEnvironmentByIdAsync(Guid environmentId)
     {
         return await _context.AzureEnvironments

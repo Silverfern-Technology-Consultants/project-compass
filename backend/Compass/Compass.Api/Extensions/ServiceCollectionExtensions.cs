@@ -1,4 +1,5 @@
-﻿using Compass.Core.Services;
+﻿using Compass.Core.Interfaces;
+using Compass.Core.Services;
 using Compass.Data;
 using Compass.Data.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -15,18 +16,30 @@ public static class ServiceCollectionExtensions
 
         // Repositories
         services.AddScoped<IAssessmentRepository, AssessmentRepository>();
+        services.AddScoped<IClientRepository, ClientRepository>();
+        services.AddScoped<ICustomerRepository, CustomerRepository>();
+        services.AddScoped<IClientPreferencesRepository, ClientPreferencesRepository>();
 
         // Core Services - Enhanced Analysis Engine
         services.AddScoped<IAzureResourceGraphService, AzureResourceGraphService>();
         services.AddScoped<INamingConventionAnalyzer, NamingConventionAnalyzer>();
         services.AddScoped<ITaggingAnalyzer, TaggingAnalyzer>();
         services.AddScoped<IDependencyAnalyzer, DependencyAnalyzer>();
+
+        // NEW: Sprint 6 - Identity Access Management Assessment
+        services.AddScoped<IIdentityAccessAssessmentAnalyzer, IdentityAccessAssessmentAnalyzer>();
+
         services.AddScoped<IAssessmentOrchestrator, AssessmentOrchestrator>();
 
-        // Client Preferences Services - NEW!
-        services.AddScoped<IClientPreferencesRepository, ClientPreferencesRepository>();
+        // Client Preferences Services
         services.AddScoped<IPreferenceAwareNamingAnalyzer, PreferenceAwareNamingAnalyzer>();
-        // services.AddScoped<PreferenceBasedAssessmentService>(); // Comment out until implemented
+
+        // OAuth and other services
+        services.AddScoped<IOAuthService, OAuthService>();
+        services.AddScoped<ICurrentUserService, CurrentUserService>();
+        services.AddScoped<IClientService, ClientService>();
+        services.AddScoped<ILicenseValidationService, LicenseValidationService>();
+        services.AddScoped<IUsageTrackingService, UsageTrackingService>();
 
         return services;
     }
