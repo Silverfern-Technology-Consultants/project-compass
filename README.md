@@ -1,6 +1,6 @@
 # Governance Guardian
 
-![Version](https://img.shields.io/github/v/release/SilverfernTech/project-compass?label=Version&color=gold&style=for-the-badge)
+![Version](https://img.shields.io/github/v/release/Silverfern-Technology-Consultants/project-compass?include_prereleases&label=Version&color=gold&style=for-the-badge)
 ![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen?style=for-the-badge)
 ![Environment](https://img.shields.io/badge/Environment-Development-orange?style=for-the-badge)
 
