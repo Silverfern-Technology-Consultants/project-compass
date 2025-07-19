@@ -1,6 +1,8 @@
-﻿using Compass.Core.Interfaces;
+﻿using Compass.core.Interfaces;
+using Compass.Core.Interfaces;
 using Compass.Core.Services;
 using Compass.Data;
+using Compass.Data.Interfaces;
 using Compass.Data.Repositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -25,17 +27,18 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INamingConventionAnalyzer, NamingConventionAnalyzer>();
         services.AddScoped<ITaggingAnalyzer, TaggingAnalyzer>();
         services.AddScoped<IDependencyAnalyzer, DependencyAnalyzer>();
+        services.AddScoped<IBusinessContinuityAssessmentAnalyzer, BusinessContinuityAssessmentAnalyzer>();
+        services.AddScoped<ISecurityPostureAssessmentAnalyzer, SecurityPostureAssessmentAnalyzer>();
 
         // NEW: Sprint 6 - Identity Access Management Assessment
         services.AddScoped<IIdentityAccessAssessmentAnalyzer, IdentityAccessAssessmentAnalyzer>();
-
         services.AddScoped<IAssessmentOrchestrator, AssessmentOrchestrator>();
 
-        // Client Preferences Services
-        services.AddScoped<IPreferenceAwareNamingAnalyzer, PreferenceAwareNamingAnalyzer>();
-
-        // OAuth and other services
+        // OAuth and Microsoft Graph services
         services.AddScoped<IOAuthService, OAuthService>();
+        services.AddScoped<IMicrosoftGraphService, MicrosoftGraphService>();
+
+        // Other services
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IClientService, ClientService>();
         services.AddScoped<ILicenseValidationService, LicenseValidationService>();

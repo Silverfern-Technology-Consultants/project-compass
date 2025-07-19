@@ -1,8 +1,8 @@
 ﻿using Compass.Data;
 using Compass.Data.Entities;
-using Compass.Data.Repositories;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
+using Compass.Data.Interfaces;
 
 namespace Compass.Core.Services;
 

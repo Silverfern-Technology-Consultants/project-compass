@@ -1,6 +1,6 @@
 ﻿using System.Drawing;
 
-namespace Compass.Core.Services;
+namespace Compass.core.Interfaces;
 
 public interface IMfaService
 {

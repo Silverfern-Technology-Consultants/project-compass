@@ -1,8 +1,9 @@
-﻿using Compass.Core.Models;
+﻿using Compass.core.Interfaces;
+using Compass.Core.Models;
 using Compass.Core.Services;
 using Compass.Data; // Add this for direct context access
 using Compass.Data.Entities;
-using Compass.Data.Repositories;
+using Compass.Data.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore; // Add this for Entity Framework

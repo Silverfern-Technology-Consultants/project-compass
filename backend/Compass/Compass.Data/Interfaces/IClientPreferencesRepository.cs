@@ -1,6 +1,6 @@
 ﻿using Compass.Data.Entities;
 
-namespace Compass.Data.Repositories;
+namespace Compass.Data.Interfaces;
 
 public interface IClientPreferencesRepository
 {

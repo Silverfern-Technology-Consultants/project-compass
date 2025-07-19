@@ -3,6 +3,7 @@ using Azure.ResourceManager;
 using Azure.ResourceManager.ResourceGraph;
 using Azure.ResourceManager.ResourceGraph.Models;
 using Compass.Core.Interfaces;
+using Compass.Core.Models.Assessment;
 using Compass.Core.Models;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
@@ -100,9 +101,322 @@ public class SecurityPostureAssessmentAnalyzer : ISecurityPostureAssessmentAnaly
         // In the future, this could use OAuth to access Microsoft Defender for Cloud APIs
         return await AnalyzeSecurityPostureAsync(subscriptionIds, assessmentType, cancellationToken);
     }
+
+    private async Task AnalyzeNetworkSecurityAsync(
+        string[] subscriptionIds,
+        SecurityPostureResults results,
+        List<SecurityFinding> findings,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Analyzing Network Security...");
+
+        try
+        {
+            // Get all network-related resources
+            var allResources = await _resourceGraphService.GetResourcesAsync(subscriptionIds, cancellationToken);
+
+            // Analyze Network Security Groups
+            var networkSecurityGroups = allResources.Where(r =>
+                r.Type.ToLowerInvariant() == "microsoft.network/networksecuritygroups").ToList();
+
+            // Analyze Virtual Networks
+            var virtualNetworks = allResources.Where(r =>
+                r.Type.ToLowerInvariant() == "microsoft.network/virtualnetworks").ToList();
+
+            // Analyze Public IPs
+            var publicIPs = allResources.Where(r =>
+                r.Type.ToLowerInvariant() == "microsoft.network/publicipaddresses").ToList();
+
+            // Analyze Application Gateways and Load Balancers
+            var applicationGateways = allResources.Where(r =>
+                r.Type.ToLowerInvariant() == "microsoft.network/applicationgateways").ToList();
+
+            var loadBalancers = allResources.Where(r =>
+                r.Type.ToLowerInvariant() == "microsoft.network/loadbalancers").ToList();
+
+            // NEW: Analyze Key Vaults for network security
+            var keyVaults = allResources.Where(r =>
+                r.Type.ToLowerInvariant().Contains("keyvault")).ToList();
+
+            // Initialize network security analysis
+            results.NetworkSecurity = new NetworkSecurityAnalysis
+            {
+                NetworkSecurityGroups = networkSecurityGroups.Count,
+                OpenToInternetRules = 0, // Will be calculated
+                OverlyPermissiveRules = 0 // Will be calculated
+            };
+
+            // Analyze NSGs for security issues
+            int openToInternetRules = 0;
+            int overlyPermissiveRules = 0;
+
+            foreach (var nsg in networkSecurityGroups)
+            {
+                var (openRules, permissiveRules) = await AnalyzeNetworkSecurityGroupAsync(nsg, findings);
+                openToInternetRules += openRules;
+                overlyPermissiveRules += permissiveRules;
+            }
+
+            results.NetworkSecurity.OpenToInternetRules = openToInternetRules;
+            results.NetworkSecurity.OverlyPermissiveRules = overlyPermissiveRules;
+
+            // Analyze Virtual Networks for security
+            foreach (var vnet in virtualNetworks)
+            {
+                await AnalyzeVirtualNetworkSecurityAsync(vnet, findings);
+            }
+
+            // Analyze Public IPs for exposure risks
+            await AnalyzePublicIPExposureAsync(publicIPs, findings);
+
+            // Analyze Application Gateways for WAF configuration
+            foreach (var appGw in applicationGateways)
+            {
+                await AnalyzeApplicationGatewaySecurityAsync(appGw, findings);
+            }
+
+            // NEW: Analyze Key Vaults for network security configuration
+            foreach (var keyVault in keyVaults)
+            {
+                await AnalyzeKeyVaultNetworkSecurityAsync(keyVault, findings);
+            }
+
+            // Check for missing network security components
+            if (networkSecurityGroups.Count == 0 && virtualNetworks.Any())
+            {
+                findings.Add(new SecurityFinding
+                {
+                    Category = "Network",
+                    ResourceId = "network.security",
+                    ResourceName = "Network Security Groups",
+                    SecurityControl = "Network Segmentation",
+                    Issue = "Virtual networks exist without Network Security Groups for traffic filtering",
+                    Recommendation = "Deploy Network Security Groups to control traffic flow and implement network segmentation",
+                    Severity = "High",
+                    ComplianceFramework = "CIS Azure"
+                });
+            }
+
+            _logger.LogInformation("Network Security analysis completed. NSGs: {NSGCount}, Public IPs: {PublicIPCount}, Key Vaults: {KeyVaultCount}, Open rules: {OpenRules}",
+                networkSecurityGroups.Count, publicIPs.Count, keyVaults.Count, openToInternetRules);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to analyze network security");
+
+            findings.Add(new SecurityFinding
+            {
+                Category = "Network",
+                ResourceId = "error.network",
+                ResourceName = "Network Security Analysis",
+                SecurityControl = "Network Assessment",
+                Issue = "Failed to analyze network security configuration",
+                Recommendation = "Review network permissions and retry security analysis",
+                Severity = "High",
+                ComplianceFramework = "General"
+            });
+        }
+    }
+
+    // NEW: Key Vault Network Security Analysis
+    private async Task AnalyzeKeyVaultNetworkSecurityAsync(AzureResource keyVault, List<SecurityFinding> findings)
+    {
+        string keyVaultName = keyVault.Name;
+        string keyVaultId = keyVault.Id;
+
+        _logger.LogDebug("Analyzing Key Vault network security for {KeyVaultName}", keyVaultName);
+
+        if (!string.IsNullOrEmpty(keyVault.Properties))
+        {
+            try
+            {
+                var properties = JsonDocument.Parse(keyVault.Properties);
+
+                // Check public network access configuration
+                if (properties.RootElement.TryGetProperty("publicNetworkAccess", out var networkAccess))
+                {
+                    if (networkAccess.GetString()?.ToLowerInvariant() == "enabled")
+                    {
+                        findings.Add(new SecurityFinding
+                        {
+                            Category = "Network",
+                            ResourceId = keyVaultId,
+                            ResourceName = keyVaultName,
+                            SecurityControl = "Network Access Control",
+                            Issue = "Key Vault allows public network access, increasing attack surface",
+                            Recommendation = "Configure private endpoints and disable public network access for enhanced security",
+                            Severity = "High",
+                            ComplianceFramework = "CIS Azure"
+                        });
+                    }
+                }
+
+                // Check for network ACLs configuration
+                if (properties.RootElement.TryGetProperty("networkAcls", out var networkAcls))
+                {
+                    if (networkAcls.TryGetProperty("defaultAction", out var defaultAction))
+                    {
+                        if (defaultAction.GetString()?.ToLowerInvariant() == "allow")
+                        {
+                            findings.Add(new SecurityFinding
+                            {
+                                Category = "Network",
+                                ResourceId = keyVaultId,
+                                ResourceName = keyVaultName,
+                                SecurityControl = "Network Access Control",
+                                Issue = "Key Vault network ACLs default action is 'Allow', permitting broad access",
+                                Recommendation = "Set default action to 'Deny' and configure specific IP ranges or virtual network rules",
+                                Severity = "Medium",
+                                ComplianceFramework = "CIS Azure"
+                            });
+                        }
+                    }
+
+                    // Check for IP rules configuration
+                    if (networkAcls.TryGetProperty("ipRules", out var ipRules))
+                    {
+                        var ipRuleCount = ipRules.GetArrayLength();
+                        if (ipRuleCount > 20)
+                        {
+                            findings.Add(new SecurityFinding
+                            {
+                                Category = "Network",
+                                ResourceId = keyVaultId,
+                                ResourceName = keyVaultName,
+                                SecurityControl = "Network Access Control",
+                                Issue = $"Key Vault has {ipRuleCount} IP rules, which may be difficult to manage",
+                                Recommendation = "Review and consolidate IP rules, consider using virtual network service endpoints instead",
+                                Severity = "Low",
+                                ComplianceFramework = "Best Practice"
+                            });
+                        }
+
+                        // Check for overly broad IP ranges
+                        foreach (var ipRule in ipRules.EnumerateArray())
+                        {
+                            if (ipRule.TryGetProperty("value", out var ipValue))
+                            {
+                                var ip = ipValue.GetString();
+                                if (ip == "0.0.0.0/0" || ip == "*")
+                                {
+                                    findings.Add(new SecurityFinding
+                                    {
+                                        Category = "Network",
+                                        ResourceId = keyVaultId,
+                                        ResourceName = keyVaultName,
+                                        SecurityControl = "Network Access Control",
+                                        Issue = "Key Vault allows access from any IP address (0.0.0.0/0)",
+                                        Recommendation = "Restrict IP rules to specific trusted IP ranges only",
+                                        Severity = "High",
+                                        ComplianceFramework = "CIS Azure"
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    // Check for virtual network rules
+                    if (networkAcls.TryGetProperty("virtualNetworkRules", out var vnetRules))
+                    {
+                        var vnetRuleCount = vnetRules.GetArrayLength();
+                        if (vnetRuleCount == 0 && networkAcls.TryGetProperty("defaultAction", out var defAction) &&
+                            defAction.GetString()?.ToLowerInvariant() == "deny")
+                        {
+                            // This is actually good - deny by default with no broad vnet rules
+                            _logger.LogDebug("Key Vault {KeyVaultName} has restrictive network configuration", keyVaultName);
+                        }
+                    }
+                }
+
+                // Check for private endpoint connections
+                if (properties.RootElement.TryGetProperty("privateEndpointConnections", out var privateEndpoints))
+                {
+                    var privateEndpointCount = privateEndpoints.GetArrayLength();
+                    if (privateEndpointCount == 0)
+                    {
+                        // Only flag this if public access is also enabled
+                        if (properties.RootElement.TryGetProperty("publicNetworkAccess", out var pubAccess) &&
+                            pubAccess.GetString()?.ToLowerInvariant() == "enabled")
+                        {
+                            findings.Add(new SecurityFinding
+                            {
+                                Category = "Network",
+                                ResourceId = keyVaultId,
+                                ResourceName = keyVaultName,
+                                SecurityControl = "Private Connectivity",
+                                Issue = "Key Vault lacks private endpoint connections and allows public access",
+                                Recommendation = "Configure private endpoints to enable secure, private connectivity to Key Vault",
+                                Severity = "Medium",
+                                ComplianceFramework = "Azure Security Benchmark"
+                            });
+                        }
+                    }
+                }
+
+                // Check if Key Vault is in a production environment (based on tags or name)
+                bool isProduction = keyVault.Environment?.ToLowerInvariant().Contains("prod") == true ||
+                                   keyVault.Tags.ContainsKey("Environment") &&
+                                   keyVault.Tags["Environment"].ToLowerInvariant().Contains("prod");
+
+                if (isProduction)
+                {
+                    // Production Key Vaults should have stricter network controls
+                    if (properties.RootElement.TryGetProperty("publicNetworkAccess", out var prodNetworkAccess) &&
+                        prodNetworkAccess.GetString()?.ToLowerInvariant() == "enabled")
+                    {
+                        findings.Add(new SecurityFinding
+                        {
+                            Category = "Network",
+                            ResourceId = keyVaultId,
+                            ResourceName = keyVaultName,
+                            SecurityControl = "Production Security",
+                            Issue = "Production Key Vault should not allow public network access",
+                            Recommendation = "Disable public network access for production Key Vaults and use private endpoints exclusively",
+                            Severity = "High",
+                            ComplianceFramework = "Production Security Best Practice"
+                        });
+                    }
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse Key Vault properties for network security analysis: {KeyVaultName}", keyVaultName);
+
+                findings.Add(new SecurityFinding
+                {
+                    Category = "Network",
+                    ResourceId = keyVaultId,
+                    ResourceName = keyVaultName,
+                    SecurityControl = "Configuration Analysis",
+                    Issue = "Unable to parse Key Vault network configuration for detailed security analysis",
+                    Recommendation = "Verify Key Vault configuration and permissions for network security analysis",
+                    Severity = "Low",
+                    ComplianceFramework = "General"
+                });
+            }
+        }
+        else
+        {
+            findings.Add(new SecurityFinding
+            {
+                Category = "Network",
+                ResourceId = keyVaultId,
+                ResourceName = keyVaultName,
+                SecurityControl = "Configuration Analysis",
+                Issue = "Key Vault network configuration properties are not available for analysis",
+                Recommendation = "Ensure proper permissions to read Key Vault network configuration",
+                Severity = "Low",
+                ComplianceFramework = "General"
+            });
+        }
+
+        await Task.CompletedTask;
+    }
+
+    // Rest of the existing methods remain the same but with updated method signatures
     private async Task<(int openRules, int permissiveRules)> AnalyzeNetworkSecurityGroupAsync(
-    AzureResource nsg,
-    List<SecurityFinding> findings)
+        AzureResource nsg,
+        List<SecurityFinding> findings)
     {
         string nsgName = nsg.Name;
         string nsgId = nsg.Id;
@@ -132,7 +446,7 @@ public class SecurityPostureAssessmentAnalyzer : ISecurityPostureAssessmentAnaly
                     await AnalyzeDefaultSecurityRules(defaultRules, nsgId, nsgName, findings);
                 }
                 // Check for subnets and NICs associations
-                await AnalyzeNsgAssociations(rootElement, nsgId, nsgName, findings);  // CHANGE THIS LINE
+                await AnalyzeNsgAssociations(rootElement, nsgId, nsgName, findings);
             }
             // Enhanced general NSG security checks
             await PerformEnhancedNsgSecurityChecks(nsg, findings);
@@ -315,18 +629,18 @@ public class SecurityPostureAssessmentAnalyzer : ISecurityPostureAssessmentAnaly
 
         // Critical administrative ports
         var criticalPorts = new Dictionary<string, string>
-    {
-        { "22", "SSH" },
-        { "3389", "RDP" },
-        { "1433", "SQL Server" },
-        { "3306", "MySQL" },
-        { "5432", "PostgreSQL" },
-        { "6379", "Redis" },
-        { "27017", "MongoDB" },
-        { "5984", "CouchDB" },
-        { "9200", "Elasticsearch" },
-        { "5601", "Kibana" }
-    };
+        {
+            { "22", "SSH" },
+            { "3389", "RDP" },
+            { "1433", "SQL Server" },
+            { "3306", "MySQL" },
+            { "5432", "PostgreSQL" },
+            { "6379", "Redis" },
+            { "27017", "MongoDB" },
+            { "5984", "CouchDB" },
+            { "9200", "Elasticsearch" },
+            { "5601", "Kibana" }
+        };
 
         if (criticalPorts.TryGetValue(destPort ?? "", out var serviceName))
         {
@@ -345,14 +659,14 @@ public class SecurityPostureAssessmentAnalyzer : ISecurityPostureAssessmentAnaly
 
         // Check for insecure protocols
         var insecureProtocolPorts = new Dictionary<string, string>
-    {
-        { "21", "FTP (unencrypted)" },
-        { "23", "Telnet (unencrypted)" },
-        { "80", "HTTP (unencrypted web traffic)" },
-        { "143", "IMAP (unencrypted)" },
-        { "110", "POP3 (unencrypted)" },
-        { "161", "SNMP (often misconfigured)" }
-    };
+        {
+            { "21", "FTP (unencrypted)" },
+            { "23", "Telnet (unencrypted)" },
+            { "80", "HTTP (unencrypted web traffic)" },
+            { "143", "IMAP (unencrypted)" },
+            { "110", "POP3 (unencrypted)" },
+            { "161", "SNMP (often misconfigured)" }
+        };
 
         if (insecureProtocolPorts.TryGetValue(destPort ?? "", out var insecureService))
         {
@@ -563,113 +877,6 @@ public class SecurityPostureAssessmentAnalyzer : ISecurityPostureAssessmentAnaly
         return securityIndicators.Any(indicator => nameLower.Contains(indicator)) &&
                environmentIndicators.Any(env => nameLower.Contains(env));
     }
-    private async Task AnalyzeNetworkSecurityAsync(
-        string[] subscriptionIds,
-        SecurityPostureResults results,
-        List<SecurityFinding> findings,
-        CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("Analyzing Network Security...");
-
-        try
-        {
-            // Get all network-related resources
-            var allResources = await _resourceGraphService.GetResourcesAsync(subscriptionIds, cancellationToken);
-
-            // Analyze Network Security Groups
-            var networkSecurityGroups = allResources.Where(r =>
-                r.Type.ToLowerInvariant() == "microsoft.network/networksecuritygroups").ToList();
-
-            // Analyze Virtual Networks
-            var virtualNetworks = allResources.Where(r =>
-                r.Type.ToLowerInvariant() == "microsoft.network/virtualnetworks").ToList();
-
-            // Analyze Public IPs
-            var publicIPs = allResources.Where(r =>
-                r.Type.ToLowerInvariant() == "microsoft.network/publicipaddresses").ToList();
-
-            // Analyze Application Gateways and Load Balancers
-            var applicationGateways = allResources.Where(r =>
-                r.Type.ToLowerInvariant() == "microsoft.network/applicationgateways").ToList();
-
-            var loadBalancers = allResources.Where(r =>
-                r.Type.ToLowerInvariant() == "microsoft.network/loadbalancers").ToList();
-
-            // Initialize network security analysis
-            results.NetworkSecurity = new NetworkSecurityAnalysis
-            {
-                NetworkSecurityGroups = networkSecurityGroups.Count,
-                OpenToInternetRules = 0, // Will be calculated
-                OverlyPermissiveRules = 0 // Will be calculated
-            };
-
-            // Analyze NSGs for security issues
-            int openToInternetRules = 0;
-            int overlyPermissiveRules = 0;
-
-            foreach (var nsg in networkSecurityGroups)
-            {
-                var (openRules, permissiveRules) = await AnalyzeNetworkSecurityGroupAsync(nsg, findings);
-                openToInternetRules += openRules;
-                overlyPermissiveRules += permissiveRules;
-            }
-
-            results.NetworkSecurity.OpenToInternetRules = openToInternetRules;
-            results.NetworkSecurity.OverlyPermissiveRules = overlyPermissiveRules;
-
-            // Analyze Virtual Networks for security
-            foreach (var vnet in virtualNetworks)
-            {
-                await AnalyzeVirtualNetworkSecurityAsync(vnet, findings);
-            }
-
-            // Analyze Public IPs for exposure risks
-            await AnalyzePublicIPExposureAsync(publicIPs, findings);
-
-            // Analyze Application Gateways for WAF configuration
-            foreach (var appGw in applicationGateways)
-            {
-                await AnalyzeApplicationGatewaySecurityAsync(appGw, findings);
-            }
-
-            // Check for missing network security components
-            if (networkSecurityGroups.Count == 0 && virtualNetworks.Any())
-            {
-                findings.Add(new SecurityFinding
-                {
-                    Category = "Network",
-                    ResourceId = "network.security",
-                    ResourceName = "Network Security Groups",
-                    SecurityControl = "Network Segmentation",
-                    Issue = "Virtual networks exist without Network Security Groups for traffic filtering",
-                    Recommendation = "Deploy Network Security Groups to control traffic flow and implement network segmentation",
-                    Severity = "High",
-                    ComplianceFramework = "CIS Azure"
-                });
-            }
-
-            _logger.LogInformation("Network Security analysis completed. NSGs: {NSGCount}, Public IPs: {PublicIPCount}, Open rules: {OpenRules}",
-                networkSecurityGroups.Count, publicIPs.Count, openToInternetRules);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to analyze network security");
-
-            findings.Add(new SecurityFinding
-            {
-                Category = "Network",
-                ResourceId = "error.network",
-                ResourceName = "Network Security Analysis",
-                SecurityControl = "Network Assessment",
-                Issue = "Failed to analyze network security configuration",
-                Recommendation = "Review network permissions and retry security analysis",
-                Severity = "High",
-                ComplianceFramework = "General"
-            });
-        }
-    }
-
-    
 
     private async Task AnalyzeVirtualNetworkSecurityAsync(AzureResource vnet, List<SecurityFinding> findings)
     {
@@ -1021,7 +1228,6 @@ public class SecurityPostureAssessmentAnalyzer : ISecurityPostureAssessmentAnaly
                 ResourceId = "security.contacts",
                 ResourceName = "Security Contacts",
                 SecurityControl = "Incident Response",
-                Issue = "Security contact configuration should be verified for alert notifications",
                 Recommendation = "Configure security contacts to receive alerts and notifications from Microsoft Defender for Cloud",
                 Severity = "Medium",
                 ComplianceFramework = "CIS Azure"

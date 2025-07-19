@@ -1,8 +1,9 @@
 ﻿using Compass.Core.Models;
+using Compass.Core.Models.Assessment;
 using Compass.Core.Interfaces;
 using Compass.Data.Entities;
-using Compass.Data.Repositories;
 using Microsoft.Extensions.Logging;
+using Compass.Data.Interfaces;
 
 namespace Compass.Core.Services;
 
@@ -26,8 +27,6 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
     private readonly ILogger<AssessmentOrchestrator> _logger;
     private readonly IBusinessContinuityAssessmentAnalyzer _businessContinuityAnalyzer;
     private readonly ISecurityPostureAssessmentAnalyzer _securityPostureAnalyzer;
-
-
 
     public AssessmentOrchestrator(
         IAzureResourceGraphService resourceGraphService,
@@ -57,7 +56,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
 
     public async Task<Guid> StartAssessmentAsync(AssessmentRequest request, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Starting enhanced category-based assessment for organization {OrganizationId}, type {AssessmentType}",
+        _logger.LogInformation("Starting category-separated assessment for organization {OrganizationId}, type {AssessmentType}",
             request.OrganizationId, request.Type);
 
         // Determine assessment category
@@ -69,7 +68,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
             EnvironmentId = request.EnvironmentId,
             Name = request.Name,
             AssessmentType = request.Type.ToString(),
-            AssessmentCategory = category.ToString(), // NEW: Set category
+            AssessmentCategory = category.ToString(),
             Status = AssessmentStatus.Pending.ToString(),
             StartedDate = DateTime.UtcNow,
             CustomerId = request.CustomerId,
@@ -113,7 +112,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
 
     private async Task ProcessCategorizedAssessmentAsync(Guid assessmentId, AssessmentRequest request, CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Processing categorized assessment {AssessmentId} with type {AssessmentType} in category {Category}",
+        _logger.LogInformation("Processing STRICTLY categorized assessment {AssessmentId} with type {AssessmentType} in category {Category}",
             assessmentId, request.Type, AssessmentModelStructure.GetCategory(request.Type));
 
         // Update status to InProgress
@@ -138,27 +137,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
 
         var organizationId = request.OrganizationId.Value;
 
-        // Get client preferences for preference-aware analysis
-        ClientAssessmentConfiguration? clientConfig = null;
-        if (environment.ClientId.HasValue && request.UseClientPreferences)
-        {
-            try
-            {
-                var clientPreferences = await _clientPreferencesRepository.GetByClientIdAsync(environment.ClientId.Value, organizationId);
-                if (clientPreferences != null)
-                {
-                    clientConfig = MapToClientConfig(clientPreferences);
-                    _logger.LogInformation("Using client preferences for assessment {AssessmentId}, client {ClientId}",
-                        assessmentId, environment.ClientId.Value);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to retrieve client preferences for assessment {AssessmentId}", assessmentId);
-            }
-        }
-
-        // Determine what analysis to run based on assessment category
+        // Determine what analysis to run based on assessment category - STRICT SEPARATION
         var category = AssessmentModelStructure.GetCategory(request.Type);
 
         try
@@ -166,18 +145,22 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
             switch (category)
             {
                 case AssessmentCategory.ResourceGovernance:
-                    await ProcessResourceGovernanceAssessmentAsync(assessmentId, request, environment, clientConfig, cancellationToken);
+                    _logger.LogInformation("Processing GOVERNANCE-ONLY assessment - no security or IAM analysis");
+                    await ProcessResourceGovernanceAssessmentAsync(assessmentId, request, environment, organizationId, cancellationToken);
                     break;
 
                 case AssessmentCategory.IdentityAccessManagement:
+                    _logger.LogInformation("Processing IAM-ONLY assessment - no governance or security posture analysis");
                     await ProcessIdentityAccessManagementAssessmentAsync(assessmentId, request, environment, organizationId, cancellationToken);
                     break;
 
                 case AssessmentCategory.BusinessContinuity:
+                    _logger.LogInformation("Processing BCDR-ONLY assessment - no governance, IAM, or security posture analysis");
                     await ProcessBusinessContinuityAssessmentAsync(assessmentId, request, environment, organizationId, cancellationToken);
                     break;
 
                 case AssessmentCategory.SecurityPosture:
+                    _logger.LogInformation("Processing SECURITY POSTURE-ONLY assessment - no governance or IAM analysis");
                     await ProcessSecurityPostureAssessmentAsync(assessmentId, request, environment, organizationId, cancellationToken);
                     break;
 
@@ -185,7 +168,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
                     throw new ArgumentException($"Unsupported assessment category: {category}");
             }
 
-            _logger.LogInformation("Categorized assessment {AssessmentId} completed successfully in category {Category}",
+            _logger.LogInformation("Categorized assessment {AssessmentId} completed successfully in category {Category} with strict separation",
                 assessmentId, category);
         }
         catch (Exception ex)
@@ -199,13 +182,33 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         Guid assessmentId,
         AssessmentRequest request,
         AzureEnvironment environment,
-        ClientAssessmentConfiguration? clientConfig,
+        Guid organizationId,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Processing Resource Governance assessment {AssessmentId}", assessmentId);
+        _logger.LogInformation("Processing PURE Resource Governance assessment {AssessmentId} - ONLY naming and tagging", assessmentId);
+
+        // Get client preferences for preference-aware analysis (GOVERNANCE ONLY)
+        ClientAssessmentConfiguration? clientConfig = null;
+        if (environment.ClientId.HasValue && request.UseClientPreferences)
+        {
+            try
+            {
+                var clientPreferences = await _clientPreferencesRepository.GetByClientIdAsync(environment.ClientId.Value, organizationId);
+                if (clientPreferences != null)
+                {
+                    clientConfig = MapToClientConfig(clientPreferences);
+                    _logger.LogInformation("Using client preferences for GOVERNANCE assessment {AssessmentId}, client {ClientId}",
+                        assessmentId, environment.ClientId.Value);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to retrieve client preferences for assessment {AssessmentId}", assessmentId);
+            }
+        }
 
         // Collect Azure resources
-        var resources = await CollectAzureResourcesAsync(environment, request.OrganizationId!.Value, cancellationToken);
+        var resources = await CollectAzureResourcesAsync(environment, organizationId, cancellationToken);
 
         if (!resources.Any())
         {
@@ -217,13 +220,15 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         // Save resources to database
         await SaveAssessmentResourcesAsync(assessmentId, resources);
 
-        // Run governance analyses based on assessment type
+        // Run ONLY governance analyses based on assessment type
         NamingConventionResults? namingResults = null;
         TaggingResults? taggingResults = null;
         DependencyAnalysisResults? dependencyResults = null;
 
+        // STRICT: Only analyze what the assessment type requests
         if (request.Type == AssessmentType.NamingConvention || request.Type == AssessmentType.GovernanceFull || request.Type == AssessmentType.Full)
         {
+            _logger.LogInformation("Running naming convention analysis for governance assessment");
             if (clientConfig != null && _namingAnalyzer is IPreferenceAwareNamingAnalyzer preferenceAwareAnalyzer)
             {
                 namingResults = await preferenceAwareAnalyzer.AnalyzeNamingConventionsAsync(resources, clientConfig, cancellationToken);
@@ -236,6 +241,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
 
         if (request.Type == AssessmentType.Tagging || request.Type == AssessmentType.GovernanceFull || request.Type == AssessmentType.Full)
         {
+            _logger.LogInformation("Running tagging analysis for governance assessment");
             if (clientConfig != null && _taggingAnalyzer is IPreferenceAwareTaggingAnalyzer preferenceAwareTagAnalyzer)
             {
                 taggingResults = await preferenceAwareTagAnalyzer.AnalyzeTaggingAsync(resources, clientConfig, cancellationToken);
@@ -258,7 +264,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         // Complete assessment
         await _assessmentRepository.UpdateAssessmentAsync(assessmentId, overallScore, AssessmentStatus.Completed.ToString(), DateTime.UtcNow);
 
-        _logger.LogInformation("Resource Governance assessment {AssessmentId} completed with score {Score}%", assessmentId, overallScore);
+        _logger.LogInformation("PURE Resource Governance assessment {AssessmentId} completed with score {Score}%", assessmentId, overallScore);
     }
 
     private async Task ProcessIdentityAccessManagementAssessmentAsync(
@@ -268,15 +274,54 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
         Guid organizationId,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Processing Identity Access Management assessment {AssessmentId}", assessmentId);
+        _logger.LogInformation("Processing PURE Identity Access Management assessment {AssessmentId} - ONLY IAM, no governance", assessmentId);
 
         try
         {
-            // Run IAM analysis
-            var iamResults = await _identityAccessAnalyzer.AnalyzeIdentityAccessAsync(
-                request.SubscriptionIds,
-                request.Type,
-                cancellationToken);
+            IdentityAccessResults iamResults;
+
+            // Use OAuth-enhanced analysis if available
+            if (environment.ClientId.HasValue)
+            {
+                try
+                {
+                    var hasOAuthCredentials = await _oauthService.TestCredentialsAsync(environment.ClientId.Value, organizationId);
+                    if (hasOAuthCredentials)
+                    {
+                        _logger.LogInformation("Using OAuth-enhanced IAM analysis for assessment {AssessmentId}", assessmentId);
+                        iamResults = await _identityAccessAnalyzer.AnalyzeIdentityAccessWithOAuthAsync(
+                            request.SubscriptionIds,
+                            environment.ClientId.Value,
+                            organizationId,
+                            request.Type,
+                            cancellationToken);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("OAuth not available, using standard IAM analysis for assessment {AssessmentId}", assessmentId);
+                        iamResults = await _identityAccessAnalyzer.AnalyzeIdentityAccessAsync(
+                            request.SubscriptionIds,
+                            request.Type,
+                            cancellationToken);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "OAuth IAM analysis failed, falling back to standard analysis");
+                    iamResults = await _identityAccessAnalyzer.AnalyzeIdentityAccessAsync(
+                        request.SubscriptionIds,
+                        request.Type,
+                        cancellationToken);
+                }
+            }
+            else
+            {
+                _logger.LogInformation("No client context, using standard IAM analysis for assessment {AssessmentId}", assessmentId);
+                iamResults = await _identityAccessAnalyzer.AnalyzeIdentityAccessAsync(
+                    request.SubscriptionIds,
+                    request.Type,
+                    cancellationToken);
+            }
 
             // Save IAM-specific findings
             await SaveIdentityAccessFindings(assessmentId, iamResults);
@@ -284,7 +329,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
             // Complete assessment
             await _assessmentRepository.UpdateAssessmentAsync(assessmentId, iamResults.Score, AssessmentStatus.Completed.ToString(), DateTime.UtcNow);
 
-            _logger.LogInformation("Identity Access Management assessment {AssessmentId} completed with score {Score}%", assessmentId, iamResults.Score);
+            _logger.LogInformation("PURE Identity Access Management assessment {AssessmentId} completed with score {Score}%", assessmentId, iamResults.Score);
         }
         catch (Exception ex)
         {
@@ -294,13 +339,13 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
     }
 
     private async Task ProcessBusinessContinuityAssessmentAsync(
-    Guid assessmentId,
-    AssessmentRequest request,
-    AzureEnvironment environment,
-    Guid organizationId,
-    CancellationToken cancellationToken)
+        Guid assessmentId,
+        AssessmentRequest request,
+        AzureEnvironment environment,
+        Guid organizationId,
+        CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Processing Business Continuity assessment {AssessmentId}", assessmentId);
+        _logger.LogInformation("Processing PURE Business Continuity assessment {AssessmentId} - ONLY BCDR, no governance or IAM", assessmentId);
 
         try
         {
@@ -316,7 +361,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
             // Complete assessment
             await _assessmentRepository.UpdateAssessmentAsync(assessmentId, bcdrResults.Score, AssessmentStatus.Completed.ToString(), DateTime.UtcNow);
 
-            _logger.LogInformation("Business Continuity assessment {AssessmentId} completed with score {Score}%", assessmentId, bcdrResults.Score);
+            _logger.LogInformation("PURE Business Continuity assessment {AssessmentId} completed with score {Score}%", assessmentId, bcdrResults.Score);
         }
         catch (Exception ex)
         {
@@ -326,21 +371,60 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
     }
 
     private async Task ProcessSecurityPostureAssessmentAsync(
-    Guid assessmentId,
-    AssessmentRequest request,
-    AzureEnvironment environment,
-    Guid organizationId,
-    CancellationToken cancellationToken)
+        Guid assessmentId,
+        AssessmentRequest request,
+        AzureEnvironment environment,
+        Guid organizationId,
+        CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Processing Security Posture assessment {AssessmentId}", assessmentId);
+        _logger.LogInformation("Processing PURE Security Posture assessment {AssessmentId} - ONLY security posture, no governance or IAM", assessmentId);
 
         try
         {
-            // Run Security Posture analysis using the real analyzer
-            var securityResults = await _securityPostureAnalyzer.AnalyzeSecurityPostureAsync(
-                request.SubscriptionIds,
-                request.Type,
-                cancellationToken);
+            SecurityPostureResults securityResults;
+
+            // Use OAuth-enhanced analysis if available
+            if (environment.ClientId.HasValue)
+            {
+                try
+                {
+                    var hasOAuthCredentials = await _oauthService.TestCredentialsAsync(environment.ClientId.Value, organizationId);
+                    if (hasOAuthCredentials)
+                    {
+                        _logger.LogInformation("Using OAuth-enhanced Security Posture analysis for assessment {AssessmentId}", assessmentId);
+                        securityResults = await _securityPostureAnalyzer.AnalyzeSecurityPostureWithOAuthAsync(
+                            request.SubscriptionIds,
+                            environment.ClientId.Value,
+                            organizationId,
+                            request.Type,
+                            cancellationToken);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("OAuth not available, using standard Security Posture analysis for assessment {AssessmentId}", assessmentId);
+                        securityResults = await _securityPostureAnalyzer.AnalyzeSecurityPostureAsync(
+                            request.SubscriptionIds,
+                            request.Type,
+                            cancellationToken);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "OAuth Security Posture analysis failed, falling back to standard analysis");
+                    securityResults = await _securityPostureAnalyzer.AnalyzeSecurityPostureAsync(
+                        request.SubscriptionIds,
+                        request.Type,
+                        cancellationToken);
+                }
+            }
+            else
+            {
+                _logger.LogInformation("No client context, using standard Security Posture analysis for assessment {AssessmentId}", assessmentId);
+                securityResults = await _securityPostureAnalyzer.AnalyzeSecurityPostureAsync(
+                    request.SubscriptionIds,
+                    request.Type,
+                    cancellationToken);
+            }
 
             // Save Security-specific findings
             await SaveSecurityPostureFindings(assessmentId, securityResults);
@@ -348,7 +432,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
             // Complete assessment
             await _assessmentRepository.UpdateAssessmentAsync(assessmentId, securityResults.Score, AssessmentStatus.Completed.ToString(), DateTime.UtcNow);
 
-            _logger.LogInformation("Security Posture assessment {AssessmentId} completed with score {Score}%", assessmentId, securityResults.Score);
+            _logger.LogInformation("PURE Security Posture assessment {AssessmentId} completed with score {Score}%", assessmentId, securityResults.Score);
         }
         catch (Exception ex)
         {
@@ -661,40 +745,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
 
     private ClientAssessmentConfiguration MapToClientConfig(Compass.Data.Entities.ClientPreferences preferences)
     {
-        return new ClientAssessmentConfiguration
-        {
-            ClientId = preferences.ClientId,
-            ClientName = preferences.Client?.Name ?? "Unknown Client",
-            AllowedNamingPatterns = !string.IsNullOrEmpty(preferences.AllowedNamingPatterns)
-                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(preferences.AllowedNamingPatterns) ?? new List<string>()
-                : new List<string>(),
-            RequiredNamingElements = !string.IsNullOrEmpty(preferences.RequiredNamingElements)
-                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(preferences.RequiredNamingElements) ?? new List<string>()
-                : new List<string>(),
-            EnvironmentIndicators = preferences.EnvironmentIndicators,
-            RequiredTags = !string.IsNullOrEmpty(preferences.RequiredTags)
-                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(preferences.RequiredTags) ?? new List<string>()
-                : new List<string>(),
-            EnforceTagCompliance = preferences.EnforceTagCompliance,
-            ComplianceFrameworks = !string.IsNullOrEmpty(preferences.ComplianceFrameworks)
-                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(preferences.ComplianceFrameworks) ?? new List<string>()
-                : new List<string>(),
-            NamingStyle = preferences.NamingStyle,
-            TaggingApproach = preferences.TaggingApproach,
-            EnvironmentSize = preferences.EnvironmentSize,
-            OrganizationMethod = preferences.OrganizationMethod,
-            EnvironmentIndicatorLevel = preferences.EnvironmentIndicatorLevel,
-            SelectedTags = !string.IsNullOrEmpty(preferences.SelectedTags)
-                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(preferences.SelectedTags) ?? new List<string>()
-                : new List<string>(),
-            CustomTags = !string.IsNullOrEmpty(preferences.CustomTags)
-                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(preferences.CustomTags) ?? new List<string>()
-                : new List<string>(),
-            SelectedCompliances = !string.IsNullOrEmpty(preferences.SelectedCompliances)
-                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(preferences.SelectedCompliances) ?? new List<string>()
-                : new List<string>(),
-            NoSpecificRequirements = preferences.NoSpecificRequirements
-        };
+        return ClientAssessmentConfiguration.FromClientPreferences(preferences);
     }
 
     private AssessmentResult MapToEnhancedAssessmentResult(Assessment assessment, List<AssessmentFinding> findings)
@@ -704,7 +755,7 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
             AssessmentId = assessment.Id,
             EnvironmentId = assessment.EnvironmentId,
             Type = Enum.Parse<AssessmentType>(assessment.AssessmentType),
-            Category = Enum.Parse<AssessmentCategory>(assessment.AssessmentCategory), // NEW
+            Category = Enum.Parse<AssessmentCategory>(assessment.AssessmentCategory),
             Status = Enum.Parse<AssessmentStatus>(assessment.Status),
             OverallScore = assessment.OverallScore ?? 0,
             StartedDate = assessment.StartedDate,

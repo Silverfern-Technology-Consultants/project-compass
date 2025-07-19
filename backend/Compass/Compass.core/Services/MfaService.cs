@@ -3,6 +3,7 @@ using System.Text;
 using QRCoder;
 using System.Drawing;
 using System.Drawing.Imaging;
+using Compass.core.Interfaces;
 
 namespace Compass.Core.Services;
 
@@ -43,28 +44,17 @@ public class MfaService : IMfaService
         var unixTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var timeStep = unixTime / TotpPeriod;
 
-        // ✅ DEBUG: Log timing information
-        Console.WriteLine($"[MFA DEBUG] Current Unix Time: {unixTime}");
-        Console.WriteLine($"[MFA DEBUG] Current Time Step: {timeStep}");
-        Console.WriteLine($"[MFA DEBUG] Token to validate: {token}");
-
         // Check current time step and adjacent ones for tolerance
         for (int i = -TotpWindow; i <= TotpWindow; i++)
         {
             var stepToCheck = timeStep + i;
             var expectedToken = GenerateTotpCode(secretBytes, stepToCheck);
 
-            // ✅ DEBUG: Log each step being checked
-            Console.WriteLine($"[MFA DEBUG] Checking step {stepToCheck} (offset {i}): Expected={expectedToken}, Provided={token}");
-
             if (expectedToken == token)
             {
-                Console.WriteLine($"[MFA DEBUG] ✅ MATCH FOUND at step {stepToCheck} (offset {i})");
                 return true;
             }
         }
-
-        Console.WriteLine($"[MFA DEBUG] ❌ NO MATCH FOUND for token {token}");
         return false;
     }
 

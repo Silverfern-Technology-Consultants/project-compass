@@ -2,7 +2,7 @@
 using Compass.Core.Models;
 using Compass.Core.Services;
 using Compass.Data.Entities;
-using Compass.Data.Repositories;
+using Compass.Data.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 

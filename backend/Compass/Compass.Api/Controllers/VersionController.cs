@@ -20,7 +20,7 @@ public class VersionController : ControllerBase
         {
             Product = product ?? "Governance Guardian",
             Version = informationalVersion ?? version?.ToString() ?? "Unknown",
-            ApiVersion = "2.1.0",
+            ApiVersion = "2.2.0",
             FrontendVersion = "1.0.0", // This should be read from a config or shared file
             BuildDate = GetBuildDate(),
             Environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Development",

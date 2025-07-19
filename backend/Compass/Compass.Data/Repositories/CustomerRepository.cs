@@ -1,5 +1,6 @@
 ﻿// Compass.Data/Repositories/CustomerRepository.cs
 using Compass.Data.Entities;
+using Compass.Data.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Compass.Data.Repositories;

@@ -1,6 +1,6 @@
 ﻿// Compass.Core/Services/LoginActivityService.cs
 using Compass.Data.Entities;
-using Compass.Data.Repositories;
+using Compass.Data.Interfaces;
 using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
 

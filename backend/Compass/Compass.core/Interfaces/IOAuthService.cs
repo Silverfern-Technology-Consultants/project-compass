@@ -4,44 +4,56 @@ namespace Compass.Core.Interfaces
 {
     public interface IOAuthService
     {
-        /// <summary>
-        /// Initiates OAuth flow for a client environment
-        /// </summary>
+        // Existing methods (unchanged for backward compatibility)
         Task<OAuthInitiateResponse> InitiateOAuthFlowAsync(OAuthInitiateRequest request, Guid organizationId);
-
-        /// <summary>
-        /// Gets OAuth progress for Key Vault creation
-        /// </summary>
         Task<OAuthProgressResponse?> GetOAuthProgressAsync(string progressId);
-
-        /// <summary>
-        /// Handles OAuth callback and exchanges code for tokens
-        /// </summary>
         Task<bool> HandleOAuthCallbackAsync(OAuthCallbackRequest request);
-
-        /// <summary>
-        /// Retrieves OAuth error information for failed authentication attempts
-        /// </summary>
         Task<OAuthErrorInfo?> GetOAuthErrorAsync(string state);
-
-        /// <summary>
-        /// Retrieves stored credentials for a client
-        /// </summary>
         Task<StoredCredentials?> GetStoredCredentialsAsync(Guid clientId, Guid organizationId);
-
-        /// <summary>
-        /// Refreshes expired OAuth tokens
-        /// </summary>
         Task<bool> RefreshTokensAsync(Guid clientId, Guid organizationId);
-
-        /// <summary>
-        /// Tests OAuth credentials by making a simple API call
-        /// </summary>
         Task<bool> TestCredentialsAsync(Guid clientId, Guid organizationId);
+        Task<bool> RevokeCredentialsAsync(Guid clientId, Guid organizationId);
+
+        // NEW: Microsoft Graph specific methods
+        /// <summary>
+        /// Initiates OAuth flow with specific scope types (Resource Manager, Graph, or Both)
+        /// </summary>
+        Task<OAuthInitiateResponse> InitiateOAuthFlowWithScopesAsync(
+            OAuthInitiateRequest request,
+            Guid organizationId,
+            OAuthScopeTypes scopeTypes);
 
         /// <summary>
-        /// Revokes stored OAuth credentials
+        /// Gets Microsoft Graph credentials for a client
         /// </summary>
-        Task<bool> RevokeCredentialsAsync(Guid clientId, Guid organizationId);
+        Task<GraphTokenCredentials?> GetGraphCredentialsAsync(Guid clientId, Guid organizationId);
+
+        /// <summary>
+        /// Tests Microsoft Graph credentials by making a simple API call
+        /// </summary>
+        Task<bool> TestGraphCredentialsAsync(Guid clientId, Guid organizationId);
+
+        /// <summary>
+        /// Refreshes Microsoft Graph tokens specifically
+        /// </summary>
+        Task<bool> RefreshGraphTokensAsync(Guid clientId, Guid organizationId);
+
+        /// <summary>
+        /// Checks what OAuth scopes are available for a client
+        /// </summary>
+        Task<OAuthScopeTypes> GetAvailableScopesAsync(Guid clientId, Guid organizationId);
+
+        /// <summary>
+        /// Upgrades existing OAuth setup to include Microsoft Graph scopes
+        /// </summary>
+        Task<OAuthInitiateResponse> UpgradeToGraphScopesAsync(
+            Guid clientId,
+            Guid organizationId,
+            string clientName);
+
+        /// <summary>
+        /// Gets detailed information about granted permissions
+        /// </summary>
+        Task<List<string>> GetGrantedPermissionsAsync(Guid clientId, Guid organizationId);
     }
 }

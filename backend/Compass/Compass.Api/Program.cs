@@ -11,6 +11,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using Compass.Data.Interfaces;
+using Compass.core.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -190,9 +192,9 @@ builder.Services.AddScoped<IClientPreferencesRepository, ClientPreferencesReposi
 // Assessment Orchestrator (with client preferences support)
 builder.Services.AddScoped<IAssessmentOrchestrator, AssessmentOrchestrator>();
 
-// Assessment Analyzers - Use preference-aware versions
+// Assessment Analyzers - NamingConventionAnalyzer implements both interfaces
 builder.Services.AddScoped<INamingConventionAnalyzer, NamingConventionAnalyzer>();
-builder.Services.AddScoped<IPreferenceAwareNamingAnalyzer, PreferenceAwareNamingAnalyzer>();
+// No need for separate IPreferenceAwareNamingAnalyzer registration since INamingConventionAnalyzer inherits from it
 
 // Standard analyzers
 builder.Services.AddScoped<ITaggingAnalyzer, TaggingAnalyzer>();
@@ -203,6 +205,9 @@ builder.Services.AddScoped<IDependencyAnalyzer, DependencyAnalyzer>();
 
 // ===== AZURE SERVICES =====
 builder.Services.AddScoped<IAzureResourceGraphService, AzureResourceGraphService>();
+
+// ===== MICROSOFT GRAPH SERVICE =====
+builder.Services.AddScoped<IMicrosoftGraphService, MicrosoftGraphService>();
 
 // ===== BUSINESS SERVICES =====
 builder.Services.AddScoped<ILicenseValidationService, LicenseValidationService>();
@@ -255,9 +260,16 @@ if (app.Environment.IsDevelopment())
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Compass API v1");
         c.DisplayRequestDuration();
         c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
+
+        // DARK THEME CONFIGURATION
+        c.InjectStylesheet("/swagger-ui/custom.css");
+        c.DocumentTitle = "Compass API - Silverfern Technology Consultants";
+
+        // Optional: Custom JavaScript for additional theming
+        c.InjectJavascript("/swagger-ui/custom.js");
     });
 }
-
+app.UseStaticFiles();
 app.UseHttpsRedirection();
 app.UseCors("AllowFrontend");
 

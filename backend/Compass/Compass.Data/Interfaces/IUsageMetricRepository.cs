@@ -1,7 +1,9 @@
 ﻿// Compass.Data/Repositories/IUsageMetricRepository.cs
+
+// Compass.Data/Repositories/IUsageMetricRepository.cs
 using Compass.Data.Entities;
 
-namespace Compass.Data.Repositories;
+namespace Compass.Data.Interfaces;
 
 public interface IUsageMetricRepository
 {

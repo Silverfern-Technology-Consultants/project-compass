@@ -1,11 +1,12 @@
 ﻿using Compass.Core.Models;
+using Compass.Core.Services;
 using Compass.Data;
 using Compass.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 
-namespace Compass.Core.Services;
+namespace Compass.core.Interfaces;
 
 public interface IAuthService
 {

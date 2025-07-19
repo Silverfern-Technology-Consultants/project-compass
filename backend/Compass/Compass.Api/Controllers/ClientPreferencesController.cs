@@ -1,8 +1,11 @@
 ﻿using Compass.Data.Entities;
-using Compass.Data.Repositories;
+using Compass.Data.Interfaces;
+using Compass.Core.Models.Assessment;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
+using DataEntities = Compass.Data.Entities;
+using CoreModels = Compass.Core.Models;
 
 namespace Compass.Api.Controllers;
 
@@ -70,7 +73,7 @@ public class ClientPreferencesController : ControllerBase
             }
 
             var preferences = await _preferencesRepository.GetActiveByOrganizationIdAsync(organizationId.Value);
-            var responses = preferences.Select(MapToResponse).ToList();
+            var responses = preferences.Select(p => MapToResponse(p)).ToList();
 
             return Ok(responses);
         }
@@ -91,25 +94,16 @@ public class ClientPreferencesController : ControllerBase
     {
         try
         {
-            // Debug: Log all claims
-            _logger.LogInformation("JWT Claims: {Claims}",
-                string.Join(", ", User.Claims.Select(c => $"{c.Type}={c.Value}")));
-
             var organizationId = GetOrganizationIdFromContext();
             var customerId = GetCustomerIdFromContext();
 
-            _logger.LogInformation("Extracted - OrganizationId: {OrgId}, CustomerId: {CustId}",
-                organizationId, customerId);
-
             if (organizationId == null)
             {
-                _logger.LogWarning("Organization ID is null");
                 return BadRequest("Organization context not found");
             }
 
             if (customerId == null)
             {
-                _logger.LogWarning("Customer ID is null");
                 return BadRequest("Customer context not found");
             }
 
@@ -117,14 +111,13 @@ public class ClientPreferencesController : ControllerBase
             var client = await _clientRepository.GetByIdAndOrganizationAsync(clientId, organizationId.Value);
             if (client == null)
             {
-                _logger.LogWarning("Client {ClientId} not found in organization {OrgId}", clientId, organizationId);
                 return NotFound(new { error = "Client not found", clientId });
             }
 
             // Check if preferences already exist
             var existingPreferences = await _preferencesRepository.GetByClientIdAsync(clientId, organizationId.Value);
 
-            ClientPreferences preferences;
+            DataEntities.ClientPreferences preferences;
             if (existingPreferences != null)
             {
                 // Update existing preferences
@@ -206,6 +199,198 @@ public class ClientPreferencesController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Preview naming scheme examples
+    /// </summary>
+    [HttpPost("client/{clientId}/naming-scheme/preview")]
+    public async Task<ActionResult<List<NamingSchemeExample>>> PreviewNamingScheme(
+        Guid clientId,
+        [FromBody] NamingSchemeConfiguration namingScheme)
+    {
+        try
+        {
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null)
+            {
+                return BadRequest("Organization context not found");
+            }
+
+            // Create temporary config for preview
+            var tempConfig = new ClientAssessmentConfiguration
+            {
+                ClientId = clientId,
+                ClientName = "Preview",
+                NamingScheme = namingScheme
+            };
+
+            // Generate examples
+            var examples = tempConfig.GenerateNamingExamples();
+
+            _logger.LogInformation("Generated {ExampleCount} naming scheme examples for preview", examples.Count);
+            return Ok(examples);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to preview naming scheme for client {ClientId}", clientId);
+            return StatusCode(500, new { error = "Failed to generate naming scheme preview" });
+        }
+    }
+
+    /// <summary>
+    /// Get default component definitions for the scheme constructor
+    /// </summary>
+    [HttpGet("component-definitions")]
+    public ActionResult<List<ComponentDefinition>> GetComponentDefinitions()
+    {
+        var definitions = new List<ComponentDefinition>
+        {
+            new ComponentDefinition
+            {
+                ComponentType = "company",
+                DisplayName = "Company",
+                Description = "Organization identifier for resource ownership",
+                DefaultFormat = "3-letter abbreviation",
+                CommonValues = new List<string> {"abc", "xyz" },
+                IsSystemDefined = true
+            },
+            new ComponentDefinition
+            {
+                ComponentType = "environment",
+                DisplayName = "Environment",
+                Description = "Deployment environment classification",
+                DefaultFormat = "Lowercase, standardized values",
+                CommonValues = new List<string> { "prod", "dev", "test", "shared", "staging" },
+                IsSystemDefined = true
+            },
+            new ComponentDefinition
+            {
+                ComponentType = "service",
+                DisplayName = "Service/Application",
+                Description = "Business function or application identifier",
+                DefaultFormat = "Lowercase, descriptive",
+                CommonValues = new List<string> { "veeam", "boomi", "crm", "api", "web" },
+                IsSystemDefined = true
+            },
+            new ComponentDefinition
+            {
+                ComponentType = "application",
+                DisplayName = "Application",
+                Description = "Application or workload identifier",
+                DefaultFormat = "Lowercase, descriptive",
+                CommonValues = new List<string> { "webapp", "api", "database", "cache" },
+                IsSystemDefined = true
+            },
+            new ComponentDefinition
+            {
+                ComponentType = "service/application",
+                DisplayName = "Service/Application",
+                Description = "Combined service and application identifier",
+                DefaultFormat = "Lowercase, descriptive",
+                CommonValues = new List<string> { "veeam", "boomi", "webapp", "api" },
+                IsSystemDefined = true
+            },
+            new ComponentDefinition
+            {
+                ComponentType = "resource-type",
+                DisplayName = "Resource Type",
+                Description = "Azure resource type abbreviation",
+                DefaultFormat = "Lowercase abbreviation",
+                CommonValues = new List<string> { "vm", "rg", "kv", "app", "st", "sql" },
+                IsSystemDefined = true
+            },
+            new ComponentDefinition
+            {
+                ComponentType = "instance",
+                DisplayName = "Instance",
+                Description = "Sequential number for multiple instances",
+                DefaultFormat = "Zero-padded numbers",
+                CommonValues = new List<string> { "01", "02", "03", "1", "2", "3" },
+                IsSystemDefined = true
+            },
+            new ComponentDefinition
+            {
+                ComponentType = "location",
+                DisplayName = "Location",
+                Description = "Azure region or location identifier",
+                DefaultFormat = "Short region code",
+                CommonValues = new List<string> { "eus", "wus", "neu", "sea" },
+                IsSystemDefined = true
+            }
+        };
+
+        return Ok(definitions);
+    }
+
+    /// <summary>
+    /// Validate naming scheme configuration
+    /// </summary>
+    [HttpPost("naming-scheme/validate")]
+    public ActionResult<NamingSchemeValidationResponse> ValidateNamingScheme(
+        [FromBody] NamingSchemeConfiguration namingScheme)
+    {
+        try
+        {
+            var response = new NamingSchemeValidationResponse
+            {
+                IsValid = true,
+                Issues = new List<string>(),
+                Warnings = new List<string>()
+            };
+
+            // Validate component requirements
+            if (!namingScheme.Components.Any())
+            {
+                response.IsValid = false;
+                response.Issues.Add("At least one component is required");
+            }
+
+            // Check for duplicate positions
+            var positions = namingScheme.Components.Select(c => c.Position).ToList();
+            var duplicatePositions = positions.GroupBy(p => p).Where(g => g.Count() > 1).Select(g => g.Key);
+            if (duplicatePositions.Any())
+            {
+                response.IsValid = false;
+                response.Issues.Add($"Duplicate positions found: {string.Join(", ", duplicatePositions)}");
+            }
+
+            // Validate separator
+            if (string.IsNullOrEmpty(namingScheme.Separator))
+            {
+                response.Warnings.Add("No separator specified - components will be concatenated");
+            }
+            else if (namingScheme.Separator.Length > 1)
+            {
+                response.Warnings.Add("Multi-character separators may cause parsing issues");
+            }
+
+            // Check for required components
+            var hasResourceType = namingScheme.Components.Any(c => c.ComponentType == "resource-type");
+            if (!hasResourceType)
+            {
+                response.Warnings.Add("No resource-type component found - resource identification may be difficult");
+            }
+
+            // Validate component formats
+            foreach (var component in namingScheme.Components)
+            {
+                if (component.IsRequired && component.AllowedValues.Any() && string.IsNullOrEmpty(component.DefaultValue))
+                {
+                    response.Warnings.Add($"Required component '{component.ComponentType}' has no default value");
+                }
+            }
+
+            _logger.LogInformation("Naming scheme validation completed. Valid: {IsValid}, Issues: {IssueCount}, Warnings: {WarningCount}",
+                response.IsValid, response.Issues.Count, response.Warnings.Count);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to validate naming scheme");
+            return StatusCode(500, new { error = "Failed to validate naming scheme" });
+        }
+    }
+
     // Helper methods
     private Guid? GetOrganizationIdFromContext()
     {
@@ -215,7 +400,6 @@ public class ClientPreferencesController : ControllerBase
 
     private Guid? GetCustomerIdFromContext()
     {
-        // Try multiple claim types for customer ID
         var customerClaim = User.FindFirst("customer_id")?.Value
             ?? User.FindFirst("nameid")?.Value
             ?? User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
@@ -223,13 +407,13 @@ public class ClientPreferencesController : ControllerBase
         return Guid.TryParse(customerClaim, out var customerId) ? customerId : null;
     }
 
-    private ClientPreferences CreatePreferencesFromRequest(
+    private DataEntities.ClientPreferences CreatePreferencesFromRequest(
     Guid clientId,
     Guid organizationId,
     CreateClientPreferencesRequest request,
     Guid customerId)
     {
-        return new ClientPreferences
+        return new DataEntities.ClientPreferences
         {
             ClientId = clientId,
             OrganizationId = organizationId,
@@ -242,25 +426,42 @@ public class ClientPreferencesController : ControllerBase
                 ? JsonSerializer.Serialize(request.RequiredNamingElements)
                 : null,
             EnvironmentIndicators = request.EnvironmentIndicators,
+
+            // NEW: Naming scheme configuration
+            NamingSchemeConfiguration = request.NamingScheme != null
+                ? JsonSerializer.Serialize(request.NamingScheme)
+                : null,
+            ComponentDefinitions = request.ComponentDefinitions?.Any() == true
+                ? JsonSerializer.Serialize(request.ComponentDefinitions)
+                : null,
+
+            // NEW: Accepted company names
+            AcceptedCompanyNames = request.AcceptedCompanyNames?.Any() == true
+                ? JsonSerializer.Serialize(request.AcceptedCompanyNames)
+                : null,
+
+            // Enhanced fields
+            NamingStyle = request.NamingStyle,
+            EnvironmentSize = request.EnvironmentSize,
+            OrganizationMethod = request.OrganizationMethod,
+            EnvironmentIndicatorLevel = request.EnvironmentIndicatorLevel,
+
+            // Tagging fields
             RequiredTags = request.RequiredTags?.Any() == true
                 ? JsonSerializer.Serialize(request.RequiredTags)
                 : null,
             EnforceTagCompliance = request.EnforceTagCompliance,
-            ComplianceFrameworks = request.ComplianceFrameworks?.Any() == true
-                ? JsonSerializer.Serialize(request.ComplianceFrameworks)
-                : null,
-
-            // NEW: Enhanced fields
-            NamingStyle = request.NamingStyle,
             TaggingApproach = request.TaggingApproach,
-            EnvironmentSize = request.EnvironmentSize,
-            OrganizationMethod = request.OrganizationMethod,
-            EnvironmentIndicatorLevel = request.EnvironmentIndicatorLevel,
             SelectedTags = request.SelectedTags?.Any() == true
                 ? JsonSerializer.Serialize(request.SelectedTags)
                 : null,
             CustomTags = request.CustomTags?.Any() == true
                 ? JsonSerializer.Serialize(request.CustomTags)
+                : null,
+
+            // Compliance fields
+            ComplianceFrameworks = request.ComplianceFrameworks?.Any() == true
+                ? JsonSerializer.Serialize(request.ComplianceFrameworks)
                 : null,
             SelectedCompliances = request.SelectedCompliances?.Any() == true
                 ? JsonSerializer.Serialize(request.SelectedCompliances)
@@ -271,8 +472,8 @@ public class ClientPreferencesController : ControllerBase
         };
     }
 
-    private ClientPreferences UpdatePreferencesFromRequest(
-        ClientPreferences existing,
+    private DataEntities.ClientPreferences UpdatePreferencesFromRequest(
+        DataEntities.ClientPreferences existing,
         CreateClientPreferencesRequest request,
         Guid customerId)
     {
@@ -284,25 +485,42 @@ public class ClientPreferencesController : ControllerBase
             ? JsonSerializer.Serialize(request.RequiredNamingElements)
             : null;
         existing.EnvironmentIndicators = request.EnvironmentIndicators;
+
+        // NEW: Naming scheme configuration
+        existing.NamingSchemeConfiguration = request.NamingScheme != null
+            ? JsonSerializer.Serialize(request.NamingScheme)
+            : null;
+        existing.ComponentDefinitions = request.ComponentDefinitions?.Any() == true
+            ? JsonSerializer.Serialize(request.ComponentDefinitions)
+            : null;
+
+        // NEW: Accepted company names
+        existing.AcceptedCompanyNames = request.AcceptedCompanyNames?.Any() == true
+            ? JsonSerializer.Serialize(request.AcceptedCompanyNames)
+            : null;
+
+        // Enhanced fields
+        existing.NamingStyle = request.NamingStyle;
+        existing.EnvironmentSize = request.EnvironmentSize;
+        existing.OrganizationMethod = request.OrganizationMethod;
+        existing.EnvironmentIndicatorLevel = request.EnvironmentIndicatorLevel;
+
+        // Tagging fields
         existing.RequiredTags = request.RequiredTags?.Any() == true
             ? JsonSerializer.Serialize(request.RequiredTags)
             : null;
         existing.EnforceTagCompliance = request.EnforceTagCompliance;
-        existing.ComplianceFrameworks = request.ComplianceFrameworks?.Any() == true
-            ? JsonSerializer.Serialize(request.ComplianceFrameworks)
-            : null;
-
-        // NEW: Enhanced fields
-        existing.NamingStyle = request.NamingStyle;
         existing.TaggingApproach = request.TaggingApproach;
-        existing.EnvironmentSize = request.EnvironmentSize;
-        existing.OrganizationMethod = request.OrganizationMethod;
-        existing.EnvironmentIndicatorLevel = request.EnvironmentIndicatorLevel;
         existing.SelectedTags = request.SelectedTags?.Any() == true
             ? JsonSerializer.Serialize(request.SelectedTags)
             : null;
         existing.CustomTags = request.CustomTags?.Any() == true
             ? JsonSerializer.Serialize(request.CustomTags)
+            : null;
+
+        // Compliance fields
+        existing.ComplianceFrameworks = request.ComplianceFrameworks?.Any() == true
+            ? JsonSerializer.Serialize(request.ComplianceFrameworks)
             : null;
         existing.SelectedCompliances = request.SelectedCompliances?.Any() == true
             ? JsonSerializer.Serialize(request.SelectedCompliances)
@@ -314,7 +532,7 @@ public class ClientPreferencesController : ControllerBase
         return existing;
     }
 
-    private ClientPreferencesResponse MapToResponse(ClientPreferences preferences)
+    private ClientPreferencesResponse MapToResponse(DataEntities.ClientPreferences preferences)
     {
         return new ClientPreferencesResponse
         {
@@ -322,7 +540,7 @@ public class ClientPreferencesController : ControllerBase
             ClientId = preferences.ClientId,
             ClientName = preferences.Client?.Name ?? "Unknown Client",
 
-            // Legacy fields (for backward compatibility)
+            // Legacy fields
             AllowedNamingPatterns = !string.IsNullOrEmpty(preferences.AllowedNamingPatterns)
                 ? JsonSerializer.Deserialize<List<string>>(preferences.AllowedNamingPatterns) ?? new List<string>()
                 : new List<string>(),
@@ -330,25 +548,42 @@ public class ClientPreferencesController : ControllerBase
                 ? JsonSerializer.Deserialize<List<string>>(preferences.RequiredNamingElements) ?? new List<string>()
                 : new List<string>(),
             EnvironmentIndicators = preferences.EnvironmentIndicators,
+
+            // NEW: Naming scheme configuration
+            NamingScheme = !string.IsNullOrEmpty(preferences.NamingSchemeConfiguration)
+                ? JsonSerializer.Deserialize<NamingSchemeConfiguration>(preferences.NamingSchemeConfiguration)
+                : null,
+            ComponentDefinitions = !string.IsNullOrEmpty(preferences.ComponentDefinitions)
+                ? JsonSerializer.Deserialize<List<ComponentDefinition>>(preferences.ComponentDefinitions) ?? new List<ComponentDefinition>()
+                : new List<ComponentDefinition>(),
+
+            // NEW: Accepted company names
+            AcceptedCompanyNames = !string.IsNullOrEmpty(preferences.AcceptedCompanyNames)
+                ? JsonSerializer.Deserialize<List<string>>(preferences.AcceptedCompanyNames) ?? new List<string>()
+                : new List<string>(),
+
+            // Enhanced fields
+            NamingStyle = preferences.NamingStyle,
+            EnvironmentSize = preferences.EnvironmentSize,
+            OrganizationMethod = preferences.OrganizationMethod,
+            EnvironmentIndicatorLevel = preferences.EnvironmentIndicatorLevel,
+
+            // Tagging fields
             RequiredTags = !string.IsNullOrEmpty(preferences.RequiredTags)
                 ? JsonSerializer.Deserialize<List<string>>(preferences.RequiredTags) ?? new List<string>()
                 : new List<string>(),
             EnforceTagCompliance = preferences.EnforceTagCompliance,
-            ComplianceFrameworks = !string.IsNullOrEmpty(preferences.ComplianceFrameworks)
-                ? JsonSerializer.Deserialize<List<string>>(preferences.ComplianceFrameworks) ?? new List<string>()
-                : new List<string>(),
-
-            // NEW: Enhanced fields
-            NamingStyle = preferences.NamingStyle,
             TaggingApproach = preferences.TaggingApproach,
-            EnvironmentSize = preferences.EnvironmentSize,
-            OrganizationMethod = preferences.OrganizationMethod,
-            EnvironmentIndicatorLevel = preferences.EnvironmentIndicatorLevel,
             SelectedTags = !string.IsNullOrEmpty(preferences.SelectedTags)
                 ? JsonSerializer.Deserialize<List<string>>(preferences.SelectedTags) ?? new List<string>()
                 : new List<string>(),
             CustomTags = !string.IsNullOrEmpty(preferences.CustomTags)
                 ? JsonSerializer.Deserialize<List<string>>(preferences.CustomTags) ?? new List<string>()
+                : new List<string>(),
+
+            // Compliance fields
+            ComplianceFrameworks = !string.IsNullOrEmpty(preferences.ComplianceFrameworks)
+                ? JsonSerializer.Deserialize<List<string>>(preferences.ComplianceFrameworks) ?? new List<string>()
                 : new List<string>(),
             SelectedCompliances = !string.IsNullOrEmpty(preferences.SelectedCompliances)
                 ? JsonSerializer.Deserialize<List<string>>(preferences.SelectedCompliances) ?? new List<string>()
@@ -373,17 +608,24 @@ public class CreateClientPreferencesRequest
     public bool EnforceTagCompliance { get; set; } = true;
     public List<string> ComplianceFrameworks { get; set; } = new();
 
-    // NEW: Enhanced fields to match frontend structure
-    public string? NamingStyle { get; set; } // 'standardized', 'mixed', 'legacy'
-    public string? TaggingApproach { get; set; } // 'comprehensive', 'basic', 'minimal', 'custom'
-    public string? EnvironmentSize { get; set; } // 'small', 'medium', 'large', 'enterprise'
-    public string? OrganizationMethod { get; set; } // 'environment', 'application', 'business-unit'
-    public string? EnvironmentIndicatorLevel { get; set; } // 'required', 'recommended', 'optional', 'none'
+    // NEW: Accepted company names for validation
+    public List<string> AcceptedCompanyNames { get; set; } = new();
 
-    public List<string> SelectedTags { get; set; } = new(); // Combined standard + custom tags
-    public List<string> CustomTags { get; set; } = new(); // User-defined custom tags
-    public List<string> SelectedCompliances { get; set; } = new(); // Selected compliance frameworks
-    public bool NoSpecificRequirements { get; set; } = false; // No specific compliance requirements
+    // Naming scheme configuration
+    public NamingSchemeConfiguration? NamingScheme { get; set; }
+    public List<ComponentDefinition> ComponentDefinitions { get; set; } = new();
+
+    // Enhanced fields
+    public string? NamingStyle { get; set; }
+    public string? TaggingApproach { get; set; }
+    public string? EnvironmentSize { get; set; }
+    public string? OrganizationMethod { get; set; }
+    public string? EnvironmentIndicatorLevel { get; set; }
+
+    public List<string> SelectedTags { get; set; } = new();
+    public List<string> CustomTags { get; set; } = new();
+    public List<string> SelectedCompliances { get; set; } = new();
+    public bool NoSpecificRequirements { get; set; } = false;
 }
 
 public class ClientPreferencesResponse
@@ -400,7 +642,14 @@ public class ClientPreferencesResponse
     public bool EnforceTagCompliance { get; set; }
     public List<string> ComplianceFrameworks { get; set; } = new();
 
-    // NEW: Enhanced fields
+    // Naming scheme configuration
+    public NamingSchemeConfiguration? NamingScheme { get; set; }
+    public List<ComponentDefinition> ComponentDefinitions { get; set; } = new();
+
+    // NEW: Accepted company names for validation
+    public List<string> AcceptedCompanyNames { get; set; } = new();
+
+    // Enhanced fields
     public string? NamingStyle { get; set; }
     public string? TaggingApproach { get; set; }
     public string? EnvironmentSize { get; set; }
@@ -417,4 +666,12 @@ public class ClientPreferencesResponse
     public DateTime CreatedDate { get; set; }
     public DateTime? LastModifiedDate { get; set; }
     public bool IsActive { get; set; }
+}
+
+// Additional DTOs for naming scheme functionality
+public class NamingSchemeValidationResponse
+{
+    public bool IsValid { get; set; }
+    public List<string> Issues { get; set; } = new();
+    public List<string> Warnings { get; set; } = new();
 }

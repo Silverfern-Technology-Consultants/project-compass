@@ -6,7 +6,7 @@ using Compass.Data.Entities;
 using Compass.Data;
 using Microsoft.EntityFrameworkCore;
 
-namespace Compass.Core.Services;
+namespace Compass.core.Interfaces;
 
 public interface IJwtService
 {

@@ -1,7 +1,17 @@
-﻿using Compass.Core.Models;
+﻿using Compass.Core.Interfaces;
+using Compass.Core.Models.Assessment;
+using Compass.Core.Models;
 using Microsoft.Extensions.Logging;
 
 namespace Compass.Core.Services;
+
+public interface IPreferenceAwareTaggingAnalyzer
+{
+    Task<TaggingResults> AnalyzeTaggingAsync(
+        List<AzureResource> resources,
+        ClientAssessmentConfiguration? clientConfig = null,
+        CancellationToken cancellationToken = default);
+}
 
 public interface ITaggingAnalyzer : IPreferenceAwareTaggingAnalyzer
 {

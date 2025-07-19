@@ -3,12 +3,13 @@ using Compass.Core.Services;
 using Compass.Core.Interfaces;
 using Compass.Data;
 using Compass.Data.Entities;
-using Compass.Data.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using Compass.Data.Interfaces;
+using Compass.core.Interfaces;
 
 namespace Compass.Api.Controllers;
 
@@ -434,7 +435,17 @@ public class AzureEnvironmentController : ControllerBase
             return StatusCode(500, "Internal server error");
         }
     }
+    [HttpPost("oauth/initiate-with-scopes")]
+    public async Task<ActionResult<OAuthInitiateResponse>> InitiateOAuthWithScopes(
+    [FromBody] OAuthInitiateRequest request,
+    [FromQuery] OAuthScopeTypes scopeTypes = OAuthScopeTypes.ResourceManager)
+    {
+        var organizationId = GetOrganizationIdFromContext();
+        if (organizationId == null) return BadRequest("Organization context not found");
 
+        var response = await _oauthService.InitiateOAuthFlowWithScopesAsync(request, organizationId.Value, scopeTypes);
+        return Ok(response);
+    }
     [HttpPost("oauth/initiate")]
     [Authorize]
     public async Task<ActionResult<OAuthInitiateResponse>> InitiateOAuth([FromBody] OAuthInitiateRequest request)
@@ -447,10 +458,12 @@ public class AzureEnvironmentController : ControllerBase
                 return BadRequest("Organization context not found");
             }
 
-            var response = await _oauthService.InitiateOAuthFlowAsync(request, organizationId.Value);
+            // Use the new scope-aware method, defaulting to existing behavior
+            var scopeTypes = request.ScopeTypes; // This comes from the enhanced request model
+            var response = await _oauthService.InitiateOAuthFlowWithScopesAsync(request, organizationId.Value, scopeTypes);
 
-            _logger.LogInformation("OAuth flow initiated for client {ClientName} by user {UserId}",
-                request.ClientName, GetCurrentCustomerId());
+            _logger.LogInformation("OAuth flow initiated for client {ClientName} with scopes {ScopeTypes} by user {UserId}",
+                request.ClientName, scopeTypes, GetCurrentCustomerId());
 
             return Ok(response);
         }
@@ -458,6 +471,87 @@ public class AzureEnvironmentController : ControllerBase
         {
             _logger.LogError(ex, "Failed to initiate OAuth flow for client {ClientId}", request.ClientId);
             return StatusCode(500, "Failed to initiate OAuth flow");
+        }
+    }
+    [HttpGet("{environmentId}/oauth/status")]
+    public async Task<ActionResult<object>> GetOAuthStatus(Guid environmentId)
+    {
+        try
+        {
+            var organizationId = GetOrganizationIdFromContext();
+            if (organizationId == null) return BadRequest("Organization context not found");
+
+            var environment = await _context.AzureEnvironments
+                .FirstOrDefaultAsync(e => e.AzureEnvironmentId == environmentId);
+
+            if (environment?.ClientId == null) return NotFound("Environment or client not found");
+
+            // Get raw credentials without triggering refresh attempts
+            var armCredentials = await _oauthService.GetStoredCredentialsAsync(environment.ClientId.Value, organizationId.Value);
+            var graphCredentials = await _oauthService.GetGraphCredentialsAsync(environment.ClientId.Value, organizationId.Value);
+            var availableScopes = await _oauthService.GetAvailableScopesAsync(environment.ClientId.Value, organizationId.Value);
+
+            // Check if tokens exist and are not expired (without triggering refresh)
+            bool hasValidArm = armCredentials != null &&
+                              !string.IsNullOrEmpty(armCredentials.AccessToken) &&
+                              armCredentials.ExpiresAt > DateTime.UtcNow;
+
+            bool hasValidGraph = graphCredentials != null &&
+                                !string.IsNullOrEmpty(graphCredentials.AccessToken) &&
+                                graphCredentials.ExpiresAt > DateTime.UtcNow;
+
+            // Check if tokens exist but are expired
+            bool hasExpiredArm = armCredentials != null &&
+                               !string.IsNullOrEmpty(armCredentials.AccessToken) &&
+                               armCredentials.ExpiresAt <= DateTime.UtcNow;
+
+            bool hasExpiredGraph = graphCredentials != null &&
+                                 !string.IsNullOrEmpty(graphCredentials.AccessToken) &&
+                                 graphCredentials.ExpiresAt <= DateTime.UtcNow;
+
+            string status = "No OAuth Setup";
+            string? message = null;
+
+            if (hasValidArm && hasValidGraph)
+            {
+                status = "Valid";
+                message = "Both ARM and Graph tokens are valid";
+            }
+            else if (hasExpiredArm || hasExpiredGraph)
+            {
+                status = "Expired";
+                message = "OAuth tokens have expired and need to be refreshed";
+            }
+            else if (armCredentials != null || graphCredentials != null)
+            {
+                status = "Partial";
+                message = "Some OAuth credentials exist but may be incomplete";
+            }
+
+            return Ok(new
+            {
+                HasArmCredentials = hasValidArm,
+                HasGraphCredentials = hasValidGraph,
+                AvailableScopes = availableScopes.ToString(),
+                CanAccessAzureResources = hasValidArm,
+                CanAccessAzureAD = hasValidGraph,
+                Status = status,
+                Message = message,
+                TokenDetails = new
+                {
+                    ArmTokenExpired = hasExpiredArm,
+                    GraphTokenExpired = hasExpiredGraph,
+                    ArmTokenExists = armCredentials?.AccessToken != null,
+                    GraphTokenExists = graphCredentials?.AccessToken != null,
+                    ArmExpiresAt = armCredentials?.ExpiresAt,
+                    GraphExpiresAt = graphCredentials?.ExpiresAt
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get OAuth status for environment {EnvironmentId}", environmentId);
+            return StatusCode(500, "Failed to get OAuth status");
         }
     }
     [HttpGet("oauth/error/{state}")]
@@ -751,9 +845,12 @@ public class AzureEnvironmentController : ControllerBase
     }
 
     [HttpGet("oauth-callback")]
-    [AllowAnonymous] // OAuth callback doesn't include authorization header
-    public async Task<IActionResult> OAuthCallback([FromQuery] string code, [FromQuery] string state,
-        [FromQuery] string? error = null, [FromQuery] string? error_description = null)
+    [AllowAnonymous]
+    public async Task<IActionResult> OAuthCallback(
+    [FromQuery] string? code = null,
+    [FromQuery] string? state = null,
+    [FromQuery] string? error = null,
+    [FromQuery] string? error_description = null)
     {
         try
         {
@@ -767,18 +864,16 @@ public class AzureEnvironmentController : ControllerBase
 
             var success = await _oauthService.HandleOAuthCallbackAsync(callbackRequest);
 
+            var frontendUrl = _configuration["App:FrontendUrl"];
+
             if (success)
             {
-                // Redirect to frontend success page
-                var frontendUrl = _configuration["App:FrontendUrl"];
                 return Redirect($"{frontendUrl}/oauth/success?state={state}");
             }
             else
             {
-                // Redirect to frontend error page
-                var frontendUrl = _configuration["App:FrontendUrl"];
                 var errorMessage = !string.IsNullOrEmpty(error) ? error : "OAuth authentication failed";
-                return Redirect($"{frontendUrl}/oauth/error?message={Uri.EscapeDataString(errorMessage)}");
+                return Redirect($"{frontendUrl}/oauth/error?state={state}&message={Uri.EscapeDataString(errorMessage)}");
             }
         }
         catch (Exception ex)

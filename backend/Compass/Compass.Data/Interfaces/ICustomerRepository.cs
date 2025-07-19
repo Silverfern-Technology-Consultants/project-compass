@@ -1,7 +1,10 @@
 ﻿// Compass.Data/Repositories/ICustomerRepository.cs
-using Compass.Data.Entities;
 
-namespace Compass.Data.Repositories;
+// Compass.Data/Repositories/ICustomerRepository.cs
+using Compass.Data.Entities;
+using Compass.Data.Repositories;
+
+namespace Compass.Data.Interfaces;
 
 public interface ICustomerRepository
 {

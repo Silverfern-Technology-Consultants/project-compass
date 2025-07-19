@@ -1,4 +1,5 @@
 ﻿using Compass.Core.Models;
+using Compass.Core.Models.Assessment;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using System.Text.RegularExpressions;

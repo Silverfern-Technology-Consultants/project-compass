@@ -4,7 +4,7 @@ using Compass.Data.Entities;
 using Compass.Data.Repositories;
 using Microsoft.Extensions.Logging;
 
-namespace Compass.Core.Services;
+namespace Compass.core.Interfaces;
 
 public interface IClientService
 {

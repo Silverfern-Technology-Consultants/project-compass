@@ -3,9 +3,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Compass.Core.Services;
 using Compass.Core.Models;
-using Compass.Data.Repositories;
 using Compass.Data.Entities;
 using System.Security.Claims;
+using Compass.Data.Interfaces;
 
 
 namespace Compass.Api.Controllers;

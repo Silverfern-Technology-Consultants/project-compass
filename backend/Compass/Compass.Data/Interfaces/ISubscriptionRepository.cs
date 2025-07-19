@@ -1,7 +1,9 @@
 ﻿// Compass.Data/Repositories/ISubscriptionRepository.cs
+
+// Compass.Data/Repositories/ISubscriptionRepository.cs
 using Compass.Data.Entities;
 
-namespace Compass.Data.Repositories;
+namespace Compass.Data.Interfaces;
 
 public interface ISubscriptionRepository
 {

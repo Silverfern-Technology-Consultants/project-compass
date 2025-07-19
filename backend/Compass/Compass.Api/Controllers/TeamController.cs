@@ -3,11 +3,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Compass.Data;
 using Compass.Data.Entities;
-using Compass.Data.Repositories;
 using Compass.Core.Services;
 using System.Security.Claims;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Cryptography;
+using Compass.Data.Interfaces;
 namespace Compass.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]

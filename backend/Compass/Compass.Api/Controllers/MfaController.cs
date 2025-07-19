@@ -1,9 +1,9 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
-using Compass.Core.Services;
 using Compass.Core.Models;
-using Compass.Data.Repositories;
 using System.Text.Json;
+using Compass.Data.Interfaces;
+using Compass.core.Interfaces;
 
 namespace Compass.Api.Controllers;
 

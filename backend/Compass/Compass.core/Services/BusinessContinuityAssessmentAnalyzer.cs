@@ -4,6 +4,7 @@ using Azure.ResourceManager.ResourceGraph;
 using Azure.ResourceManager.ResourceGraph.Models;
 using Compass.Core.Interfaces;
 using Compass.Core.Models;
+using Compass.Core.Models.Assessment;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 

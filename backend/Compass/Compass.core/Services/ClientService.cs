@@ -1,7 +1,8 @@
-﻿using Compass.Core.Models;
+﻿using Compass.core.Interfaces;
+using Compass.Core.Models;
 using Compass.Data;
 using Compass.Data.Entities;
-using Compass.Data.Repositories;
+using Compass.Data.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 

@@ -1,7 +1,9 @@
 ﻿// Compass.Data/Repositories/ILoginActivityRepository.cs
+
+// Compass.Data/Repositories/ILoginActivityRepository.cs
 using Compass.Data.Entities;
 
-namespace Compass.Data.Repositories;
+namespace Compass.Data.Interfaces;
 
 public interface ILoginActivityRepository
 {

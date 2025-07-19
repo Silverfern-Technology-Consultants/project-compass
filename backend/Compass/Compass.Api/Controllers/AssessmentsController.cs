@@ -1,8 +1,10 @@
 ﻿using Compass.Core.Models;
 using Compass.Core.Services;
+using Compass.Core.Models.Assessment;
+using Compass.core.Interfaces;
 using Compass.Data;
 using Compass.Data.Entities;
-using Compass.Data.Repositories;
+using Compass.Data.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;

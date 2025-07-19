@@ -3,9 +3,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Compass.Data;
 using Compass.Data.Entities;
-using Compass.Data.Repositories;
 using System.Security.Claims;
 using System.ComponentModel.DataAnnotations;
+using Compass.Data.Interfaces;
 
 namespace Compass.Api.Controllers;
 
@@ -106,10 +106,6 @@ public class ClientController : ControllerBase
                     HasPreferences = clientsWithPreferences.Contains(client.ClientId)
                 });
             }
-
-            _logger.LogInformation("Retrieved {ClientCount} clients for organization {OrganizationId}",
-                clientSummaries.Count, organizationId);
-
             return Ok(clientSummaries);
         }
         catch (Exception ex)

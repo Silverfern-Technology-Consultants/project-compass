@@ -1,7 +1,7 @@
 ﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 
-namespace Compass.Core.Services;
+namespace Compass.core.Interfaces;
 
 public interface ICurrentUserService
 {

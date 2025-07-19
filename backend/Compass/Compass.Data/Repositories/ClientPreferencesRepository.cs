@@ -1,4 +1,5 @@
 ﻿using Compass.Data.Entities;
+using Compass.Data.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
