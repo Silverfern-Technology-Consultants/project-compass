@@ -16,8 +16,6 @@ Governance Guardian is a SaaS application designed to help MSPs analyze and impr
 
 ## Version Information
 
-![Backend](https://img.shields.io/badge/Backend-v2.2.1-blue?style=flat-square&logo=dotnet)
-=======
 ![Backend](https://img.shields.io/badge/Backend-v2.2.0-blue?style=flat-square&logo=dotnet)
 ![Frontend](https://img.shields.io/badge/Frontend-v1.0.0-blue?style=flat-square&logo=react)
 ![API](https://img.shields.io/badge/API-Live-green?style=flat-square)
