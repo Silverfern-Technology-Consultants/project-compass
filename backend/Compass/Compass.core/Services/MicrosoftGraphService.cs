@@ -128,24 +128,224 @@ namespace Compass.Core.Services
         {
             try
             {
-                var allUsers = await GetUsersAsync(clientId, organizationId);
+                var graphClient = await CreateGraphClientAsync(clientId, organizationId);
+                if (graphClient == null) return new List<Microsoft.Graph.Models.User>();
+
+                // Get users with standard properties
+                var users = await graphClient.Users.GetAsync(requestConfiguration =>
+                {
+                    requestConfiguration.QueryParameters.Select = new[] {
+                "id", "displayName", "userPrincipalName", "accountEnabled",
+                "signInActivity", "createdDateTime", "lastPasswordChangeDateTime",
+                "userType", "mailNickname", "assignedLicenses", "mail"
+            };
+                });
+
+                var allUsers = new List<Microsoft.Graph.Models.User>();
+                if (users?.Value != null)
+                {
+                    allUsers.AddRange(users.Value);
+
+                    // Handle pagination
+                    while (!string.IsNullOrEmpty(users.OdataNextLink))
+                    {
+                        var nextPageRequest = await graphClient.Users.WithUrl(users.OdataNextLink).GetAsync();
+                        if (nextPageRequest?.Value != null)
+                        {
+                            allUsers.AddRange(nextPageRequest.Value);
+                            users = nextPageRequest;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
+
                 var cutoffDate = DateTime.UtcNow.AddDays(-daysSinceLastSignIn);
 
-                var inactiveUsers = allUsers.Where(u =>
+                // Filter users and check recipient types
+                var potentialInactiveUsers = allUsers.Where(u =>
                     u.AccountEnabled == true &&
                     (u.SignInActivity?.LastSignInDateTime == null ||
                      u.SignInActivity.LastSignInDateTime < cutoffDate))
                     .ToList();
 
-                _logger.LogInformation("Found {InactiveUserCount} inactive users (>{Days} days) for client {ClientId}",
-                    inactiveUsers.Count, daysSinceLastSignIn, clientId);
+                var actualInactiveUsers = new List<Microsoft.Graph.Models.User>();
 
-                return inactiveUsers;
+                foreach (var user in potentialInactiveUsers)
+                {
+                    var isInteractiveUser = await IsInteractiveUserAsync(graphClient, user);
+                    if (isInteractiveUser)
+                    {
+                        actualInactiveUsers.Add(user);
+                    }
+                }
+
+                _logger.LogInformation("Found {InactiveUserCount} inactive interactive users (>{Days} days) for client {ClientId}. Filtered out {FilteredCount} non-interactive accounts.",
+                    actualInactiveUsers.Count, daysSinceLastSignIn, clientId, potentialInactiveUsers.Count - actualInactiveUsers.Count);
+
+                return actualInactiveUsers;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to analyze inactive users for client {ClientId}", clientId);
                 return new List<Microsoft.Graph.Models.User>();
+            }
+        }
+
+        private async Task<bool> IsInteractiveUserAsync(GraphServiceClient graphClient, Microsoft.Graph.Models.User user)
+        {
+            try
+            {
+                // First check basic patterns (quick filter)
+                if (!BasicInteractiveUserCheck(user))
+                {
+                    return false;
+                }
+
+                // For mail-enabled users, check Exchange recipient type
+                if (!string.IsNullOrEmpty(user.Mail))
+                {
+                    var recipientType = await GetExchangeRecipientTypeAsync(graphClient, user.Id);
+
+                    // Log for debugging
+                    _logger.LogDebug("User '{DisplayName}' has recipient type: {RecipientType}",
+                        user.DisplayName, recipientType ?? "Unknown");
+
+                    // Filter out non-interactive recipient types
+                    if (!string.IsNullOrEmpty(recipientType))
+                    {
+                        var nonInteractiveTypes = new[]
+                        {
+                    "SharedMailbox",
+                    "RoomMailbox",
+                    "EquipmentMailbox",
+                    "DiscoveryMailbox",
+                    "PublicFolder",
+                    "SystemMailbox",
+                    "ArbitrationMailbox",
+                    "AuditingMailbox",
+                    "AuxAuditingMailbox",
+                    "SupervisoryReviewPolicyMailbox"
+                };
+
+                        if (nonInteractiveTypes.Any(type =>
+                            string.Equals(recipientType, type, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            _logger.LogDebug("Filtering out {RecipientType}: {DisplayName}", recipientType, user.DisplayName);
+                            return false;
+                        }
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to determine recipient type for user {UserId}, including in analysis", user.Id);
+                // If we can't determine the type, err on the side of including them
+                return BasicInteractiveUserCheck(user);
+            }
+        }
+
+        private bool BasicInteractiveUserCheck(Microsoft.Graph.Models.User user)
+        {
+            // Quick pattern-based checks before making additional API calls
+
+            var mailNickname = user.MailNickname?.ToLowerInvariant();
+            if (!string.IsNullOrEmpty(mailNickname))
+            {
+                var sharedMailboxPatterns = new[]
+                {
+            "shared", "noreply", "no-reply", "donotreply", "do-not-reply",
+            "support", "info", "admin", "administrator", "system",
+            "service", "automated", "notification", "alerts"
+        };
+
+                if (sharedMailboxPatterns.Any(pattern => mailNickname.Contains(pattern)))
+                {
+                    return false;
+                }
+            }
+
+            var upn = user.UserPrincipalName?.ToLowerInvariant();
+            if (!string.IsNullOrEmpty(upn))
+            {
+                var serviceAccountPatterns = new[]
+                {
+            "sync", "service", "system", "backup", "monitoring",
+            "alert", "automation", "robot", "bot", "noreply", "donotreply"
+        };
+
+                if (serviceAccountPatterns.Any(pattern => upn.Contains(pattern)))
+                {
+                    return false;
+                }
+            }
+
+            var displayName = user.DisplayName?.ToLowerInvariant();
+            if (!string.IsNullOrEmpty(displayName))
+            {
+                var serviceDisplayPatterns = new[]
+                {
+            "service account", "sync account", "system account",
+            "shared mailbox", "resource mailbox", "equipment",
+            "conference room", "meeting room"
+        };
+
+                if (serviceDisplayPatterns.Any(pattern => displayName.Contains(pattern)))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private async Task<string?> GetExchangeRecipientTypeAsync(GraphServiceClient graphClient, string userId)
+        {
+            try
+            {
+                // Try to get Exchange-specific properties using beta endpoint
+                var requestUrl = $"https://graph.microsoft.com/beta/users/{userId}?$select=id,recipientTypeDetails";
+
+                var response = await graphClient.Users[userId].GetAsync(requestConfiguration =>
+                {
+                    // This might require beta endpoint access
+                    requestConfiguration.QueryParameters.Select = new[] { "id" };
+                });
+
+                // Alternative approach: Use Exchange Online PowerShell cmdlets via Graph (if available)
+                // Or check mailbox properties that indicate recipient type
+
+                // For now, try to infer from available properties
+                var mailboxResponse = await graphClient.Users[userId].GetAsync(requestConfiguration =>
+                {
+                    requestConfiguration.QueryParameters.Select = new[] {
+                "id", "assignedLicenses", "usageLocation", "proxyAddresses"
+            };
+                });
+
+                // Heuristic: Users with no licenses but proxy addresses are likely shared mailboxes
+                if ((mailboxResponse?.AssignedLicenses == null || !mailboxResponse.AssignedLicenses.Any()) &&
+                    mailboxResponse?.ProxyAddresses?.Any() == true)
+                {
+                    return "SharedMailbox";
+                }
+
+                // If user has licenses, likely a regular user mailbox
+                if (mailboxResponse?.AssignedLicenses?.Any() == true)
+                {
+                    return "UserMailbox";
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("Could not determine recipient type for user {UserId}: {Error}", userId, ex.Message);
+                return null;
             }
         }
 
@@ -432,10 +632,95 @@ namespace Compass.Core.Services
             "Sites.FullControl.All"
         };
 
+                // Microsoft first-party service principals that should be excluded
+                var microsoftFirstPartyApps = new[]
+                {
+            // Core Office 365 / Microsoft 365 services
+            "Microsoft Graph",
+            "Office 365 Exchange Online",
+            "Office 365 SharePoint Online",
+            "Windows Azure Active Directory",
+            "Microsoft Teams Services",
+            "Teams CMD Services and Data",
+            "Microsoft Office",
+            "Office 365 Management APIs",
+            "Microsoft Azure CLI",
+            "Azure PowerShell",
+            "Microsoft Intune",
+            "Microsoft Stream Portal",
+            "Microsoft Forms",
+            "Power BI Service",
+            "Microsoft To-Do",
+            "Yammer",
+            "Microsoft Planner",
+            "OneDrive",
+            "Skype for Business Online",
+            
+            // Azure services
+            "Microsoft Azure Management",
+            "Azure Storage",
+            "Azure Key Vault",
+            "Microsoft Azure Backup",
+            "Azure DevOps",
+            "Microsoft Defender for Cloud Apps",
+            "Microsoft Security Graph",
+            
+            // Authentication and security
+            "Microsoft Authentication Broker",
+            "Microsoft Azure Active Directory Connect",
+            "Azure AD Identity Protection",
+            "Microsoft Cloud App Security",
+            "Microsoft Authenticator",
+            
+            // Development tools
+            "Visual Studio",
+            "Azure Portal",
+            "Microsoft Azure PowerShell",
+            "Azure Resource Manager"
+        };
+
+                // App IDs of well-known Microsoft first-party applications
+                var microsoftFirstPartyAppIds = new[]
+                {
+            "00000003-0000-0000-c000-000000000000", // Microsoft Graph
+            "00000002-0000-0000-c000-000000000000", // Azure Active Directory Graph (legacy)
+            "797f4846-ba00-4fd7-ba43-dac1f8f63013", // Windows Azure Service Management API
+            "1950a258-227b-4e31-a9cf-717495945fc2", // Microsoft Azure PowerShell
+            "04b07795-8ddb-461a-bbee-02f9e1bf7b46", // Microsoft Azure CLI
+            "cf36b471-5b44-428c-9ce7-313bf84528de", // Microsoft Teams Services
+            "1fec8e78-bce4-4aaf-ab1b-5451cc387264", // Microsoft Teams
+            "cc15fd57-2c6c-4117-a88c-83b1d56b4bbe", // Microsoft Teams Web Client
+            "5e3ce6c0-2b1f-4285-8d4b-75ee78787346", // Microsoft Teams Retail Service
+            "a3475900-ccec-4a69-98f5-a65cd5dc5306", // SharePoint Online Web Client Extensibility
+            "d3590ed6-52b3-4102-aeff-aad2292ab01c", // Microsoft Office
+            "57fb890c-0dab-4253-a5e0-7188c88b2bb4", // SharePoint Online Client
+            "89bee1f7-5e6e-4d8a-9f3d-ecd601259da7"  // Office365 Shell WCSS-Client
+        };
+
                 var overprivilegedSPs = new List<Microsoft.Graph.Models.ServicePrincipal>();
 
                 foreach (var sp in allServicePrincipals)
                 {
+                    // Skip Microsoft first-party applications by display name
+                    if (microsoftFirstPartyApps.Any(app =>
+                        string.Equals(sp.DisplayName, app, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        continue;
+                    }
+
+                    // Skip Microsoft first-party applications by App ID
+                    if (microsoftFirstPartyAppIds.Contains(sp.AppId))
+                    {
+                        continue;
+                    }
+
+                    // Skip service principals from Microsoft tenant
+                    if (sp.AppOwnerOrganizationId?.ToString() == "f8cdef31-a31e-4b4a-93e4-5f571e91255a" || // Microsoft Services tenant
+                        sp.AppOwnerOrganizationId?.ToString() == "72f988bf-86f1-41af-91ab-2d7cd011db47")   // Microsoft tenant
+                    {
+                        continue;
+                    }
+
                     bool isOverprivileged = false;
 
                     // Check OAuth2 permission scopes
@@ -470,8 +755,8 @@ namespace Compass.Core.Services
                     }
                 }
 
-                _logger.LogInformation("Found {OverprivilegedCount} overprivileged service principals for client {ClientId}",
-                    overprivilegedSPs.Count, clientId);
+                _logger.LogInformation("Found {OverprivilegedCount} overprivileged third-party service principals for client {ClientId} (excluded {MicrosoftAppsCount} Microsoft first-party apps)",
+                    overprivilegedSPs.Count, clientId, allServicePrincipals.Count - overprivilegedSPs.Count);
 
                 return overprivilegedSPs;
             }
@@ -548,12 +833,20 @@ namespace Compass.Core.Services
                     PolicyGaps = new List<string>()
                 };
 
-                // Analyze policy gaps
+                // Analyze policy gaps - only consider ENABLED policies (not Report-only)
                 var enabledPolicies = caPolicies.Where(p => p.State == Microsoft.Graph.Models.ConditionalAccessPolicyState.Enabled).ToList();
+                var reportOnlyPolicies = caPolicies.Where(p => p.State == Microsoft.Graph.Models.ConditionalAccessPolicyState.EnabledForReportingButNotEnforced).ToList();
 
                 if (!enabledPolicies.Any())
                 {
-                    report.PolicyGaps.Add("No enabled Conditional Access policies found");
+                    if (reportOnlyPolicies.Any())
+                    {
+                        report.PolicyGaps.Add($"Found {reportOnlyPolicies.Count} policies in Report-only mode but no actively enforced policies");
+                    }
+                    else
+                    {
+                        report.PolicyGaps.Add("No enabled Conditional Access policies found");
+                    }
                 }
                 else
                 {
@@ -562,7 +855,18 @@ namespace Compass.Core.Services
 
                     if (!hasMfaPolicy)
                     {
-                        report.PolicyGaps.Add("No policies requiring MFA found");
+                        // Check if there are Report-only MFA policies
+                        var reportOnlyMfaPolicies = reportOnlyPolicies.Where(p =>
+                            p.GrantControls?.BuiltInControls?.Contains(Microsoft.Graph.Models.ConditionalAccessGrantControl.Mfa) == true).ToList();
+
+                        if (reportOnlyMfaPolicies.Any())
+                        {
+                            report.PolicyGaps.Add($"MFA policies exist but are in Report-only mode ({reportOnlyMfaPolicies.Count} policies)");
+                        }
+                        else
+                        {
+                            report.PolicyGaps.Add("No policies requiring MFA found");
+                        }
                     }
 
                     var hasDeviceCompliancePolicy = enabledPolicies.Any(p =>
@@ -570,20 +874,46 @@ namespace Compass.Core.Services
 
                     if (!hasDeviceCompliancePolicy)
                     {
-                        report.PolicyGaps.Add("No policies requiring compliant devices found");
+                        // Check if there are Report-only device compliance policies
+                        var reportOnlyDevicePolicies = reportOnlyPolicies.Where(p =>
+                            p.GrantControls?.BuiltInControls?.Contains(Microsoft.Graph.Models.ConditionalAccessGrantControl.CompliantDevice) == true).ToList();
+
+                        if (reportOnlyDevicePolicies.Any())
+                        {
+                            report.PolicyGaps.Add($"Device compliance policies exist but are in Report-only mode ({reportOnlyDevicePolicies.Count} policies)");
+                        }
+                        else
+                        {
+                            report.PolicyGaps.Add("No policies requiring compliant devices found");
+                        }
                     }
 
-                    var hasLocationPolicy = enabledPolicies.Any(p =>
-                        p.Conditions?.Locations != null);
+                    // Check for actively enforced location-based policies
+                    var hasActiveLocationPolicy = enabledPolicies.Any(p =>
+                        p.Conditions?.Locations?.IncludeLocations?.Any() == true ||
+                        p.Conditions?.Locations?.ExcludeLocations?.Any() == true);
 
-                    if (!hasLocationPolicy)
+                    if (!hasActiveLocationPolicy)
                     {
-                        report.PolicyGaps.Add("No location-based policies found");
+                        // Check if there are Report-only location policies
+                        var reportOnlyLocationPolicies = reportOnlyPolicies.Where(p =>
+                            p.Conditions?.Locations?.IncludeLocations?.Any() == true ||
+                            p.Conditions?.Locations?.ExcludeLocations?.Any() == true).ToList();
+
+                        if (reportOnlyLocationPolicies.Any())
+                        {
+                            var policyNames = reportOnlyLocationPolicies.Select(p => p.DisplayName ?? "Unknown").ToList();
+                            report.PolicyGaps.Add($"Location-based policies exist but are in Report-only mode: {string.Join(", ", policyNames)}");
+                        }
+                        else
+                        {
+                            report.PolicyGaps.Add("No location-based policies found");
+                        }
                     }
                 }
 
-                _logger.LogInformation("Conditional Access coverage analysis completed for client {ClientId}. Coverage: {UsersCovered}/{TotalUsers}",
-                    clientId, report.UsersCoveredByMfa, report.TotalUsers);
+                _logger.LogInformation("Conditional Access coverage analysis completed for client {ClientId}. Coverage: {UsersCovered}/{TotalUsers}, Enabled policies: {EnabledPolicies}, Report-only policies: {ReportOnlyPolicies}",
+                    clientId, report.UsersCoveredByMfa, report.TotalUsers, enabledPolicies.Count, reportOnlyPolicies.Count);
 
                 return report;
             }

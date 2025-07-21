@@ -16,7 +16,7 @@ Governance Guardian is a SaaS application designed to help MSPs analyze and impr
 
 ## Version Information
 
-![Backend](https://img.shields.io/badge/Backend-v2.1.0-blue?style=flat-square&logo=dotnet)
+![Backend](https://img.shields.io/badge/Backend-v2.2.1-blue?style=flat-square&logo=dotnet)
 ![Frontend](https://img.shields.io/badge/Frontend-v1.0.0-blue?style=flat-square&logo=react)
 ![API](https://img.shields.io/badge/API-Live-green?style=flat-square)
 
@@ -51,6 +51,8 @@ project-compass/
 ├── backend/              # .NET Core solution
 │   ├── Compass.Api/      # Web API layer
 │   ├── Compass.Core/     # Business logic
+│   │   └── Services/
+│   │       └── Identity/ # Modular identity analyzers
 │   └── Compass.Data/     # Data access
 ├── infrastructure/       # Azure Bicep templates
 ├── database/            # Database scripts and migrations
@@ -86,21 +88,52 @@ npm start
 - OAuth delegation for Azure environments
 - JWT authentication with MFA
 - Client management system
-- Assessment orchestration
+- Assessment orchestration with modular analyzers
 - Naming convention analysis
 - Tagging compliance analysis
 - Client preference system
+- Identity and Access Management (IAM) analysis
+  - Enterprise application security assessment
+  - Stale user and device detection
+  - Resource IAM/RBAC analysis
+  - Conditional access policy evaluation
+- Microsoft Graph integration for enhanced security insights
 
 ### 🚧 In Development
 - Enhanced client customization
 - Advanced assessment models
 - Security posture analysis
+- Business continuity assessments
 
 ### 📋 Planned
-- RBAC/IAM analysis
 - Network security analysis
 - Backup & DR assessments
 - Compliance framework templates
+- Cost optimization analysis
+
+## Assessment Models
+
+### Resource Governance
+- **Naming Convention**: Resource naming pattern analysis
+- **Tagging**: Tag compliance and governance assessment
+- **Governance Full**: Comprehensive governance assessment
+
+### Identity & Access Management
+- **Enterprise Applications**: App registration and service principal security
+- **Stale Users & Devices**: Inactive account and device compliance detection
+- **Resource IAM/RBAC**: Role assignment and permission analysis
+- **Conditional Access**: Policy coverage and security gap assessment
+- **Identity Full**: Complete IAM security assessment
+
+### Business Continuity (Planned)
+- **Backup Coverage**: Backup configuration and success analysis
+- **Recovery Configuration**: Disaster recovery setup evaluation
+- **Business Continuity Full**: Comprehensive BCDR assessment
+
+### Security Posture (Planned)
+- **Network Security**: Network configuration and control evaluation
+- **Defender for Cloud**: Microsoft Defender security posture review
+- **Security Full**: Complete security posture assessment
 
 ## API Documentation
 
@@ -113,6 +146,24 @@ GET /health
 ```bash
 GET /api/version
 ```
+
+### Assessment Types
+```bash
+GET /api/assessments/types
+```
+
+### Identity Assessment Status
+```bash
+GET /api/identity-assessment/status
+```
+
+## Recent Updates (v2.2.1)
+
+- Implemented modular identity assessment architecture
+- Enhanced service principal filtering to exclude Microsoft first-party services
+- Improved conditional access analysis with report-only policy detection
+- Better user account type detection for more accurate inactive user analysis
+- Consolidated service registration and dependency injection improvements
 
 ## License
 

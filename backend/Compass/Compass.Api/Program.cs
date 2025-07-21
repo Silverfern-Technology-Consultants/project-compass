@@ -1,18 +1,19 @@
 ﻿using Azure.Extensions.AspNetCore.Configuration.Secrets;
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
+using Compass.Api.Extensions;
 using Compass.Api.Services;
-using Compass.Core.Services;
+using Compass.core.Interfaces;
 using Compass.Core.Interfaces;
+using Compass.Core.Services;
 using Compass.Data;
+using Compass.Data.Interfaces;
 using Compass.Data.Repositories;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-using Compass.Data.Interfaces;
-using Compass.core.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -93,26 +94,10 @@ builder.Services.AddHttpContextAccessor();
 //DB Seeder
 builder.Services.AddScoped<TestDataSeeder>();
 
-// ===== LOGIN ACTIVITY SERVICES (NEW) =====
-builder.Services.AddScoped<ILoginActivityRepository, LoginActivityRepository>();
-builder.Services.AddScoped<LoginActivityService>();
-
 // Organization Data Migration Service
 builder.Services.AddScoped<OrganizationDataMigrationService>();
 
-// Add DbContext - Key Vault connection string required
-builder.Services.AddDbContext<CompassDbContext>(options =>
-{
-    var connectionString = builder.Configuration["compass-database-connection"];
-    if (string.IsNullOrEmpty(connectionString))
-    {
-        throw new InvalidOperationException("Database connection string 'compass-database-connection' not found in Key Vault");
-    }
-    options.UseSqlServer(connectionString);
-});
-
-// Register OAuth services
-builder.Services.AddScoped<IOAuthService, OAuthService>();
+// Register OAuth services (these are NOT in ServiceCollectionExtensions)
 builder.Services.AddMemoryCache(); // For OAuth state management
 builder.Services.AddHttpClient(); // For OAuth token exchange
 
@@ -179,49 +164,15 @@ builder.Services.Configure<Compass.Core.Services.EmailOptions>(options =>
     options.NotificationsAddress = emailSection["NotificationsAddress"] ?? "";
 });
 
-// ===== REPOSITORY REGISTRATIONS =====
-builder.Services.AddScoped<IAssessmentRepository, AssessmentRepository>();
-builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
-builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
-builder.Services.AddScoped<IUsageMetricRepository, UsageMetricRepository>();
-builder.Services.AddScoped<IClientRepository, ClientRepository>();
-builder.Services.AddScoped<ILoginActivityRepository, LoginActivityRepository>();
-builder.Services.AddScoped<IClientPreferencesRepository, ClientPreferencesRepository>();
+// ===== USE SERVICE COLLECTION EXTENSIONS FOR ALL COMPASS SERVICES =====
+builder.Services.AddCompassServices(builder.Configuration);
 
-// ===== ASSESSMENT SERVICES WITH CLIENT PREFERENCES SUPPORT =====
-// Assessment Orchestrator (with client preferences support)
-builder.Services.AddScoped<IAssessmentOrchestrator, AssessmentOrchestrator>();
-
-// Assessment Analyzers - NamingConventionAnalyzer implements both interfaces
-builder.Services.AddScoped<INamingConventionAnalyzer, NamingConventionAnalyzer>();
-// No need for separate IPreferenceAwareNamingAnalyzer registration since INamingConventionAnalyzer inherits from it
-
-// Standard analyzers
-builder.Services.AddScoped<ITaggingAnalyzer, TaggingAnalyzer>();
-builder.Services.AddScoped<IIdentityAccessAssessmentAnalyzer, IdentityAccessAssessmentAnalyzer>();
-builder.Services.AddScoped<IBusinessContinuityAssessmentAnalyzer, BusinessContinuityAssessmentAnalyzer>();
-builder.Services.AddScoped<ISecurityPostureAssessmentAnalyzer, SecurityPostureAssessmentAnalyzer>();
-builder.Services.AddScoped<IDependencyAnalyzer, DependencyAnalyzer>();
-
-// ===== AZURE SERVICES =====
-builder.Services.AddScoped<IAzureResourceGraphService, AzureResourceGraphService>();
-
-// ===== MICROSOFT GRAPH SERVICE =====
-builder.Services.AddScoped<IMicrosoftGraphService, MicrosoftGraphService>();
-
-// ===== BUSINESS SERVICES =====
-builder.Services.AddScoped<ILicenseValidationService, LicenseValidationService>();
-builder.Services.AddScoped<IUsageTrackingService, UsageTrackingService>();
-builder.Services.AddScoped<IClientService, ClientService>();
-builder.Services.AddScoped<LoginActivityService>();
-
-// ===== AUTHENTICATION SERVICES =====
+// ===== AUTHENTICATION SERVICES (NOT in ServiceCollectionExtensions) =====
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
-builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
-// ===== MFA SERVICES =====
+// ===== MFA SERVICES (NOT in ServiceCollectionExtensions) =====
 builder.Services.AddScoped<IMfaService, MfaService>();
 
 // Add CORS
@@ -290,7 +241,8 @@ app.MapGet("/health", () => Results.Ok(new
         "Client Preferences System",
         "Preference-Aware Assessments",
         "OAuth Integration",
-        "Multi-Tenant Architecture"
+        "Multi-Tenant Architecture",
+        "Modular Identity Assessment System"
     }
 }));
 
@@ -339,11 +291,36 @@ app.MapGet("/api/client-preferences/status", () => Results.Ok(new
     }
 }));
 
+// Identity Assessment System status endpoint
+app.MapGet("/api/identity-assessment/status", () => Results.Ok(new
+{
+    Status = "Modular Identity Assessment System Active",
+    Features = new[]
+    {
+        "Enterprise Applications Analysis",
+        "Stale Users & Devices Detection",
+        "Resource IAM/RBAC Analysis",
+        "Conditional Access Policy Review",
+        "Full Identity Assessment Orchestration",
+        "OAuth-Enhanced Analysis",
+        "Microsoft Graph Integration"
+    },
+    AssessmentTypes = new[]
+    {
+        "EnterpriseApplications",
+        "StaleUsersDevices",
+        "ResourceIamRbac",
+        "ConditionalAccess",
+        "IdentityFull"
+    }
+}));
+
 // Log startup information
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
-logger.LogInformation("Compass API starting up with Client Preferences integration");
+logger.LogInformation("Compass API starting up with enhanced modular architecture");
 logger.LogInformation("Key Vault: {KeyVaultName}", keyVaultName);
 logger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);
 logger.LogInformation("Client Preferences System: ACTIVE");
+logger.LogInformation("Modular Identity Assessment System: ACTIVE");
 
 app.Run();
