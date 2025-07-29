@@ -25,8 +25,7 @@ import ProfilePage from './components/pages/ProfilePage';
 // New Company pages
 import MyClientsPage from './components/pages/MyClientsPage';
 import CompanySettingsPage from './components/pages/CompanySettingsPage';
-// Landing page
-import LandingPage from './LandingPage';
+
 // MFA Components
 import MfaVerificationModal from './components/modals/MfaVerificationModal';
 import MfaSetupModal from './components/modals/MfaSetupModal';
@@ -66,7 +65,8 @@ const AppContent = () => {
         mfaRequired,
         mfaSetupRequired,
         completeMfaVerification,
-        completeMfaSetup
+        completeMfaSetup,
+        cancelMfa
     } = useAuth();
 
     const handleMfaVerificationSuccess = (result) => {
@@ -93,7 +93,7 @@ const AppContent = () => {
         <>
             <Routes>
                 {/* Public routes */}
-                <Route path="/" element={<LandingPage />} />
+                <Route path="/" element={<Navigate to="/login" replace />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/verify-email" element={<VerifyEmailPage />} />
@@ -121,12 +121,12 @@ const AppContent = () => {
                     </>
                 )}
 
-                {/* Catch all - redirect to landing or dashboard */}
+                {/* Catch all - redirect to login or dashboard */}
                 <Route
                     path="*"
                     element={
                         <Navigate
-                            to={isAuthenticated ? "/app/dashboard" : "/"}
+                            to={isAuthenticated ? "/app/dashboard" : "/login"}
                             replace
                         />
                     }
@@ -136,13 +136,13 @@ const AppContent = () => {
             {/* Global MFA Modals */}
             <MfaVerificationModal
                 isOpen={mfaRequired}
-                onClose={() => { }} // Prevent closing during login flow
+                onClose={cancelMfa} // Allow closing to cancel MFA
                 onVerificationSuccess={handleMfaVerificationSuccess}
             />
 
             <MfaSetupModal
                 isOpen={mfaSetupRequired}
-                onClose={() => { }} // Prevent closing during setup flow
+                onClose={cancelMfa} // Allow closing to cancel MFA setup
                 onSetupComplete={handleMfaSetupComplete}
             />
         </>

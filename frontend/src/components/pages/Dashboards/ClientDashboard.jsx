@@ -2,6 +2,11 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 import { dashboardService } from '../../../services/DashboardService';
+import AssessmentTypeDropdown from '../../dropdowns/AssessmentTypeDropdown';
+import ResourceGovernanceAssessmentModal from '../../modals/ResourceGovernanceAssessmentModal';
+import SecurityPostureAssessmentModal from '../../modals/SecurityPostureAssessmentModal';
+import IdentityAccessAssessmentModal from '../../modals/IdentityAccessAssessmentModal';
+import BCDRAssessmentModal from '../../modals/BCDRAssessmentModal';
 import { BarChart3, FileText, Calendar, AlertTriangle, CheckCircle, Clock, TrendingUp, ArrowRight, Building, Cloud } from 'lucide-react';
 
 const StatsCard = ({ title, value, icon: Icon, color, change }) => (
@@ -102,6 +107,12 @@ const ClientDashboard = ({ client }) => {
     const [error, setError] = useState(null);
     const [clientData, setClientData] = useState(null);
     const [realAssessments, setRealAssessments] = useState([]);
+    
+    // Assessment modal states
+    const [showResourceGovernanceModal, setShowResourceGovernanceModal] = useState(false);
+    const [showSecurityPostureModal, setShowSecurityPostureModal] = useState(false);
+    const [showIdentityAccessModal, setShowIdentityAccessModal] = useState(false);
+    const [showBCDRModal, setShowBCDRModal] = useState(false);
 
     useEffect(() => {
         if (client?.ClientId) {
@@ -233,6 +244,42 @@ const ClientDashboard = ({ client }) => {
             // Don't throw error, just log it - subscription count is not critical
         }
     };
+    const handleAssessmentTypeSelect = (categoryId) => {
+        // Close all modals first
+        setShowResourceGovernanceModal(false);
+        setShowSecurityPostureModal(false);
+        setShowIdentityAccessModal(false);
+        setShowBCDRModal(false);
+
+        // Open the appropriate modal
+        switch (categoryId) {
+            case 'resource-governance':
+                setShowResourceGovernanceModal(true);
+                break;
+            case 'security-posture':
+                setShowSecurityPostureModal(true);
+                break;
+            case 'identity-access':
+                setShowIdentityAccessModal(true);
+                break;
+            case 'bcdr':
+                setShowBCDRModal(true);
+                break;
+            default:
+                console.warn('Unknown assessment category:', categoryId);
+        }
+    };
+
+    const handleAssessmentCreated = async (response) => {
+        try {
+            console.log('[ClientDashboard] Assessment created:', response);
+            // Reload assessments to show the new one
+            await loadRealAssessments(client?.ClientId);
+        } catch (error) {
+            console.error('[ClientDashboard] Failed to refresh assessments after creation:', error);
+        }
+    };
+
     const handleNewAssessment = () => {
         navigate('/app/assessments');
         setTimeout(() => {
@@ -401,12 +448,10 @@ const ClientDashboard = ({ client }) => {
                                 }
                             </p>
                         </div>
-                        <button
-                            onClick={handleNewAssessment}
-                            className="bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
-                        >
-                            New Assessment
-                        </button>
+                        <AssessmentTypeDropdown
+                            onSelectType={handleAssessmentTypeSelect}
+                            selectedClient={client}
+                        />
                     </div>
                 </div>
                 <div className="p-6">
@@ -435,12 +480,10 @@ const ClientDashboard = ({ client }) => {
                             <FileText size={48} className="text-gray-600 mx-auto mb-4" />
                             <h3 className="text-lg font-semibold text-white mb-2">No assessments yet for {client?.Name}</h3>
                             <p className="text-gray-400 mb-4">Start the first Azure governance assessment for this client.</p>
-                            <button
-                                onClick={handleNewAssessment}
-                                className="bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
-                            >
-                                Start First Assessment
-                            </button>
+                            <AssessmentTypeDropdown
+                                onSelectType={handleAssessmentTypeSelect}
+                                selectedClient={client}
+                            />
                         </div>
                     )}
                 </div>
@@ -464,6 +507,35 @@ const ClientDashboard = ({ client }) => {
                     </div>
                 </div>
             </div>
+
+            {/* Assessment Category Modals */}
+            <ResourceGovernanceAssessmentModal
+                isOpen={showResourceGovernanceModal}
+                onClose={() => setShowResourceGovernanceModal(false)}
+                onAssessmentCreated={handleAssessmentCreated}
+                selectedClient={client}
+            />
+
+            <SecurityPostureAssessmentModal
+                isOpen={showSecurityPostureModal}
+                onClose={() => setShowSecurityPostureModal(false)}
+                onAssessmentCreated={handleAssessmentCreated}
+                selectedClient={client}
+            />
+
+            <IdentityAccessAssessmentModal
+                isOpen={showIdentityAccessModal}
+                onClose={() => setShowIdentityAccessModal(false)}
+                onAssessmentCreated={handleAssessmentCreated}
+                selectedClient={client}
+            />
+
+            <BCDRAssessmentModal
+                isOpen={showBCDRModal}
+                onClose={() => setShowBCDRModal(false)}
+                onAssessmentCreated={handleAssessmentCreated}
+                selectedClient={client}
+            />
         </div>
     );
 };

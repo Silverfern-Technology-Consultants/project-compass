@@ -456,6 +456,13 @@ export const AuthProvider = ({ children }) => {
         // User is already logged in with the temp token
     };
 
+    const cancelMfa = () => {
+        dispatch({ type: 'SET_MFA_REQUIRED', payload: false });
+        dispatch({ type: 'SET_MFA_SETUP_REQUIRED', payload: false });
+        dispatch({ type: 'SET_PENDING_LOGIN', payload: null });
+        dispatch({ type: 'SET_LOADING', payload: false });
+    };
+
     const register = async (userData) => {
         dispatch({ type: 'SET_LOADING', payload: true });
         dispatch({ type: 'CLEAR_ERROR' });
@@ -588,6 +595,7 @@ export const AuthProvider = ({ children }) => {
         clearError,
         completeMfaVerification,
         completeMfaSetup,
+        cancelMfa, // NEW: Cancel MFA process
         verifyMfa, // NEW: MFA verification method
         validateCurrentUser, // NEW: Manual user validation
 

@@ -2,6 +2,8 @@
 using Compass.Core.Interfaces;
 using Compass.Core.Services;
 using Compass.Core.Services.Identity;
+using Compass.Core.Services.BusinessContinuity;
+using Compass.Core.Services.Security;
 using Compass.Data;
 using Compass.Data.Interfaces;
 using Compass.Data.Repositories;
@@ -37,7 +39,16 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INamingConventionAnalyzer, NamingConventionAnalyzer>();
         services.AddScoped<ITaggingAnalyzer, TaggingAnalyzer>();
         services.AddScoped<IDependencyAnalyzer, DependencyAnalyzer>();
-        services.AddScoped<IBusinessContinuityAssessmentAnalyzer, BusinessContinuityAssessmentAnalyzer>();
+
+        // Security Posture Assessment - Individual modular analyzers
+        services.AddScoped<INetworkSecurityAnalyzer, NetworkSecurityAnalyzer>();
+        services.AddScoped<IPrivateEndpointAnalyzer, PrivateEndpointAnalyzer>();
+        services.AddScoped<IDataEncryptionAnalyzer, DataEncryptionAnalyzer>();
+        services.AddScoped<IAdvancedThreatProtectionAnalyzer, AdvancedThreatProtectionAnalyzer>();
+        services.AddScoped<IDefenderForCloudAnalyzer, DefenderForCloudAnalyzer>();
+        services.AddScoped<ISecurityFullAnalyzer, SecurityFullAnalyzer>();
+
+        // Main Security Posture orchestrator
         services.AddScoped<ISecurityPostureAssessmentAnalyzer, SecurityPostureAssessmentAnalyzer>();
 
         // Identity Access Management Assessment - Individual analyzers
@@ -49,6 +60,16 @@ public static class ServiceCollectionExtensions
 
         // Main Identity Access Management orchestrator
         services.AddScoped<IIdentityAccessAssessmentAnalyzer, IdentityAccessAssessmentAnalyzer>();
+
+        // Business Continuity Assessment - Individual analyzers
+        services.AddScoped<IBackupCoverageAnalyzer, BackupCoverageAnalyzer>();
+        services.AddScoped<IRecoveryConfigurationAnalyzer, RecoveryConfigurationAnalyzer>();
+        services.AddScoped<IBusinessContinuityFullAnalyzer, BusinessContinuityFullAnalyzer>();
+
+        // Main Business Continuity orchestrator
+        services.AddScoped<IBusinessContinuityAssessmentAnalyzer, BusinessContinuityAssessmentAnalyzer>();
+
+        // Assessment orchestrator
         services.AddScoped<IAssessmentOrchestrator, AssessmentOrchestrator>();
 
         // OAuth and Microsoft Graph services

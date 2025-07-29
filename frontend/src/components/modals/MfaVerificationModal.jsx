@@ -52,6 +52,8 @@ const MfaVerificationModal = ({ isOpen, onClose, onVerificationSuccess }) => {
         setUseBackupCode(false);
         setError('');
         setLoading(false);
+        
+        // Call onClose to reset MFA state and return to login
         onClose();
     };
 
@@ -64,14 +66,14 @@ const MfaVerificationModal = ({ isOpen, onClose, onVerificationSuccess }) => {
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl font-semibold text-white">Two-Factor Authentication</h2>
                     <button
                         onClick={handleClose}
-                        className="text-gray-400 hover:text-gray-300"
-                        disabled={loading}
+                        className="text-gray-400 hover:text-gray-300 transition-colors"
+                        title="Cancel MFA and return to login"
                     >
                         ✕
                     </button>

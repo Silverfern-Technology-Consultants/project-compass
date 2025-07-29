@@ -2,6 +2,11 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 import { dashboardService } from '../../../services/DashboardService';
+import AssessmentTypeDropdown from '../../dropdowns/AssessmentTypeDropdown';
+import ResourceGovernanceAssessmentModal from '../../modals/ResourceGovernanceAssessmentModal';
+import SecurityPostureAssessmentModal from '../../modals/SecurityPostureAssessmentModal';
+import IdentityAccessAssessmentModal from '../../modals/IdentityAccessAssessmentModal';
+import BCDRAssessmentModal from '../../modals/BCDRAssessmentModal';
 import { BarChart3, FileText, Calendar, AlertTriangle, CheckCircle, Clock, TrendingUp, ArrowRight, Server, Cloud } from 'lucide-react';
 
 const StatsCard = ({ title, value, icon: Icon, color, change }) => (
@@ -86,6 +91,12 @@ const InternalDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [internalData, setInternalData] = useState(null);
+    
+    // Assessment modal states
+    const [showResourceGovernanceModal, setShowResourceGovernanceModal] = useState(false);
+    const [showSecurityPostureModal, setShowSecurityPostureModal] = useState(false);
+    const [showIdentityAccessModal, setShowIdentityAccessModal] = useState(false);
+    const [showBCDRModal, setShowBCDRModal] = useState(false);
 
     useEffect(() => {
         loadInternalMetrics();
@@ -102,6 +113,41 @@ const InternalDashboard = () => {
             setError('Failed to load internal dashboard');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleAssessmentTypeSelect = (categoryId) => {
+        // Close all modals first
+        setShowResourceGovernanceModal(false);
+        setShowSecurityPostureModal(false);
+        setShowIdentityAccessModal(false);
+        setShowBCDRModal(false);
+
+        // Open the appropriate modal
+        switch (categoryId) {
+            case 'resource-governance':
+                setShowResourceGovernanceModal(true);
+                break;
+            case 'security-posture':
+                setShowSecurityPostureModal(true);
+                break;
+            case 'identity-access':
+                setShowIdentityAccessModal(true);
+                break;
+            case 'bcdr':
+                setShowBCDRModal(true);
+                break;
+            default:
+                console.warn('Unknown assessment category:', categoryId);
+        }
+    };
+
+    const handleAssessmentCreated = async (response) => {
+        try {
+            console.log('[InternalDashboard] Assessment created:', response);
+            // Optionally reload internal metrics
+        } catch (error) {
+            console.error('[InternalDashboard] Failed to handle assessment creation:', error);
         }
     };
 
@@ -264,12 +310,10 @@ const InternalDashboard = () => {
                             <h2 className="text-lg font-semibold text-white">Internal MSP Assessments</h2>
                             <p className="text-sm text-purple-400">Showing your company's internal infrastructure assessments</p>
                         </div>
-                        <button
-                            onClick={handleNewAssessment}
-                            className="bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
-                        >
-                            New Internal Assessment
-                        </button>
+                        <AssessmentTypeDropdown
+                            onSelectType={handleAssessmentTypeSelect}
+                            selectedClient={null}
+                        />
                     </div>
                 </div>
                 <div className="p-6">
@@ -298,12 +342,10 @@ const InternalDashboard = () => {
                             <Server size={48} className="text-gray-600 mx-auto mb-4" />
                             <h3 className="text-lg font-semibold text-white mb-2">No internal assessments yet</h3>
                             <p className="text-gray-400 mb-4">Configure your internal Azure subscriptions and start your first assessment.</p>
-                            <button
-                                onClick={handleNewAssessment}
-                                className="bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
-                            >
-                                Start First Internal Assessment
-                            </button>
+                            <AssessmentTypeDropdown
+                                onSelectType={handleAssessmentTypeSelect}
+                                selectedClient={null}
+                            />
                         </div>
                     )}
                 </div>
@@ -327,6 +369,35 @@ const InternalDashboard = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Assessment Category Modals */}
+            <ResourceGovernanceAssessmentModal
+                isOpen={showResourceGovernanceModal}
+                onClose={() => setShowResourceGovernanceModal(false)}
+                onAssessmentCreated={handleAssessmentCreated}
+                selectedClient={null}
+            />
+
+            <SecurityPostureAssessmentModal
+                isOpen={showSecurityPostureModal}
+                onClose={() => setShowSecurityPostureModal(false)}
+                onAssessmentCreated={handleAssessmentCreated}
+                selectedClient={null}
+            />
+
+            <IdentityAccessAssessmentModal
+                isOpen={showIdentityAccessModal}
+                onClose={() => setShowIdentityAccessModal(false)}
+                onAssessmentCreated={handleAssessmentCreated}
+                selectedClient={null}
+            />
+
+            <BCDRAssessmentModal
+                isOpen={showBCDRModal}
+                onClose={() => setShowBCDRModal(false)}
+                onAssessmentCreated={handleAssessmentCreated}
+                selectedClient={null}
+            />
         </div>
     );
 };

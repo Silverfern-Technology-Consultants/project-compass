@@ -1,8 +1,12 @@
 ﻿import React, { useState, useEffect, useCallback } from 'react';
 import { Play, FileText, Calendar, Search, MoreVertical, Eye, Download, Trash2, CheckCircle, XCircle, AlertCircle, Building2 } from 'lucide-react';
 import { useAssessments, useAzureTest } from '../../hooks/useApi';
-import NewAssessmentModal from '../modals/NewAssessmentModal';
-import AssessmentDetailModal from '../modals/AssessmentDetailModal';
+import AssessmentTypeDropdown from '../dropdowns/AssessmentTypeDropdown';
+import EnhancedAssessmentDetailModal from '../modals/EnhancedAssessmentDetailModal';
+import ResourceGovernanceAssessmentModal from '../modals/ResourceGovernanceAssessmentModal';
+import SecurityPostureAssessmentModal from '../modals/SecurityPostureAssessmentModal';
+import IdentityAccessAssessmentModal from '../modals/IdentityAccessAssessmentModal';
+import BCDRAssessmentModal from '../modals/BCDRAssessmentModal';
 import { useClient } from '../../contexts/ClientContext';
 
 // Helper function to calculate stats
@@ -383,13 +387,18 @@ const AssessmentsPage = () => {
 
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
-    const [showNewModal, setShowNewModal] = useState(false);
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [showConnectionTest, setShowConnectionTest] = useState(false);
     const [selectedAssessment, setSelectedAssessment] = useState(null);
     const [assessmentToDelete, setAssessmentToDelete] = useState(null);
     const [testSubscriptions, setTestSubscriptions] = useState([]);
+    
+    // New assessment category modals
+    const [showResourceGovernanceModal, setShowResourceGovernanceModal] = useState(false);
+    const [showSecurityPostureModal, setShowSecurityPostureModal] = useState(false);
+    const [showIdentityAccessModal, setShowIdentityAccessModal] = useState(false);
+    const [showBCDRModal, setShowBCDRModal] = useState(false);
 
     // Load assessments on mount - run only once
     useEffect(() => {
@@ -414,7 +423,8 @@ const AssessmentsPage = () => {
     // Listen for dashboard events to auto-open modals
     useEffect(() => {
         const handleOpenNewAssessmentModal = () => {
-            setShowNewModal(true);
+            // For backward compatibility, open the governance modal by default
+            setShowResourceGovernanceModal(true);
         };
 
         const handleOpenAssessmentDetailModal = (event) => {
@@ -516,8 +526,11 @@ const AssessmentsPage = () => {
         try {
             console.log('[AssessmentsPage] Assessment created:', response);
 
-            // Close the modal
-            setShowNewModal(false);
+            // Close all category modals
+            setShowResourceGovernanceModal(false);
+            setShowSecurityPostureModal(false);
+            setShowIdentityAccessModal(false);
+            setShowBCDRModal(false);
 
             // Refresh the assessments list to show the new assessment
             await refreshAssessments();
@@ -527,6 +540,32 @@ const AssessmentsPage = () => {
         } catch (error) {
             console.error('[AssessmentsPage] Failed to refresh assessments after creation:', error);
             // Don't throw error - assessment was still created successfully
+        }
+    };
+
+    const handleAssessmentTypeSelect = (categoryId) => {
+        // Close all modals first
+        setShowResourceGovernanceModal(false);
+        setShowSecurityPostureModal(false);
+        setShowIdentityAccessModal(false);
+        setShowBCDRModal(false);
+
+        // Open the appropriate modal
+        switch (categoryId) {
+            case 'resource-governance':
+                setShowResourceGovernanceModal(true);
+                break;
+            case 'security-posture':
+                setShowSecurityPostureModal(true);
+                break;
+            case 'identity-access':
+                setShowIdentityAccessModal(true);
+                break;
+            case 'bcdr':
+                setShowBCDRModal(true);
+                break;
+            default:
+                console.warn('Unknown assessment category:', categoryId);
         }
     };
 
@@ -581,13 +620,10 @@ const AssessmentsPage = () => {
                     <h1 className="text-2xl font-bold text-white">
                         Assessments {selectedClient ? `- ${getClientDisplayName()}` : ''}
                     </h1>
-                    <button
-                        onClick={() => setShowNewModal(true)}
-                        className="flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
-                    >
-                        <Play size={16} />
-                        <span>New Assessment</span>
-                    </button>
+                    <AssessmentTypeDropdown
+                        onSelectType={handleAssessmentTypeSelect}
+                        selectedClient={selectedClient}
+                    />
                 </div>
 
                 {/* Stats Cards Row */}
@@ -730,12 +766,10 @@ const AssessmentsPage = () => {
                             : "Try adjusting your search or filters."
                         }
                     </p>
-                    <button
-                        onClick={() => setShowNewModal(true)}
-                        className="bg-yellow-600 hover:bg-yellow-700 text-black px-4 py-2 rounded font-medium transition-colors"
-                    >
-                        {selectedClient ? `Start Assessment for ${selectedClient.Name}` : 'Start Your First Assessment'}
-                    </button>
+                    <AssessmentTypeDropdown
+                        onSelectType={handleAssessmentTypeSelect}
+                        selectedClient={selectedClient}
+                    />
                 </div>
             )}
 
@@ -747,10 +781,31 @@ const AssessmentsPage = () => {
                 </div>
             )}
 
-            {/* New Assessment Modal */}
-            <NewAssessmentModal
-                isOpen={showNewModal}
-                onClose={() => setShowNewModal(false)}
+            {/* Assessment Category Modals */}
+            <ResourceGovernanceAssessmentModal
+                isOpen={showResourceGovernanceModal}
+                onClose={() => setShowResourceGovernanceModal(false)}
+                onAssessmentCreated={handleAssessmentCreated}
+                selectedClient={selectedClient}
+            />
+
+            <SecurityPostureAssessmentModal
+                isOpen={showSecurityPostureModal}
+                onClose={() => setShowSecurityPostureModal(false)}
+                onAssessmentCreated={handleAssessmentCreated}
+                selectedClient={selectedClient}
+            />
+
+            <IdentityAccessAssessmentModal
+                isOpen={showIdentityAccessModal}
+                onClose={() => setShowIdentityAccessModal(false)}
+                onAssessmentCreated={handleAssessmentCreated}
+                selectedClient={selectedClient}
+            />
+
+            <BCDRAssessmentModal
+                isOpen={showBCDRModal}
+                onClose={() => setShowBCDRModal(false)}
                 onAssessmentCreated={handleAssessmentCreated}
                 selectedClient={selectedClient}
             />
@@ -762,8 +817,8 @@ const AssessmentsPage = () => {
                 subscriptionIds={testSubscriptions}
             />
 
-            {/* Assessment Detail Modal */}
-            <AssessmentDetailModal
+            {/* Enhanced Assessment Detail Modal */}
+            <EnhancedAssessmentDetailModal
                 isOpen={showDetailModal}
                 onClose={() => setShowDetailModal(false)}
                 assessment={selectedAssessment}

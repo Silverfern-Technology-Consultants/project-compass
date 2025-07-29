@@ -16,12 +16,8 @@ Governance Guardian is a SaaS application designed to help MSPs analyze and impr
 
 ## Version Information
 
-<<<<<<< HEAD
-![Backend](https://img.shields.io/badge/Backend-v2.2.1-blue?style=flat-square&logo=dotnet)
-=======
-![Backend](https://img.shields.io/badge/Backend-v2.2.0-blue?style=flat-square&logo=dotnet)
->>>>>>> 0641fbdfd4cd6872bdbb6be5c2d1d04e9f174399
-![Frontend](https://img.shields.io/badge/Frontend-v1.0.0-blue?style=flat-square&logo=react)
+![Backend](https://img.shields.io/badge/Backend-v2.2.2-blue?style=flat-square&logo=dotnet)
+![Frontend](https://img.shields.io/badge/Frontend-v2.2.2-blue?style=flat-square&logo=react)
 ![API](https://img.shields.io/badge/API-Live-green?style=flat-square)
 
 ## Technology Stack
@@ -49,18 +45,34 @@ Governance Guardian is a SaaS application designed to help MSPs analyze and impr
 ## Project Structure
 ```
 project-compass/
-├── docs/                 # Project documentation
-├── frontend/             # React web application
-│   └── package.json      # Frontend dependencies
-├── backend/              # .NET Core solution
-│   ├── Compass.Api/      # Web API layer
-│   ├── Compass.Core/     # Business logic
-│   │   └── Services/
-│   │       └── Identity/ # Modular identity analyzers
-│   └── Compass.Data/     # Data access
-├── infrastructure/       # Azure Bicep templates
-├── database/            # Database scripts and migrations
-└── Directory.Build.props # Centralized versioning
+├── docs/                          # Project documentation
+├── frontend/                      # React web application
+│   └── src/
+│       ├── components/
+│       │   ├── assessment/        # Assessment-related components
+│       │   ├── client/            # Client management components
+│       │   └── common/            # Shared UI components
+│       ├── pages/                 # Main application pages
+│       ├── services/              # API service layer
+│       └── context/               # React context providers
+├── backend/                       # .NET Core solution
+│   ├── Compass.Api/               # Web API layer
+│   │   ├── Controllers/           # API endpoints
+│   │   ├── Services/              # Application services
+│   │   └── Middleware/            # Custom middleware
+│   ├── Compass.Core/              # Business logic layer
+│   │   ├── Models/                # Data transfer objects
+│   │   │   ├── Assessment/        # Organized assessment models
+│   │   ├── Services/              # Core business logic
+│   │   │   ├── Naming/            # Naming convention services
+│   │   └── Interfaces/            # Service contracts
+│   └── Compass.Data/              # Data access layer
+│       ├── Entities/              # Database models
+│       ├── Repositories/          # Data access implementations
+│       └── Interfaces/            # Repository contracts
+├── infrastructure/                # Azure Bicep templates
+├── database/                     # Database scripts and migrations
+└── Directory.Build.props         # Centralized versioning
 ```
 
 ## Development Setup
@@ -85,59 +97,75 @@ npm install
 npm start
 ```
 
-## Current Features
+# Current Features
 
-### ✅ Implemented
-- Multi-tenant MSP architecture
-- OAuth delegation for Azure environments
-- JWT authentication with MFA
-- Client management system
-- Assessment orchestration with modular analyzers
-- Naming convention analysis
-- Tagging compliance analysis
-- Client preference system
-- Identity and Access Management (IAM) analysis
-  - Enterprise application security assessment
-  - Stale user and device detection
-  - Resource IAM/RBAC analysis
-  - Conditional access policy evaluation
-- Microsoft Graph integration for enhanced security insights
+## ✅ Implemented
+- **Multi-tenant MSP architecture** with organization-scoped data isolation
+- **OAuth delegation system** for secure Azure environment access with ARM and Graph API integration
+- **JWT authentication with MFA** including TOTP and backup codes via Microsoft Graph
+- **Comprehensive client management system** with access control and team collaboration
+- **Modular assessment orchestration** with specialized analyzer components
+- **Advanced naming convention analysis** with client preference-aware validation
+- **Tagging compliance analysis** with customizable governance rules
+- **Client preference system** with JSON-based naming scheme configuration
+- **Complete Identity and Access Management (IAM) analysis**:
+  - Enterprise application security assessment with app registration review
+  - Stale user and device detection with compliance reporting
+  - Resource IAM/RBAC analysis with role assignment evaluation
+  - Conditional access policy coverage and security gap assessment
+- **Microsoft Graph integration** for enhanced security insights and email services
+- **Categorized assessment workflow** with 4 specialized assessment categories
+- **Premium branded login experience** with atmospheric animations and corporate identity
 
-### 🚧 In Development
-- Enhanced client customization
-- Advanced assessment models
-- Security posture analysis
-- Business continuity assessments
+## 🚧 In Development
+- **Security posture analysis** with network configuration evaluation
+- **Business continuity assessments** with backup and DR analysis
+- **Enhanced client customization** with advanced preference configurations
+- **Assessment result analytics** with trend analysis and reporting
 
-### 📋 Planned
-- Network security analysis
-- Backup & DR assessments
-- Compliance framework templates
-- Cost optimization analysis
+## 📋 Planned
+- **Compliance framework templates** (SOC 2, ISO 27001, NIST)
+- **Cost optimization analysis** with resource rightsizing recommendations
+- **Advanced reporting system** with executive dashboards
+- **API integration marketplace** for third-party assessment tools
 
-## Assessment Models
+# Assessment Models
 
-### Resource Governance
-- **Naming Convention**: Resource naming pattern analysis
-- **Tagging**: Tag compliance and governance assessment
-- **Governance Full**: Comprehensive governance assessment
+## Resource Governance
+- **Naming Convention Analysis**: Resource naming pattern compliance with client-specific scheme validation
+- **Tagging Compliance**: Tag governance assessment with customizable policy enforcement
+- **Governance Full**: Comprehensive resource governance assessment combining naming and tagging analysis
 
-### Identity & Access Management
-- **Enterprise Applications**: App registration and service principal security
-- **Stale Users & Devices**: Inactive account and device compliance detection
-- **Resource IAM/RBAC**: Role assignment and permission analysis
-- **Conditional Access**: Policy coverage and security gap assessment
-- **Identity Full**: Complete IAM security assessment
+## Identity & Access Management
+- **Enterprise Applications**: App registration security, service principal analysis, and permission review
+- **Stale Users & Devices**: Inactive account detection, device compliance monitoring, and cleanup recommendations
+- **Resource IAM/RBAC**: Role assignment analysis, permission evaluation, and access pattern review
+- **Conditional Access**: Policy coverage assessment, security gap identification, and compliance evaluation
+- **Identity Full**: Complete IAM security assessment with comprehensive access governance review
 
-### Business Continuity (Planned)
-- **Backup Coverage**: Backup configuration and success analysis
-- **Recovery Configuration**: Disaster recovery setup evaluation
-- **Business Continuity Full**: Comprehensive BCDR assessment
+## Security Posture
+- **Network Security**: Network configuration analysis, security group evaluation, and traffic flow assessment
+- **Security Configuration**: Microsoft Defender for Cloud integration with security posture scoring
+- **Security Full**: Complete security posture assessment with network and configuration analysis
 
-### Security Posture (Planned)
-- **Network Security**: Network configuration and control evaluation
-- **Defender for Cloud**: Microsoft Defender security posture review
-- **Security Full**: Complete security posture assessment
+## Business Continuity & Disaster Recovery
+- **Backup Coverage**: Backup configuration analysis, success rate monitoring, and coverage gap identification
+- **Recovery Configuration**: Disaster recovery setup evaluation, RTO/RPO analysis, and failover testing assessment
+- **BCDR Full**: Comprehensive business continuity assessment with backup and recovery analysis
+
+## Assessment Architecture
+
+### Modular Component Design
+- **Specialized Assessment Modals**: 4 dedicated modal components for different assessment categories
+- **Smart Assessment Dropdown**: Intelligent positioning with multi-selection support
+- **Client-Aware Workflows**: Preference integration across all assessment types
+- **Real-Time Processing**: Background orchestration with live status updates
+
+### Technical Implementation
+- **11 Total Assessment Types** across 4 main categories
+- **Client Preference Integration**: JSON-based naming scheme configuration
+- **Service Abbreviation Support**: 100+ service abbreviation mappings
+- **Organization-Scoped Security**: Multi-tenant data isolation with proper access controls
 
 ## API Documentation
 
@@ -160,14 +188,6 @@ GET /api/assessments/types
 ```bash
 GET /api/identity-assessment/status
 ```
-
-## Recent Updates (v2.2.1)
-
-- Implemented modular identity assessment architecture
-- Enhanced service principal filtering to exclude Microsoft first-party services
-- Improved conditional access analysis with report-only policy detection
-- Better user account type detection for more accurate inactive user analysis
-- Consolidated service registration and dependency injection improvements
 
 ## License
 

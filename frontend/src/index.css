@@ -1,5 +1,6 @@
 /* Global Styles for Compass Portal */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Rockwell:wght@400;700&display=swap');
 
 * {
     box-sizing: border-box;
@@ -75,6 +76,309 @@ button:focus-visible {
 .animate-pulse {
     animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* Login page animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulseGlow {
+    0%, 100% {
+        opacity: 0.1;
+        transform: scale(1.1);
+    }
+    50% {
+        opacity: 0.15;
+        transform: scale(1.15);
+    }
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.6s ease-out;
+}
+
+.animate-slide-down {
+    animation: slideDown 0.8s ease-out;
+}
+
+.animate-slide-up {
+    animation: slideUp 0.8s ease-out;
+}
+
+.animate-pulse-glow {
+    animation: pulseGlow 3s ease-in-out infinite;
+}
+
+.animate-shake {
+    animation: shake 0.5s ease-in-out;
+}
+
+.animate-fade-in-delay {
+    animation: fadeIn 0.6s ease-out 0.2s both;
+}
+
+.animate-fade-in-delay-2 {
+    animation: fadeIn 0.6s ease-out 0.4s both;
+}
+
+.animate-fade-in-delay-3 {
+    animation: fadeIn 0.6s ease-out 0.6s both;
+}
+
+.animate-fade-in-delay-4 {
+    animation: fadeIn 0.6s ease-out 0.8s both;
+}
+
+.animate-fade-in-delay-5 {
+    animation: fadeIn 0.6s ease-out 1.0s both;
+}
+
+.animate-fade-in-delay-6 {
+    animation: fadeIn 0.6s ease-out 1.2s both;
+}
+
+.animate-fade-in-delay-7 {
+    animation: fadeIn 0.6s ease-out 1.4s both;
+}
+
+.animate-fade-in-delay-8 {
+    animation: fadeIn 0.6s ease-out 1.6s both;
+}
+
+/* Background atmosphere animations */
+@keyframes floatSlow {
+    0%, 100% {
+        transform: translateY(0px) translateX(0px) rotate(0deg);
+    }
+    33% {
+        transform: translateY(-20px) translateX(10px) rotate(1deg);
+    }
+    66% {
+        transform: translateY(10px) translateX(-15px) rotate(-1deg);
+    }
+}
+
+@keyframes floatReverse {
+    0%, 100% {
+        transform: translateY(0px) translateX(0px) rotate(0deg);
+    }
+    33% {
+        transform: translateY(15px) translateX(-10px) rotate(-1deg);
+    }
+    66% {
+        transform: translateY(-10px) translateX(20px) rotate(1deg);
+    }
+}
+
+@keyframes pulseGentle {
+    0%, 100% {
+        opacity: 0.4;
+        transform: translateX(-50%) translateY(-50%) scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: translateX(-50%) translateY(-50%) scale(1.1);
+    }
+}
+
+@keyframes twinkle1 {
+    0%, 100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.5);
+    }
+}
+
+@keyframes twinkle2 {
+    0%, 100% {
+        opacity: 0.2;
+        transform: scale(1);
+    }
+    60% {
+        opacity: 0.9;
+        transform: scale(1.3);
+    }
+}
+
+@keyframes twinkle3 {
+    0%, 100% {
+        opacity: 0.4;
+        transform: scale(1);
+    }
+    40% {
+        opacity: 1;
+        transform: scale(1.4);
+    }
+}
+
+@keyframes aurora1 {
+    0% {
+        opacity: 0;
+        transform: translateX(-100px) rotate(45deg);
+    }
+    50% {
+        opacity: 0.6;
+        transform: translateX(0px) rotate(45deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(100px) rotate(45deg);
+    }
+}
+
+@keyframes aurora2 {
+    0% {
+        opacity: 0;
+        transform: translateX(100px) rotate(-45deg);
+    }
+    50% {
+        opacity: 0.4;
+        transform: translateX(0px) rotate(-45deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(-100px) rotate(-45deg);
+    }
+}
+
+@keyframes aurora3 {
+    0% {
+        opacity: 0;
+        transform: translateX(-80px) rotate(12deg);
+    }
+    50% {
+        opacity: 0.3;
+        transform: translateX(0px) rotate(12deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(80px) rotate(12deg);
+    }
+}
+
+.animate-float-slow {
+    animation: floatSlow 20s ease-in-out infinite;
+}
+
+.animate-float-reverse {
+    animation: floatReverse 25s ease-in-out infinite;
+}
+
+.animate-pulse-gentle {
+    animation: pulseGentle 15s ease-in-out infinite;
+}
+
+.animate-twinkle-1 {
+    animation: twinkle1 3s ease-in-out infinite;
+}
+
+.animate-twinkle-2 {
+    animation: twinkle2 4s ease-in-out infinite 1s;
+}
+
+.animate-twinkle-3 {
+    animation: twinkle3 5s ease-in-out infinite 2s;
+}
+
+.animate-aurora-1 {
+    animation: aurora1 12s linear infinite;
+}
+
+.animate-aurora-2 {
+    animation: aurora2 15s linear infinite 4s;
+}
+
+.animate-aurora-3 {
+    animation: aurora3 18s linear infinite 8s;
+}
+
+/* Flowing gradient animations */
+@keyframes gradientFlow1 {
+    0%, 100% {
+        opacity: 0.3;
+        transform: rotate(0deg) scale(1);
+    }
+    33% {
+        opacity: 0.6;
+        transform: rotate(120deg) scale(1.1);
+    }
+    66% {
+        opacity: 0.4;
+        transform: rotate(240deg) scale(0.9);
+    }
+}
+
+@keyframes gradientFlow2 {
+    0%, 100% {
+        opacity: 0.2;
+        transform: rotate(0deg) scale(1);
+    }
+    50% {
+        opacity: 0.5;
+        transform: rotate(180deg) scale(1.2);
+    }
+}
+
+.animate-gradient-flow-1 {
+    animation: gradientFlow1 30s ease-in-out infinite;
+}
+
+.animate-gradient-flow-2 {
+    animation: gradientFlow2 25s ease-in-out infinite 10s;
+}
+
+
+
+
+
+/* Hexagonal mesh pattern */
+.hexagonal-mesh {
+    background-image: 
+        linear-gradient(30deg, transparent 24%, rgba(199, 174, 106, 0.1) 25%, rgba(199, 174, 106, 0.1) 26%, transparent 27%, transparent 74%, rgba(199, 174, 106, 0.1) 75%, rgba(199, 174, 106, 0.1) 76%, transparent 77%, transparent),
+        linear-gradient(-30deg, transparent 24%, rgba(199, 174, 106, 0.1) 25%, rgba(199, 174, 106, 0.1) 26%, transparent 27%, transparent 74%, rgba(199, 174, 106, 0.1) 75%, rgba(199, 174, 106, 0.1) 76%, transparent 77%, transparent);
+    background-size: 120px 68px;
+    background-position: 0 0, 60px 34px;
+}
+
+
 
 /* Custom transition for sidebar */
 .sidebar-transition {
