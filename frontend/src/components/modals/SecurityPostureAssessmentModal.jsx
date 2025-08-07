@@ -6,7 +6,7 @@ import { assessmentApi, apiClient } from '../../services/apiService';
 const SecurityPostureAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = () => { }, selectedClient = null }) => {
     const [step, setStep] = useState(1);
     const [assessmentName, setAssessmentName] = useState('');
-    const [selectedTypes, setSelectedTypes] = useState(new Set([5])); // Default to Security Full
+    const [selectedTypes, setSelectedTypes] = useState(new Set([13])); // Default to Security Full (SecurityFull)
     const [selectedEnvironment, setSelectedEnvironment] = useState('');
     const [currentClient, setCurrentClient] = useState(selectedClient);
     const [useClientPreferences, setUseClientPreferences] = useState(false);
@@ -18,7 +18,7 @@ const SecurityPostureAssessmentModal = ({ isOpen, onClose, onAssessmentCreated =
 
     const securityAssessmentTypes = [
         {
-            id: 3,
+            id: 11, // NetworkSecurity
             name: 'Network Security Assessment',
             description: 'Analyze network security groups, firewall rules, and network segmentation',
             icon: '🌐',
@@ -26,17 +26,17 @@ const SecurityPostureAssessmentModal = ({ isOpen, onClose, onAssessmentCreated =
             category: 'Individual'
         },
         {
-            id: 4,
-            name: 'Identity & Access Management',
-            description: 'Review RBAC, permissions, privileged access, and identity security',
-            icon: '👥',
+            id: 12, // DefenderForCloud
+            name: 'Defender for Cloud Assessment',
+            description: 'Review Microsoft Defender for Cloud security posture and recommendations',
+            icon: '🛡️',
             estimatedTime: '5-7 minutes',
             category: 'Individual'
         },
         {
-            id: 5,
+            id: 13, // SecurityFull
             name: 'Security: Full Assessment',
-            description: 'Comprehensive security analysis including network, IAM, encryption, and threat protection',
+            description: 'Comprehensive security analysis including network, Defender for Cloud, encryption, and threat protection',
             icon: '🛡️',
             estimatedTime: '8-12 minutes',
             recommended: true,
@@ -209,7 +209,7 @@ const SecurityPostureAssessmentModal = ({ isOpen, onClose, onAssessmentCreated =
     const handleClose = () => {
         setStep(1);
         setAssessmentName('Security Posture Assessment');
-        setSelectedTypes(new Set([5]));
+        setSelectedTypes(new Set([13])); // SecurityFull
         setSelectedEnvironment('');
         setCurrentClient(selectedClient);
         setUseClientPreferences(false);

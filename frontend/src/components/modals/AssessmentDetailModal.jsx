@@ -252,6 +252,34 @@ const getResourceTypeInfo = (resourceType) => {
 };
 
 const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
+    // Helper function to extract duration from assessment object
+    const getAssessmentDuration = () => {
+        const startDate = assessment.startedDate || assessment.StartedDate || assessment.date || assessment.Date;
+        const endDate = assessment.completedDate || assessment.CompletedDate || assessment.endDate || assessment.EndDate;
+
+        if (startDate && endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            const diffMs = end - start;
+
+            if (diffMs < 1000) {
+                return `${diffMs}ms`;
+            } else if (diffMs < 60000) {
+                const totalSeconds = Math.round(diffMs / 100) / 10;
+                return `${totalSeconds}s`;
+            } else {
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffSecs = Math.floor((diffMs % 60000) / 1000);
+                return `${diffMins}m ${diffSecs}s`;
+            }
+        }
+
+        if (startDate && !endDate) {
+            return 'In Progress';
+        }
+
+        return 'Unknown';
+    };
     const [findings, setFindings] = useState([]);
     const [resources, setResources] = useState([]);
     const [resourceFilters, setResourceFilters] = useState({});
@@ -622,32 +650,48 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
     };
 
     // Helper function to extract duration from assessment object
-    const getAssessmentDuration = () => {
-        const startDate = assessment.startedDate || assessment.StartedDate || assessment.date || assessment.Date;
-        const endDate = assessment.completedDate || assessment.CompletedDate || assessment.endDate || assessment.EndDate;
-
-        if (startDate && endDate) {
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-            const diffMs = end - start;
-
-            if (diffMs < 1000) {
-                return `${diffMs}ms`;
-            } else if (diffMs < 60000) {
-                const totalSeconds = Math.round(diffMs / 100) / 10;
-                return `${totalSeconds}s`;
-            } else {
-                const diffMins = Math.floor(diffMs / 60000);
-                const diffSecs = Math.floor((diffMs % 60000) / 1000);
-                return `${diffMins}m ${diffSecs}s`;
-            }
-        }
-
-        if (startDate && !endDate) {
-            return 'In Progress';
-        }
-
-        return 'Unknown';
+    // Helper function to get assessment category and type display information
+    const getAssessmentDisplayInfo = (assessment) => {
+        const assessmentType = assessment.assessmentType || assessment.type || assessment.rawData?.type || 'Unknown';
+        const assessmentCategory = assessment.assessmentCategory || assessment.category || 'Other';
+        
+        // Map assessment types to display names and categories
+        const typeDisplayMap = {
+            // Resource Governance
+            'NamingConvention': { title: 'Naming Convention Assessment', category: 'Resource Governance', icon: '📏' },
+            'Tagging': { title: 'Tagging Compliance Assessment', category: 'Resource Governance', icon: '🏷️' },
+            'GovernanceFull': { title: 'Resource Governance Assessment', category: 'Resource Governance', icon: '⚙️' },
+            'Full': { title: 'Resource Governance Assessment', category: 'Resource Governance', icon: '⚙️' },
+            
+            // Identity & Access Management
+            'EnterpriseApplications': { title: 'Enterprise Applications Assessment', category: 'Identity & Access Management', icon: '👥' },
+            'StaleUsersDevices': { title: 'Stale Users & Devices Assessment', category: 'Identity & Access Management', icon: '🔒' },
+            'ResourceIamRbac': { title: 'Resource IAM/RBAC Assessment', category: 'Identity & Access Management', icon: '🛡️' },
+            'ConditionalAccess': { title: 'Conditional Access Assessment', category: 'Identity & Access Management', icon: '🚪' },
+            'IdentityFull': { title: 'Identity & Access Assessment', category: 'Identity & Access Management', icon: '🔐' },
+            
+            // Business Continuity & Disaster Recovery
+            'BackupCoverage': { title: 'Backup Coverage Assessment', category: 'Business Continuity & Disaster Recovery', icon: '💾' },
+            'RecoveryConfiguration': { title: 'Recovery Configuration Assessment', category: 'Business Continuity & Disaster Recovery', icon: '🔄' },
+            'BusinessContinuityFull': { title: 'Business Continuity & Disaster Recovery Assessment', category: 'Business Continuity & Disaster Recovery', icon: '🏥' },
+            
+            // Security Posture
+            'NetworkSecurity': { title: 'Network Security Assessment', category: 'Security Posture', icon: '🌐' },
+            'DefenderForCloud': { title: 'Defender for Cloud Assessment', category: 'Security Posture', icon: '🛡️' },
+            'SecurityFull': { title: 'Security Posture Assessment', category: 'Security Posture', icon: '🔒' },
+            
+            // Legacy/Unknown
+            'Unknown': { title: 'Azure Assessment', category: 'General', icon: '📊' }
+        };
+        
+        const displayInfo = typeDisplayMap[assessmentType] || typeDisplayMap['Unknown'];
+        
+        return {
+            title: displayInfo.title,
+            category: displayInfo.category,
+            icon: displayInfo.icon,
+            type: assessmentType
+        };
     };
     const renderGroupedFinding = (groupedFinding, categoryKey, groupKey) => {
         const findingKey = `${categoryKey}-${groupKey}`;
@@ -797,7 +841,10 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
                 <div className="flex items-center justify-between p-6 border-b border-gray-800 flex-shrink-0">
                     <div className="flex-1">
                         <div className="flex items-center space-x-4 mb-2">
-                            <h2 className="text-xl font-semibold text-white">{assessment.name}</h2>
+                            <h2 className="text-xl font-semibold text-white">{getAssessmentDisplayInfo(assessment).title}</h2>
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-600/20 text-purple-300 border border-purple-600/30">
+                                {getAssessmentDisplayInfo(assessment).category}
+                            </span>
                             {assessment.useClientPreferences && (
                                 <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-600 text-white">
                                     <Settings size={14} className="mr-1" />
@@ -969,12 +1016,9 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
                                                 <div>
                                                     <p className="text-sm text-gray-400">Assessment Type</p>
                                                     <div className="flex items-center space-x-2">
-                                                        <span className="text-white font-medium">{assessment.type || 'Full Assessment'}</span>
+                                                        <span className="text-white font-medium">{getAssessmentDisplayInfo(assessment).category}</span>
                                                         <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-600/20 text-purple-300 border border-purple-600/30">
-                                                            {assessment.type === 'NamingConvention' ? 'Naming Only' :
-                                                                assessment.type === 'Tagging' ? 'Tagging Only' :
-                                                                    assessment.type === 'Full' ? 'Complete Analysis' :
-                                                                        assessment.type || 'Full Analysis'}
+                                                            {getAssessmentDisplayInfo(assessment).type}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -1296,7 +1340,7 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
                                 {!loading && !error && findings.length > 0 && (
                                     <div className="space-y-4">
                                         <div className="flex items-center justify-between">
-                                            <h3 className="text-lg font-semibold text-white">Governance Findings ({findings.length} total)</h3>
+                                            <h3 className="text-lg font-semibold text-white">Assessment Findings ({findings.length} total)</h3>
                                             <div className="flex items-center space-x-2">
                                                 <button
                                                     onClick={() => {

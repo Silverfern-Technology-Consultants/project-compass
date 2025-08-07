@@ -2,6 +2,7 @@
 import { createPortal } from 'react-dom';
 import { X, AlertCircle, CheckCircle, Info } from 'lucide-react';
 import { assessmentApi, azureEnvironmentsApi, apiClient } from '../../services/apiService';
+import AssessmentProgressModal from './AssessmentProgressModal';
 
 const NewAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = () => { }, selectedClient = null }) => {
     const [step, setStep] = useState(1);
@@ -15,6 +16,8 @@ const NewAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = () => { }, 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [isCreating, setIsCreating] = useState(false);
+    const [showProgressModal, setShowProgressModal] = useState(false);
+    const [createdAssessmentId, setCreatedAssessmentId] = useState(null);
 
     const assessmentTypes = [
         {
@@ -163,15 +166,14 @@ const NewAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = () => { }, 
             console.log('[NewAssessmentModal] Assessment response:', response);
 
             if (response && (response.assessmentId || response.AssessmentId)) {
-                console.log('[NewAssessmentModal] Assessment created successfully:', response.assessmentId || response.AssessmentId);
+                const assessmentId = response.assessmentId || response.AssessmentId;
+                console.log('[NewAssessmentModal] Assessment created successfully:', assessmentId);
 
-                // Call the callback if provided
-                if (typeof onAssessmentCreated === 'function') {
-                    onAssessmentCreated(response);
-                } else {
-                    console.warn('[NewAssessmentModal] onAssessmentCreated callback not provided or not a function');
-                }
-
+                // Store the assessment ID and show progress modal
+                setCreatedAssessmentId(assessmentId);
+                setShowProgressModal(true);
+                
+                // Close the creation modal
                 handleClose();
             } else {
                 console.error('[NewAssessmentModal] Invalid response format:', response);
@@ -207,6 +209,26 @@ const NewAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = () => { }, 
         setError('');
         setIsCreating(false);
         onClose();
+    };
+
+    const handleProgressComplete = (assessment) => {
+        setShowProgressModal(false);
+        setCreatedAssessmentId(null);
+        
+        // Call the callback if provided
+        if (typeof onAssessmentCreated === 'function') {
+            onAssessmentCreated(assessment);
+        }
+    };
+
+    const handleProgressClose = () => {
+        setShowProgressModal(false);
+        setCreatedAssessmentId(null);
+        
+        // Still call the callback to refresh the assessments list
+        if (typeof onAssessmentCreated === 'function') {
+            onAssessmentCreated({ assessmentId: createdAssessmentId });
+        }
     };
 
     const getSelectedEnvironmentDetails = () => {
@@ -583,6 +605,14 @@ const NewAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = () => { }, 
                     </div>
                 </div>
             </div>
+            
+            {/* Assessment Progress Modal */}
+            <AssessmentProgressModal
+                isOpen={showProgressModal}
+                onClose={handleProgressClose}
+                assessmentId={createdAssessmentId}
+                onComplete={handleProgressComplete}
+            />
         </div>,
         document.body
     );

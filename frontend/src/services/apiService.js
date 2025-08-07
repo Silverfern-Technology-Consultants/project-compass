@@ -108,6 +108,16 @@ export const assessmentApi = {
         }
     },
 
+    getAssessmentResults: async (assessmentId) => {
+        try {
+            const response = await apiClient.get(`/assessments/${assessmentId}/results`);
+            return response.data;
+        } catch (error) {
+            console.error('[assessmentApi] Error getting assessment results:', error);
+            throw error;
+        }
+    },
+
     getAssessmentFindings: async (assessmentId) => {
         try {
             const response = await apiClient.get(`/assessments/${assessmentId}/findings`);

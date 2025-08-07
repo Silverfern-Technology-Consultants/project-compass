@@ -30,6 +30,9 @@ namespace Compass.Core.Services
 
         // OAuth state cache duration (10 minutes)
         private readonly TimeSpan _stateCacheDuration = TimeSpan.FromMinutes(10);
+        
+        // NEW: Token cache duration (5 minutes to balance performance and freshness)
+        private readonly TimeSpan _tokenCacheDuration = TimeSpan.FromMinutes(5);
 
         public OAuthService(
             IConfiguration configuration,
@@ -208,11 +211,28 @@ namespace Compass.Core.Services
             };
         }
 
-        // NEW: Get Microsoft Graph credentials
+        // NEW: Get Microsoft Graph credentials with caching
         public async Task<GraphTokenCredentials?> GetGraphCredentialsAsync(Guid clientId, Guid organizationId)
         {
             try
             {
+                // Check cache first
+                var cacheKey = $"graph_credentials_{organizationId}_{clientId}";
+                if (_cache.TryGetValue(cacheKey, out GraphTokenCredentials? cachedCredentials))
+                {
+                    // Check if cached credentials are still valid (not expired within 5 minutes)
+                    if (cachedCredentials.ExpiresAt > DateTime.UtcNow.AddMinutes(5))
+                    {
+                        _logger.LogDebug("Using cached Graph credentials for client {ClientId}", clientId);
+                        return cachedCredentials;
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Cached Graph credentials expired for client {ClientId}, fetching fresh ones", clientId);
+                        _cache.Remove(cacheKey);
+                    }
+                }
+
                 await EnsureMspKeyVaultExistsAsync(organizationId);
 
                 var secretName = $"client-{clientId}-oauth-tokens";
@@ -247,7 +267,7 @@ namespace Compass.Core.Services
                     credentials = JsonSerializer.Deserialize<StoredCredentials>(refreshedSecret.Value.Value);
                 }
 
-                return new GraphTokenCredentials
+                var result = new GraphTokenCredentials
                 {
                     AccessToken = credentials.GraphAccessToken!,
                     RefreshToken = credentials.GraphRefreshToken ?? "",
@@ -255,6 +275,12 @@ namespace Compass.Core.Services
                     Scope = credentials.GraphScope ?? "",
                     GrantedPermissions = ParseGrantedPermissions(credentials.GraphScope)
                 };
+
+                // Cache the credentials for performance
+                _cache.Set(cacheKey, result, _tokenCacheDuration);
+                _logger.LogDebug("Cached Graph credentials for client {ClientId}", clientId);
+
+                return result;
             }
             catch (Azure.RequestFailedException ex) when (ex.Status == 404)
             {
@@ -331,6 +357,10 @@ namespace Compass.Core.Services
 
                 var updatedJson = JsonSerializer.Serialize(credentials);
                 await mspKeyVaultClient.SetSecretAsync(secretName, updatedJson);
+
+                // Invalidate cache after updating credentials
+                var cacheKey = $"graph_credentials_{organizationId}_{clientId}";
+                _cache.Remove(cacheKey);
 
                 _logger.LogInformation("Successfully refreshed Graph tokens for client {ClientId}", clientId);
                 return true;

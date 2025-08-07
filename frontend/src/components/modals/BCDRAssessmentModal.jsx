@@ -6,7 +6,7 @@ import { assessmentApi, apiClient } from '../../services/apiService';
 const BCDRAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = () => { }, selectedClient = null }) => {
     const [step, setStep] = useState(1);
     const [assessmentName, setAssessmentName] = useState('');
-    const [selectedTypes, setSelectedTypes] = useState(new Set([11])); // Default to BCDR Full
+    const [selectedTypes, setSelectedTypes] = useState(new Set([10])); // Default to BCDR Full (BusinessContinuityFull)
     const [selectedEnvironment, setSelectedEnvironment] = useState('');
     const [currentClient, setCurrentClient] = useState(selectedClient);
     const [useClientPreferences, setUseClientPreferences] = useState(false);
@@ -18,7 +18,7 @@ const BCDRAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = () => { },
 
     const bcdrAssessmentTypes = [
         {
-            id: 9,
+            id: 8, // BackupCoverage
             name: 'Backup Strategy Assessment',
             description: 'Analyze backup policies, retention, recovery points, and backup coverage across Azure services',
             icon: '💾',
@@ -26,7 +26,7 @@ const BCDRAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = () => { },
             category: 'Individual'
         },
         {
-            id: 10,
+            id: 9, // RecoveryConfiguration
             name: 'Disaster Recovery Analysis',
             description: 'Review disaster recovery plans, replication strategies, and business continuity readiness',
             icon: '🔄',
@@ -34,7 +34,7 @@ const BCDRAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = () => { },
             category: 'Individual'
         },
         {
-            id: 11,
+            id: 10, // BusinessContinuityFull
             name: 'BCDR: Full Assessment',
             description: 'Comprehensive business continuity and disaster recovery analysis including backup, DR, high availability, and recovery testing',
             icon: '🛡️',
@@ -209,7 +209,7 @@ const BCDRAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = () => { },
     const handleClose = () => {
         setStep(1);
         setAssessmentName('Business Continuity & Disaster Recovery Assessment');
-        setSelectedTypes(new Set([11]));
+        setSelectedTypes(new Set([10])); // BusinessContinuityFull
         setSelectedEnvironment('');
         setCurrentClient(selectedClient);
         setUseClientPreferences(false);

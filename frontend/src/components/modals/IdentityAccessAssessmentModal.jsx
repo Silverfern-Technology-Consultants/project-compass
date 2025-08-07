@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, AlertCircle, CheckCircle, Info, Users } from 'lucide-react';
 import { assessmentApi, apiClient } from '../../services/apiService';
+import AssessmentProgressModal from './AssessmentProgressModal';
 
 const IdentityAccessAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = () => { }, selectedClient = null }) => {
     const [step, setStep] = useState(1);
     const [assessmentName, setAssessmentName] = useState('');
-    const [selectedTypes, setSelectedTypes] = useState(new Set([7])); // Default to Identity Full
+    const [selectedTypes, setSelectedTypes] = useState(new Set([7])); // Default to Identity Full (IdentityFull)
     const [selectedEnvironment, setSelectedEnvironment] = useState('');
     const [currentClient, setCurrentClient] = useState(selectedClient);
     const [useClientPreferences, setUseClientPreferences] = useState(false);
@@ -15,10 +16,28 @@ const IdentityAccessAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [isCreating, setIsCreating] = useState(false);
+    const [showProgressModal, setShowProgressModal] = useState(false);
+    const [createdAssessmentId, setCreatedAssessmentId] = useState(null);
 
     const identityAssessmentTypes = [
         {
-            id: 6,
+            id: 3, // EnterpriseApplications
+            name: 'Enterprise Applications Review',
+            description: 'Review enterprise applications and app registrations for security risks',
+            icon: '🏢',
+            estimatedTime: '4-6 minutes',
+            category: 'Individual'
+        },
+        {
+            id: 4, // StaleUsersDevices
+            name: 'Stale Users & Devices',
+            description: 'Identify inactive users and unmanaged devices',
+            icon: '🚫',
+            estimatedTime: '3-5 minutes',
+            category: 'Individual'
+        },
+        {
+            id: 5, // ResourceIamRbac
             name: 'RBAC & Permissions Analysis',
             description: 'Analyze Azure resource permissions and role assignments',
             icon: '🔑',
@@ -26,17 +45,17 @@ const IdentityAccessAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = 
             category: 'Individual'
         },
         {
-            id: 8,
-            name: 'Privileged Access Review',
-            description: 'Review privileged users, roles, and access patterns',
-            icon: '👑',
-            estimatedTime: '6-9 minutes',
+            id: 6, // ConditionalAccess
+            name: 'Conditional Access Review',
+            description: 'Evaluate conditional access policies and coverage',
+            icon: '🚪',
+            estimatedTime: '4-6 minutes',
             category: 'Individual'
         },
         {
-            id: 7,
+            id: 7, // IdentityFull
             name: 'Identity & Access: Full Assessment',
-            description: 'Comprehensive identity security analysis including RBAC, privileged access, and user management',
+            description: 'Complete identity and access management security assessment',
             icon: '👥',
             estimatedTime: '10-15 minutes',
             recommended: true,
@@ -171,7 +190,10 @@ const IdentityAccessAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = 
             setIsCreating(true);
             setError('');
 
-            const assessmentPromises = Array.from(selectedTypes).map(async (typeId) => {
+            // Create assessments one by one instead of in parallel
+            const createdAssessments = [];
+            
+            for (const typeId of Array.from(selectedTypes)) {
                 const type = identityAssessmentTypes.find(t => t.id === typeId);
                 const assessmentData = {
                     environmentId: selectedEnvironment,
@@ -180,24 +202,48 @@ const IdentityAccessAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = 
                     useClientPreferences: useClientPreferences
                 };
 
-                return await assessmentApi.startAssessment(assessmentData);
-            });
-
-            const responses = await Promise.all(assessmentPromises);
-
-            responses.forEach(response => {
-                if (typeof onAssessmentCreated === 'function') {
-                    onAssessmentCreated(response);
+                console.log('[IdentityAccessModal] Creating assessment:', assessmentData);
+                
+                try {
+                    const response = await assessmentApi.startAssessment(assessmentData);
+                    console.log('[IdentityAccessModal] Assessment response:', response);
+                    
+                    if (response && (response.assessmentId || response.AssessmentId)) {
+                        const assessmentId = response.assessmentId || response.AssessmentId;
+                        createdAssessments.push(response);
+                        
+                        // For the first assessment, show progress modal
+                        if (createdAssessments.length === 1) {
+                            setCreatedAssessmentId(assessmentId);
+                            setShowProgressModal(true);
+                        }
+                    } else {
+                        console.warn('[IdentityAccessModal] Unexpected response format:', response);
+                    }
+                } catch (singleError) {
+                    console.error(`[IdentityAccessModal] Failed to create assessment ${type.name}:`, singleError);
+                    throw singleError; // Re-throw to stop the process
                 }
-            });
+            }
 
+            console.log('[IdentityAccessModal] All assessments created successfully:', createdAssessments);
+            
+            // Close the creation modal
             handleClose();
+            
+            // Note: Progress modal will handle calling onAssessmentCreated when complete
         } catch (error) {
-            console.error('Failed to create identity assessment(s):', error);
+            console.error('[IdentityAccessModal] Failed to create identity assessment(s):', error);
+            console.error('[IdentityAccessModal] Error response:', error.response?.data);
+            
             if (error.response?.status === 402) {
                 setError('Assessment limit reached. Please upgrade your subscription or contact support.');
             } else if (error.response?.data?.error) {
                 setError(error.response.data.error);
+            } else if (error.response?.data?.message) {
+                setError(error.response.data.message);
+            } else if (error.message) {
+                setError(`Failed to create assessment: ${error.message}`);
             } else {
                 setError('Failed to create identity assessment(s). Please try again.');
             }
@@ -209,13 +255,33 @@ const IdentityAccessAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = 
     const handleClose = () => {
         setStep(1);
         setAssessmentName('Identity & Access Assessment');
-        setSelectedTypes(new Set([7]));
+        setSelectedTypes(new Set([7])); // IdentityFull
         setSelectedEnvironment('');
         setCurrentClient(selectedClient);
         setUseClientPreferences(false);
         setError('');
         setIsCreating(false);
         onClose();
+    };
+
+    const handleProgressComplete = (assessment) => {
+        setShowProgressModal(false);
+        setCreatedAssessmentId(null);
+        
+        // Call the callback if provided
+        if (typeof onAssessmentCreated === 'function') {
+            onAssessmentCreated(assessment);
+        }
+    };
+
+    const handleProgressClose = () => {
+        setShowProgressModal(false);
+        setCreatedAssessmentId(null);
+        
+        // Still call the callback to refresh the assessments list
+        if (typeof onAssessmentCreated === 'function') {
+            onAssessmentCreated({ assessmentId: createdAssessmentId });
+        }
     };
 
     const getSelectedEnvironmentDetails = () => {
@@ -574,6 +640,14 @@ const IdentityAccessAssessmentModal = ({ isOpen, onClose, onAssessmentCreated = 
                     </div>
                 </div>
             </div>
+            
+            {/* Assessment Progress Modal */}
+            <AssessmentProgressModal
+                isOpen={showProgressModal}
+                onClose={handleProgressClose}
+                assessmentId={createdAssessmentId}
+                onComplete={handleProgressComplete}
+            />
         </div>,
         document.body
     );

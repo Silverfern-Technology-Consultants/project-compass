@@ -7,6 +7,11 @@ import ResourceGovernanceAssessmentModal from '../modals/ResourceGovernanceAsses
 import SecurityPostureAssessmentModal from '../modals/SecurityPostureAssessmentModal';
 import IdentityAccessAssessmentModal from '../modals/IdentityAccessAssessmentModal';
 import BCDRAssessmentModal from '../modals/BCDRAssessmentModal';
+// NEW: Import detail view modals
+import ResourceGovernanceDetailModal from '../modals/ResourceGovernanceDetailModal';
+import SecurityPostureDetailModal from '../modals/SecurityPostureDetailModal';
+import IdentityAccessDetailModal from '../modals/IdentityAccessDetailModal';
+import BCDRDetailModal from '../modals/BCDRDetailModal';
 import { useClient } from '../../contexts/ClientContext';
 
 // Helper function to calculate stats
@@ -67,7 +72,9 @@ const AssessmentCard = ({ assessment, onView, onDelete }) => {
     const getStatusColor = (status) => {
         switch (status) {
             case 'Completed': return 'bg-green-600 text-white';
+            case 'InProgress':
             case 'In Progress': return 'bg-yellow-600 text-black';
+            case 'Pending': return 'bg-blue-600 text-white';
             case 'Failed': return 'bg-red-600 text-white';
             default: return 'bg-gray-600 text-white';
         }
@@ -399,6 +406,12 @@ const AssessmentsPage = () => {
     const [showSecurityPostureModal, setShowSecurityPostureModal] = useState(false);
     const [showIdentityAccessModal, setShowIdentityAccessModal] = useState(false);
     const [showBCDRModal, setShowBCDRModal] = useState(false);
+    
+    // NEW: Detail view modals
+    const [showResourceGovernanceDetailModal, setShowResourceGovernanceDetailModal] = useState(false);
+    const [showSecurityPostureDetailModal, setShowSecurityPostureDetailModal] = useState(false);
+    const [showIdentityAccessDetailModal, setShowIdentityAccessDetailModal] = useState(false);
+    const [showBCDRDetailModal, setShowBCDRDetailModal] = useState(false);
 
     // Load assessments on mount - run only once
     useEffect(() => {
@@ -466,7 +479,17 @@ const AssessmentsPage = () => {
 
                 const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                     environment.toLowerCase().includes(searchTerm.toLowerCase());
-                const matchesStatus = statusFilter === 'All' || status === statusFilter;
+                
+                // Handle status filter with both backend and display variations
+                let matchesStatus = statusFilter === 'All';
+                if (!matchesStatus) {
+                    if (statusFilter === 'InProgress') {
+                        matchesStatus = status === 'InProgress' || status === 'In Progress';
+                    } else {
+                        matchesStatus = status === statusFilter;
+                    }
+                }
+                
                 return matchesSearch && matchesStatus;
             });
         }
@@ -484,7 +507,17 @@ const AssessmentsPage = () => {
 
                 const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                     environment.toLowerCase().includes(searchTerm.toLowerCase());
-                const matchesStatus = statusFilter === 'All' || status === statusFilter;
+                
+                // Handle status filter with both backend and display variations
+                let matchesStatus = statusFilter === 'All';
+                if (!matchesStatus) {
+                    if (statusFilter === 'InProgress') {
+                        matchesStatus = status === 'InProgress' || status === 'In Progress';
+                    } else {
+                        matchesStatus = status === statusFilter;
+                    }
+                }
+                
                 return matchesSearch && matchesStatus;
             });
         }
@@ -501,7 +534,17 @@ const AssessmentsPage = () => {
 
             const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 environment.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesStatus = statusFilter === 'All' || status === statusFilter;
+            
+            // Handle status filter with both backend and display variations
+            let matchesStatus = statusFilter === 'All';
+            if (!matchesStatus) {
+                if (statusFilter === 'InProgress') {
+                    matchesStatus = status === 'InProgress' || status === 'In Progress';
+                } else {
+                    matchesStatus = status === statusFilter;
+                }
+            }
+            
             return matchesSearch && matchesStatus;
         });
     };
@@ -532,10 +575,33 @@ const AssessmentsPage = () => {
             setShowIdentityAccessModal(false);
             setShowBCDRModal(false);
 
-            // Refresh the assessments list to show the new assessment
+            // Immediately refresh the assessments list to show the new assessment
             await refreshAssessments();
 
             console.log('[AssessmentsPage] Assessments refreshed after creation');
+
+            // Wait a moment for the state to update, then find and auto-open the new assessment
+            setTimeout(() => {
+                if (response?.assessmentId || response?.id) {
+                    const assessmentId = response.assessmentId || response.id;
+                    
+                    // Find the newly created assessment in the updated list
+                    const newAssessment = assessments.find(a => 
+                        a.id === assessmentId || 
+                        a.assessmentId === assessmentId || 
+                        a.AssessmentId === assessmentId
+                    );
+                    
+                    if (newAssessment) {
+                        console.log('[AssessmentsPage] Auto-opening new assessment:', newAssessment);
+                        handleViewAssessment(newAssessment);
+                    } else {
+                        console.log('[AssessmentsPage] Could not find new assessment in list, available assessments:', assessments.map(a => ({ id: a.id, assessmentId: a.assessmentId, AssessmentId: a.AssessmentId })));
+                    }
+                } else {
+                    console.log('[AssessmentsPage] No assessment ID in response:', response);
+                }
+            }, 1000); // Wait 1 second for state update
 
         } catch (error) {
             console.error('[AssessmentsPage] Failed to refresh assessments after creation:', error);
@@ -571,7 +637,46 @@ const AssessmentsPage = () => {
 
     const handleViewAssessment = (assessment) => {
         setSelectedAssessment(assessment);
-        setShowDetailModal(true);
+        
+        console.log('[AssessmentsPage] Opening detail modal for assessment:', {
+            id: assessment.id || assessment.assessmentId || assessment.AssessmentId,
+            type: assessment.type,
+            assessmentType: assessment.assessmentType,
+            rawDataType: assessment.rawData?.type,
+            name: assessment.name
+        });
+        
+        // Determine which detail modal to open based on assessment type
+        const assessmentType = assessment.rawData?.type || assessment.type || assessment.assessmentType;
+        
+        // Map assessment types to appropriate detail modals
+        // Check for Identity/IAM assessment types first
+        if (assessmentType === 'IdentityFull' || 
+            assessmentType === 'IdentityAccessFull' || 
+            assessmentType === 'RBACPermissions' || 
+            assessmentType === 'PrivilegedAccess' ||
+            assessmentType === '7' || // Identity Full enum value
+            assessmentType === 7) {
+            console.log('[AssessmentsPage] Opening Identity Access detail modal');
+            setShowIdentityAccessDetailModal(true);
+        } else if (assessmentType === 'SecurityPostureFull' || 
+                   assessmentType === 'NetworkSecurity' || 
+                   assessmentType === 'DataEncryption' ||
+                   assessmentType === '8' || // Security Posture Full enum value
+                   assessmentType === 8) {
+            console.log('[AssessmentsPage] Opening Security Posture detail modal');
+            setShowSecurityPostureDetailModal(true);
+        } else if (assessmentType === 'BusinessContinuityFull' || 
+                   assessmentType === 'BackupCoverage' || 
+                   assessmentType === 'RecoveryConfiguration' ||
+                   assessmentType === '9' || // BCDR Full enum value
+                   assessmentType === 9) {
+            console.log('[AssessmentsPage] Opening BCDR detail modal');
+            setShowBCDRDetailModal(true);
+        } else {
+            console.log('[AssessmentsPage] Opening Resource Governance detail modal (fallback)');
+            setShowResourceGovernanceDetailModal(true);
+        }
     };
 
     const handleDeleteAssessment = (assessment) => {
@@ -734,8 +839,9 @@ const AssessmentsPage = () => {
                     className="px-4 py-2 bg-gray-900 border border-gray-700 rounded text-white focus:border-yellow-600 focus:outline-none"
                 >
                     <option value="All">All Status</option>
+                    <option value="Pending">Pending</option>
+                    <option value="InProgress">In Progress</option>
                     <option value="Completed">Completed</option>
-                    <option value="In Progress">In Progress</option>
                     <option value="Failed">Failed</option>
                 </select>
             </div>
@@ -808,6 +914,43 @@ const AssessmentsPage = () => {
                 onClose={() => setShowBCDRModal(false)}
                 onAssessmentCreated={handleAssessmentCreated}
                 selectedClient={selectedClient}
+            />
+
+            {/* NEW: Assessment Detail View Modals */}
+            <ResourceGovernanceDetailModal
+                isOpen={showResourceGovernanceDetailModal}
+                onClose={() => {
+                    setShowResourceGovernanceDetailModal(false);
+                    setSelectedAssessment(null);
+                }}
+                assessment={selectedAssessment}
+            />
+
+            <SecurityPostureDetailModal
+                isOpen={showSecurityPostureDetailModal}
+                onClose={() => {
+                    setShowSecurityPostureDetailModal(false);
+                    setSelectedAssessment(null);
+                }}
+                assessment={selectedAssessment}
+            />
+
+            <IdentityAccessDetailModal
+                isOpen={showIdentityAccessDetailModal}
+                onClose={() => {
+                    setShowIdentityAccessDetailModal(false);
+                    setSelectedAssessment(null);
+                }}
+                assessment={selectedAssessment}
+            />
+
+            <BCDRDetailModal
+                isOpen={showBCDRDetailModal}
+                onClose={() => {
+                    setShowBCDRDetailModal(false);
+                    setSelectedAssessment(null);
+                }}
+                assessment={selectedAssessment}
             />
 
             {/* Connection Test Modal */}
