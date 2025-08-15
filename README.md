@@ -16,8 +16,8 @@ Governance Guardian is a SaaS application designed to help MSPs analyze and impr
 
 ## Version Information
 
-![Backend](https://img.shields.io/badge/Backend-v2.3.2-blue?style=flat-square&logo=dotnet)
-![Frontend](https://img.shields.io/badge/Frontend-v2.3.2-blue?style=flat-square&logo=react)
+![Backend](https://img.shields.io/badge/Backend-v2.3.3-blue?style=flat-square&logo=dotnet)
+![Frontend](https://img.shields.io/badge/Frontend-v2.3.3-blue?style=flat-square&logo=react)
 ![API](https://img.shields.io/badge/API-Live-green?style=flat-square)
 
 ## Technology Stack
@@ -51,24 +51,52 @@ project-compass/
 │       ├── components/
 │       │   ├── assessment/        # Assessment-related components
 │       │   ├── client/            # Client management components
-│       │   └── common/            # Shared UI components
-│       ├── pages/                 # Main application pages
+│       │   ├── layout/            # Application layout components
+│       │   ├── modals/            # Modal dialogs and overlays
+│       │   │   ├── ClientPreferences/  # Client preference tabs
+│       │   │   └── tabs/          # Assessment detail tabs
+│       │   ├── pages/             # Page-level components
+│       │   ├── ui/                # Reusable UI components
+│       │   └── common/            # Shared utility components
+│       ├── contexts/              # React context providers
 │       ├── services/              # API service layer
-│       └── context/               # React context providers
+│       └── utils/                 # Utility functions and helpers
 ├── backend/                       # .NET Core solution
 │   ├── Compass.Api/               # Web API layer
 │   │   ├── Controllers/           # API endpoints
+│   │   │   ├── AssessmentsController.cs      # Assessment management
+│   │   │   ├── ClientPreferencesController.cs # Client preference CRUD
+│   │   │   ├── CostAnalysisController.cs     # Cost management APIs
+│   │   │   └── ...                # Other domain controllers
 │   │   ├── Services/              # Application services
+│   │   ├── Extensions/            # Service collection extensions
 │   │   └── Middleware/            # Custom middleware
 │   ├── Compass.Core/              # Business logic layer
 │   │   ├── Models/                # Data transfer objects
-│   │   │   ├── Assessment/        # Organized assessment models
+│   │   │   ├── Assessment/        # Assessment-specific models
+│   │   │   │   ├── ClientConfigurationModels.cs # Client preference models
+│   │   │   │   ├── GovernanceModels.cs          # Governance assessment models
+│   │   │   │   └── SecurityModels.cs            # Security assessment models
+│   │   │   ├── ClientModels.cs    # Client management DTOs
+│   │   │   └── OAuthModels.cs     # OAuth and permission models
 │   │   ├── Services/              # Core business logic
 │   │   │   ├── Naming/            # Naming convention services
+│   │   │   │   ├── ServiceAbbreviationMappings.cs # Service abbreviation logic
+│   │   │   │   └── NamingValidationHelper.cs     # Validation utilities
+│   │   │   ├── AssessmentOrchestrator.cs # Assessment workflow
+│   │   │   ├── NamingConventionAnalyzer.cs # Naming analysis
+│   │   │   ├── OAuthService.cs    # OAuth delegation and permissions
+│   │   │   └── CostAnalysisService.cs # Cost management integration
 │   │   └── Interfaces/            # Service contracts
 │   └── Compass.Data/              # Data access layer
 │       ├── Entities/              # Database models
+│       │   ├── Assessment.cs      # Assessment records with UseClientPreferences
+│       │   ├── ClientPreferences.cs # Client preference configurations
+│       │   ├── AzureEnvironment.cs  # Azure environments with cost permissions
+│       │   └── ...                # Other domain entities
 │       ├── Repositories/          # Data access implementations
+│       │   ├── ClientPreferencesRepository.cs # Client preference data access
+│       │   └── ...                # Other repositories
 │       └── Interfaces/            # Repository contracts
 ├── infrastructure/                # Azure Bicep templates
 ├── database/                     # Database scripts and migrations
@@ -99,31 +127,35 @@ npm start
 
 # Current Features
 
-## ✅ Implemented
+## Implemented
 - **Multi-tenant MSP architecture** with organization-scoped data isolation
 - **OAuth delegation system** for secure Azure environment access with ARM and Graph API integration
 - **JWT authentication with MFA** including TOTP and backup codes via Microsoft Graph
 - **Comprehensive client management system** with access control and team collaboration
 - **Modular assessment orchestration** with specialized analyzer components
-- **Advanced naming convention analysis** with client preference-aware validation
+- **Advanced naming convention analysis** with client preference-aware validation and service abbreviation support
 - **Tagging compliance analysis** with customizable governance rules
-- **Client preference system** with JSON-based naming scheme configuration
+- **Complete client preference system** with tabbed interface for naming strategies, service abbreviations, tagging approaches, and compliance frameworks
+- **Service abbreviation management** with priority-based detection and client-specific mappings
 - **Complete Identity and Access Management (IAM) analysis**:
   - Enterprise application security assessment with app registration review
   - Stale user and device detection with compliance reporting
   - Resource IAM/RBAC analysis with role assignment evaluation
   - Conditional access policy coverage and security gap assessment
+- **Cost management foundation** with permission detection and Azure API validation
+- **Enhanced assessment detail modals** with governance-specific tabs and specialized views
+- **Tools and utilities section** with permissions checker and diagnostic capabilities
 - **Microsoft Graph integration** for enhanced security insights and email services
 - **Categorized assessment workflow** with 4 specialized assessment categories
 - **Premium branded login experience** with atmospheric animations and corporate identity
 
-## 🚧 In Development
+## In Development
 - **Security posture analysis** with network configuration evaluation
 - **Business continuity assessments** with backup and DR analysis
-- **Enhanced client customization** with advanced preference configurations
+- **Cost analysis features** with Azure Cost Management API integration
 - **Assessment result analytics** with trend analysis and reporting
 
-## 📋 Planned
+## Planned
 - **Compliance framework templates** (SOC 2, ISO 27001, NIST)
 - **Cost optimization analysis** with resource rightsizing recommendations
 - **Advanced reporting system** with executive dashboards
@@ -132,9 +164,9 @@ npm start
 # Assessment Models
 
 ## Resource Governance
-- **Naming Convention Analysis**: Resource naming pattern compliance with client-specific scheme validation
+- **Naming Convention Analysis**: Resource naming pattern compliance with client-specific scheme validation and service abbreviation support
 - **Tagging Compliance**: Tag governance assessment with customizable policy enforcement
-- **Governance Full**: Comprehensive resource governance assessment combining naming and tagging analysis
+- **Governance Full**: Comprehensive resource governance assessment combining naming and tagging analysis with client preference integration
 
 ## Identity & Access Management
 - **Enterprise Applications**: App registration security, service principal analysis, and permission review
@@ -156,16 +188,20 @@ npm start
 ## Assessment Architecture
 
 ### Modular Component Design
-- **Specialized Assessment Modals**: 4 dedicated modal components for different assessment categories
+- **Specialized Assessment Modals**: 4 dedicated modal components for different assessment categories with governance-specific tabs
+- **Enhanced Detail Views**: Tabbed interface with Overview, Findings, Recommendations, and Resources sections
 - **Smart Assessment Dropdown**: Intelligent positioning with multi-selection support
-- **Client-Aware Workflows**: Preference integration across all assessment types
+- **Client-Aware Workflows**: Complete preference integration across all assessment types with service abbreviation support
 - **Real-Time Processing**: Background orchestration with live status updates
 
+
 ### Technical Implementation
-- **11 Total Assessment Types** across 4 main categories
-- **Client Preference Integration**: JSON-based naming scheme configuration
-- **Service Abbreviation Support**: 100+ service abbreviation mappings
+ **11 Total Assessment Types** across 4 main categories
+- **Client Preference System**: Complete JSON-based configuration with naming schemes, service abbreviations, tagging strategies, and compliance frameworks
+- **Service Abbreviation Support**: 100+ service abbreviation mappings with client-specific priority detection
+- **Cost Management Integration**: Permission validation and setup automation for Azure Cost Management API
 - **Organization-Scoped Security**: Multi-tenant data isolation with proper access controls
+- **Tools and Diagnostics**: Permissions checker and Azure API validation utilities
 
 ## API Documentation
 

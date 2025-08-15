@@ -29,4 +29,10 @@ public interface IClientRepository
     Task<IEnumerable<Client>> SearchClientsAsync(Guid organizationId, string searchTerm);
     Task<bool> ExistsAsync(Guid clientId, Guid organizationId);
     Task<bool> IsClientNameUniqueAsync(string name, Guid organizationId, Guid? excludeClientId = null);
+
+    // Azure Environment operations
+    Task<IEnumerable<AzureEnvironment>> GetClientAzureEnvironmentsAsync(Guid clientId, Guid organizationId);
+    Task<Client?> GetClientByIdAsync(Guid clientId, Guid organizationId);
+    Task<AzureEnvironment?> GetAzureEnvironmentByIdAsync(Guid azureEnvironmentId, Guid organizationId);
+    Task<AzureEnvironment> UpdateAzureEnvironmentAsync(AzureEnvironment azureEnvironment);
 }

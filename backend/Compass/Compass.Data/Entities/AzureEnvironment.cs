@@ -40,6 +40,16 @@ public class AzureEnvironment
     public DateTime? LastConnectionTestDate { get; set; }
     public string? LastConnectionError { get; set; }
 
+    // NEW: Cost Management permission tracking
+    public bool HasCostManagementAccess { get; set; } = false;
+    public DateTime? CostManagementLastChecked { get; set; }
+    public string? CostManagementSetupStatus { get; set; } // "NotTested", "SetupRequired", "Ready", "Error"
+    public string? CostManagementLastError { get; set; }
+
+    // NEW: Detailed permission tracking
+    public string? AvailablePermissions { get; set; } // JSON array of available APIs
+    public string? MissingPermissions { get; set; } // JSON array of missing permissions
+
     // Navigation properties
     public virtual Customer Customer { get; set; } = null!;
     public virtual Client? Client { get; set; } // NEW: Client navigation

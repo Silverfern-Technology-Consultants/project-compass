@@ -369,6 +369,13 @@ public class CompassDbContext : DbContext
             entity.Property(e => e.Name).IsRequired();
             entity.Property(e => e.TenantId).IsRequired();
 
+            // NEW: Cost Management permission tracking
+            entity.Property(e => e.HasCostManagementAccess).HasDefaultValue(false);
+            entity.Property(e => e.CostManagementSetupStatus).HasMaxLength(50);
+            entity.Property(e => e.CostManagementLastError).HasMaxLength(500);
+            entity.Property(e => e.AvailablePermissions).HasColumnType("nvarchar(max)");
+            entity.Property(e => e.MissingPermissions).HasColumnType("nvarchar(max)");
+
             entity.HasOne(d => d.Customer)
                 .WithMany(p => p.AzureEnvironments)
                 .HasForeignKey(d => d.CustomerId)
@@ -383,6 +390,7 @@ public class CompassDbContext : DbContext
             entity.HasIndex(e => e.CustomerId);
             entity.HasIndex(e => e.TenantId);
             entity.HasIndex(e => e.ClientId);  // NEW: Client index
+            entity.HasIndex(e => new { e.ClientId, e.HasCostManagementAccess }); // NEW: Cost permission index
         });
 
         // TeamInvitation configuration

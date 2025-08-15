@@ -569,7 +569,8 @@ public class AssessmentsController : ControllerBase
                 CompletedDate = assessment.CompletedDate,
                 Progress = CalculateProgress(assessment.Status),
                 ClientId = assessment.ClientId, // NEW: Include client context
-                ClientName = assessment.Client?.Name // NEW: Include client name
+                ClientName = assessment.Client?.Name, // NEW: Include client name
+                UseClientPreferences = assessment.UseClientPreferences // NEW: Include client preferences flag
             });
         }
         catch (Exception ex)
@@ -1345,6 +1346,7 @@ public class AssessmentStatusResponse
     public int Progress { get; set; }
     public Guid? ClientId { get; set; } // NEW: Client context
     public string? ClientName { get; set; } // NEW: Client name
+    public bool UseClientPreferences { get; set; } = false; // NEW: Client preferences flag
 }
 
 public class AssessmentStartResponse

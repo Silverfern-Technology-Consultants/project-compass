@@ -370,7 +370,8 @@ public class AssessmentOrchestrator : IAssessmentOrchestrator
             StartedDate = DateTime.UtcNow,
             CustomerId = request.CustomerId,
             OrganizationId = request.OrganizationId,
-            CustomerName = "Organization Member"
+            CustomerName = "Organization Member",
+            UseClientPreferences = request.UseClientPreferences // NEW: Persist client preferences flag
         };
 
         await _assessmentRepository.CreateAsync(assessment);

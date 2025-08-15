@@ -21,6 +21,9 @@ public class Assessment
     // NEW: Assessment Category for Sprint 6
     public string AssessmentCategory { get; set; } = string.Empty;
 
+    // Client preferences flag
+    public bool UseClientPreferences { get; set; } = false;
+
     public decimal? OverallScore { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime StartedDate { get; set; }

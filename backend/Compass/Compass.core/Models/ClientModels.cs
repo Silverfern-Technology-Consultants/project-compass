@@ -92,3 +92,44 @@ public class CustomerInfoWithClientContext
     public string? SelectedClientName { get; set; }
     public bool HasMultipleClients => AccessibleClients.Count > 1;
 }
+
+// Service Abbreviation Models for Phase 1 - Service Abbreviations Feature
+public class ServiceAbbreviationDto
+{
+    [Required]
+    [StringLength(10, MinimumLength = 2)]
+    [RegularExpression(@"^[a-zA-Z0-9]+$", ErrorMessage = "Abbreviation must contain only alphanumeric characters")]
+    public string Abbreviation { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(50, MinimumLength = 3)]
+    public string FullName { get; set; } = string.Empty;
+
+    public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
+
+    [StringLength(100)]
+    public string CreatedBy { get; set; } = string.Empty;
+}
+
+public class ServiceAbbreviationValidationResult
+{
+    public bool IsValid { get; set; }
+    public List<string> Errors { get; set; } = new();
+    public bool IsDuplicate { get; set; }
+    public bool IsReservedWord { get; set; }
+}
+
+public class ServiceAbbreviationCreateRequest
+{
+    [Required]
+    public string Abbreviation { get; set; } = string.Empty;
+
+    [Required] 
+    public string FullName { get; set; } = string.Empty;
+}
+
+public class ServiceAbbreviationResponse
+{
+    public List<ServiceAbbreviationDto> ServiceAbbreviations { get; set; } = new();
+    public int TotalCount { get; set; }
+}

@@ -4,6 +4,7 @@ import {
     Home,
     FileText,
     BarChart3,
+    DollarSign,
     Shield,
     Users,
     Settings,
@@ -16,7 +17,8 @@ import {
     Sun,
     Building2,
     UserCheck,
-    ExternalLink
+    ExternalLink,
+    Wrench
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLayout } from '../../contexts/LayoutContext';
@@ -35,8 +37,10 @@ const Sidebar = ({ currentPage, onSidebarClick }) => {
     const menuItems = [
         { id: 'dashboard', label: 'Dashboard', icon: Home, path: '/app/dashboard' },
         { id: 'assessments', label: 'Assessments', icon: FileText, path: '/app/assessments' },
+        { id: 'cost-analysis', label: 'Cost Analysis', icon: DollarSign, path: '/app/cost-analysis' },
         { id: 'reports', label: 'Reports', icon: BarChart3, path: '/app/reports' },
-        { id: 'compliance', label: 'Compliance', icon: Shield, path: '/app/compliance' },
+        // { id: 'compliance', label: 'Compliance', icon: Shield, path: '/app/compliance' }, // Hidden
+        { id: 'tools', label: 'Tools', icon: Wrench, path: '/app/tools/permissions' },
         { id: 'settings', label: 'My Settings', icon: Settings, path: '/app/settings' },
     ];
 

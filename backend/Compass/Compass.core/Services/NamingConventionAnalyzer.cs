@@ -506,7 +506,10 @@ public class NamingConventionAnalyzer : INamingConventionAnalyzer
             case "application":
             case "service/application":
                 // ENHANCED: Use ServiceAbbreviationMappings for better service detection
-                var detectedService = ServiceAbbreviationMappings.ExtractServiceFromResourceName(resource.Name, clientConfig.GetAcceptedCompanyNames());
+                var detectedService = ServiceAbbreviationMappings.ExtractServiceFromResourceName(
+                    resource.Name, 
+                    clientConfig.GetAcceptedCompanyNames(),
+                    clientConfig.GetServiceAbbreviations());
                 if (!string.IsNullOrEmpty(detectedService))
                     return detectedService;
 

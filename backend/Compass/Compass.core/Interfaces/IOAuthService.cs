@@ -55,5 +55,35 @@ namespace Compass.Core.Interfaces
         /// Gets detailed information about granted permissions
         /// </summary>
         Task<List<string>> GetGrantedPermissionsAsync(Guid clientId, Guid organizationId);
+
+        // NEW: Cost Management permission detection and setup
+        /// <summary>
+        /// Tests if the client has Cost Management API access for a specific subscription
+        /// </summary>
+        Task<CostManagementPermissionStatus> TestCostManagementPermissionsAsync(
+            Guid clientId, 
+            Guid organizationId, 
+            string subscriptionId);
+
+        /// <summary>
+        /// Gets the service principal ID for OAuth app (needed for role assignments)
+        /// </summary>
+        Task<string> GetServicePrincipalIdAsync(Guid clientId, Guid organizationId);
+
+        /// <summary>
+        /// Generates setup instructions for Cost Management Reader role assignment
+        /// </summary>
+        Task<CostManagementSetupInstructions> GenerateCostManagementSetupAsync(
+            Guid clientId, 
+            Guid organizationId, 
+            string subscriptionId);
+
+        /// <summary>
+        /// Tests multiple Azure API endpoints to determine available permissions
+        /// </summary>
+        Task<AzurePermissionMatrix> GetDetailedPermissionMatrixAsync(
+            Guid clientId, 
+            Guid organizationId, 
+            string subscriptionId);
     }
 }

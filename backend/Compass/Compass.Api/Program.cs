@@ -58,7 +58,7 @@ builder.Services.AddSwaggerGen(c =>
     c.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "Compass API",
-        Version = "v2.0.0",
+        Version = "v2.3.3",
         Description = "Azure Governance Assessment Platform API with Enhanced Security Analysis & Real NSG Rule Parsing"
     });
 

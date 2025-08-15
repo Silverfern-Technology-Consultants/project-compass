@@ -862,9 +862,9 @@ const AssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
                                 <span>{assessment.environment || 'Production'} Environment</span>
                             </div>
                             <div className="flex items-center space-x-1">
-                                {getScoreIcon(assessment.score)}
-                                <span className={`font-medium ${getScoreColor(assessment.score)}`}>
-                                    Score: {assessment.score ? `${assessment.score}%` : 'N/A'}
+                                {getScoreIcon(assessment.overallScore || assessment.OverallScore || assessment.score || assessment.Score)}
+                                <span className={`font-medium ${getScoreColor(assessment.overallScore || assessment.OverallScore || assessment.score || assessment.Score)}`}>
+                                    Score: {(assessment.overallScore || assessment.OverallScore || assessment.score || assessment.Score) ? `${assessment.overallScore || assessment.OverallScore || assessment.score || assessment.Score}%` : 'N/A'}
                                 </span>
                             </div>
                         </div>

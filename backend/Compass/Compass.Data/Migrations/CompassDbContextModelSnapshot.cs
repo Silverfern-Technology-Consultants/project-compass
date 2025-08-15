@@ -79,6 +79,9 @@ namespace Compass.Data.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("UseClientPreferences")
+                        .HasColumnType("bit");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AssessmentCategory")
@@ -240,8 +243,22 @@ namespace Compass.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AvailablePermissions")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid?>("ClientId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CostManagementLastChecked")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CostManagementLastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("CostManagementSetupStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("datetime2");
@@ -252,6 +269,11 @@ namespace Compass.Data.Migrations
                     b.Property<string>("Description")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("HasCostManagementAccess")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
@@ -267,6 +289,9 @@ namespace Compass.Data.Migrations
 
                     b.Property<DateTime?>("LastConnectionTestDate")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("MissingPermissions")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -302,6 +327,8 @@ namespace Compass.Data.Migrations
                     b.HasIndex("OrganizationId");
 
                     b.HasIndex("TenantId");
+
+                    b.HasIndex("ClientId", "HasCostManagementAccess");
 
                     b.ToTable("AzureEnvironments");
                 });
@@ -568,6 +595,9 @@ namespace Compass.Data.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("SelectedTags")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ServiceAbbreviations")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("TaggingApproach")

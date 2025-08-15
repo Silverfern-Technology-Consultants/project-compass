@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Building2, Plus, AlertCircle, RefreshCw, Search, Filter, Grid, List, X, SortAsc } from 'lucide-react';
 import { useClient } from '../../contexts/ClientContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import ClientCard from '../ui/ClientCard';
 import AddClientModal from '../modals/AddClientModal';
 import EditClientModal from '../modals/EditClientModal';
@@ -12,6 +13,7 @@ import ClientPreferencesModal from '../modals/ClientPreferencesModal';
 const MyClientsPage = () => {
     const { clients, isLoading, error, loadClients } = useClient();
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [localLoading, setLocalLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');

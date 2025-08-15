@@ -1,5 +1,5 @@
 import React from 'react';
-import ResourceGovernanceAssessmentModal from './ResourceGovernanceAssessmentModal';
+import ResourceGovernanceDetailModal from './ResourceGovernanceDetailModal';
 import IdentityAccessAssessmentModal from './IdentityAccessAssessmentModal';
 import BusinessContinuityAssessmentModal from './BusinessContinuityAssessmentModal';
 import SecurityPostureAssessmentModal from './SecurityPostureAssessmentModal';
@@ -47,7 +47,7 @@ const EnhancedAssessmentDetailModal = ({ isOpen, onClose, assessment }) => {
     switch (category) {
         case 'governance':
             return (
-                <ResourceGovernanceAssessmentModal 
+                <ResourceGovernanceDetailModal 
                     isOpen={isOpen} 
                     onClose={onClose} 
                     assessment={assessment} 

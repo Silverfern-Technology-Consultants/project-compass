@@ -1,0 +1,28 @@
+﻿using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace Compass.Data.Migrations
+{
+    /// <inheritdoc />
+    public partial class AddServiceAbbreviationsToClientPreferences : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.AddColumn<string>(
+                name: "ServiceAbbreviations",
+                table: "ClientPreferences",
+                type: "nvarchar(max)",
+                nullable: true);
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropColumn(
+                name: "ServiceAbbreviations",
+                table: "ClientPreferences");
+        }
+    }
+}

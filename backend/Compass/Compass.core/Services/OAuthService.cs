@@ -1866,5 +1866,324 @@ namespace Compass.Core.Services
 
             return new SecretClient(new Uri(keyVaultInfo.Uri), _credential);
         }
+
+        // NEW: Cost Management permission detection and setup methods
+        public async Task<CostManagementPermissionStatus> TestCostManagementPermissionsAsync(
+            Guid clientId, 
+            Guid organizationId, 
+            string subscriptionId)
+        {
+            try
+            {
+                var credentials = await GetStoredCredentialsAsync(clientId, organizationId);
+                if (credentials == null)
+                {
+                    return new CostManagementPermissionStatus
+                    {
+                        HasCostAccess = false,
+                        HasResourceAccess = false,
+                        SubscriptionId = subscriptionId,
+                        StatusMessage = "No OAuth credentials found - setup required",
+                        MissingPermissions = new List<string> { "OAuth setup required" }
+                    };
+                }
+
+                var status = new CostManagementPermissionStatus
+                {
+                    SubscriptionId = subscriptionId
+                };
+
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {credentials.AccessToken}");
+
+                // Test 1: Basic subscription access
+                var subscriptionUrl = $"https://management.azure.com/subscriptions/{subscriptionId}?api-version=2020-01-01";
+                var subscriptionResponse = await _httpClient.GetAsync(subscriptionUrl);
+                status.HasResourceAccess = subscriptionResponse.IsSuccessStatusCode;
+
+                if (status.HasResourceAccess)
+                {
+                    status.AvailableApis.Add("Subscription API");
+                }
+                else
+                {
+                    status.MissingPermissions.Add("Subscription read access");
+                }
+
+                // Test 2: Cost Management API access
+                var costUrl = $"https://management.azure.com/subscriptions/{subscriptionId}/providers/Microsoft.CostManagement/query?api-version=2023-11-01";
+                var costTestPayload = new
+                {
+                    type = "ActualCost",
+                    timeframe = "MonthToDate",
+                    dataset = new
+                    {
+                        granularity = "Daily",
+                        aggregation = new
+                        {
+                            totalCost = new
+                            {
+                                name = "Cost",
+                                function = "Sum"
+                            }
+                        }
+                    }
+                };
+
+                var costContent = new StringContent(
+                    System.Text.Json.JsonSerializer.Serialize(costTestPayload),
+                    Encoding.UTF8,
+                    "application/json");
+
+                var costResponse = await _httpClient.PostAsync(costUrl, costContent);
+                status.HasCostAccess = costResponse.IsSuccessStatusCode;
+
+                if (status.HasCostAccess)
+                {
+                    status.AvailableApis.Add("Cost Management API");
+                    status.StatusMessage = "Cost analysis is ready to use!";
+                }
+                else
+                {
+                    var errorContent = await costResponse.Content.ReadAsStringAsync();
+                    status.MissingPermissions.Add("Cost Management Reader role");
+                    
+                    if (costResponse.StatusCode == HttpStatusCode.Forbidden)
+                    {
+                        status.StatusMessage = "Additional permissions needed: Cost Management Reader role";
+                    }
+                    else
+                    {
+                        status.StatusMessage = $"Cost API test failed: {costResponse.StatusCode}";
+                    }
+                    
+                    _logger.LogInformation("Cost Management API test failed: {StatusCode} - {Content}", 
+                        costResponse.StatusCode, errorContent);
+                }
+
+                // Test 3: Consumption API (alternative)
+                if (!status.HasCostAccess)
+                {
+                    var consumptionUrl = $"https://management.azure.com/subscriptions/{subscriptionId}/providers/Microsoft.Consumption/usageDetails?api-version=2023-05-01&$top=1";
+                    var consumptionResponse = await _httpClient.GetAsync(consumptionUrl);
+                    
+                    if (consumptionResponse.IsSuccessStatusCode)
+                    {
+                        status.AvailableApis.Add("Consumption API");
+                        status.StatusMessage += " (Consumption API available as alternative)";
+                    }
+                }
+
+                _logger.LogInformation("Cost Management permission test for client {ClientId}, subscription {SubscriptionId}: HasCost={HasCost}, HasResource={HasResource}",
+                    clientId, subscriptionId, status.HasCostAccess, status.HasResourceAccess);
+
+                return status;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to test Cost Management permissions for client {ClientId}, subscription {SubscriptionId}", 
+                    clientId, subscriptionId);
+                
+                return new CostManagementPermissionStatus
+                {
+                    HasCostAccess = false,
+                    HasResourceAccess = false,
+                    SubscriptionId = subscriptionId,
+                    StatusMessage = $"Permission test failed: {ex.Message}",
+                    MissingPermissions = new List<string> { "Unable to test permissions" }
+                };
+            }
+        }
+
+        public async Task<string> GetServicePrincipalIdAsync(Guid clientId, Guid organizationId)
+        {
+            try
+            {
+                // Get the OAuth application's service principal ID
+                var clientIdSecret = await _secretClient.GetSecretAsync("oauth-client-id");
+                var clientIdValue = clientIdSecret.Value.Value;
+
+                // For OAuth delegation, the service principal ID is the same across all clients
+                // since they all use the same OAuth application
+                var servicePrincipalIdSecret = await _secretClient.GetSecretAsync("oauth-service-principal-id");
+                var servicePrincipalId = servicePrincipalIdSecret.Value.Value;
+
+                _logger.LogInformation("Retrieved service principal ID for OAuth app: {ServicePrincipalId}", servicePrincipalId);
+                return servicePrincipalId;
+            }
+            catch (Azure.RequestFailedException ex) when (ex.Status == 404)
+            {
+                _logger.LogWarning("oauth-service-principal-id not found in Key Vault. You can find this by running: az ad sp list --display-name 'Governance Guardian OAuth' --query '[0].id' -o tsv");
+                throw new InvalidOperationException(
+                    "Service Principal ID not configured. Please add 'oauth-service-principal-id' to Key Vault. " +
+                    "Find it with: az ad sp list --display-name 'Governance Guardian OAuth' --query '[0].id' -o tsv");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get service principal ID for client {ClientId}", clientId);
+                throw;
+            }
+        }
+
+        public async Task<CostManagementSetupInstructions> GenerateCostManagementSetupAsync(
+            Guid clientId, 
+            Guid organizationId, 
+            string subscriptionId)
+        {
+            try
+            {
+                var servicePrincipalId = await GetServicePrincipalIdAsync(clientId, organizationId);
+                
+                var instructions = new CostManagementSetupInstructions
+                {
+                    ServicePrincipalId = servicePrincipalId,
+                    SubscriptionId = subscriptionId,
+                    SetupStatus = "Manual setup required"
+                };
+
+                // Generate Azure CLI command
+                instructions.AzureCliCommand = $"az role assignment create \\\n" +
+                    $"  --assignee {servicePrincipalId} \\\n" +
+                    $"  --role \"Cost Management Reader\" \\\n" +
+                    $"  --scope \"/subscriptions/{subscriptionId}\"";
+
+                // Generate PowerShell command
+                instructions.PowerShellCommand = $"New-AzRoleAssignment `\n" +
+                    $"  -ObjectId '{servicePrincipalId}' `\n" +
+                    $"  -RoleDefinitionName 'Cost Management Reader' `\n" +
+                    $"  -Scope '/subscriptions/{subscriptionId}'";
+
+                // Generate manual steps
+                instructions.ManualSteps = new List<string>
+                {
+                    "1. Sign in to Azure Portal (portal.azure.com)",
+                    $"2. Navigate to Subscriptions → {subscriptionId}",
+                    "3. Click 'Access control (IAM)' in the left menu",
+                    "4. Click '+ Add' → 'Add role assignment'",
+                    "5. Select 'Cost Management Reader' role",
+                    "6. Click 'Next' to go to Members tab",
+                    "7. Click '+ Select members'",
+                    "8. Search for 'Governance Guardian OAuth' and select it",
+                    "9. Click 'Select' then 'Review + assign'",
+                    "10. Click 'Review + assign' again to confirm"
+                };
+
+                instructions.DocumentationUrl = "https://docs.microsoft.com/en-us/azure/cost-management-billing/costs/assign-access-acm-data";
+                
+                _logger.LogInformation("Generated Cost Management setup instructions for client {ClientId}, subscription {SubscriptionId}",
+                    clientId, subscriptionId);
+
+                return instructions;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to generate Cost Management setup instructions for client {ClientId}", clientId);
+                throw;
+            }
+        }
+
+        public async Task<AzurePermissionMatrix> GetDetailedPermissionMatrixAsync(
+            Guid clientId, 
+            Guid organizationId, 
+            string subscriptionId)
+        {
+            try
+            {
+                var credentials = await GetStoredCredentialsAsync(clientId, organizationId);
+                if (credentials == null)
+                {
+                    throw new InvalidOperationException("No OAuth credentials found");
+                }
+
+                var matrix = new AzurePermissionMatrix
+                {
+                    SubscriptionId = subscriptionId
+                };
+
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {credentials.AccessToken}");
+
+                // Define test endpoints
+                var testEndpoints = new Dictionary<string, (string url, string role, string category)>
+                {
+                    ["Subscription"] = ($"https://management.azure.com/subscriptions/{subscriptionId}?api-version=2020-01-01", "Reader", "Resource"),
+                    ["ResourceGroups"] = ($"https://management.azure.com/subscriptions/{subscriptionId}/resourcegroups?api-version=2021-04-01", "Reader", "Resource"),
+                    ["Resources"] = ($"https://management.azure.com/subscriptions/{subscriptionId}/resources?api-version=2021-04-01&$top=1", "Reader", "Resource"),
+                    ["CostManagement"] = ($"https://management.azure.com/subscriptions/{subscriptionId}/providers/Microsoft.CostManagement/exports?api-version=2023-11-01", "Cost Management Reader", "Cost"),
+                    ["Consumption"] = ($"https://management.azure.com/subscriptions/{subscriptionId}/providers/Microsoft.Consumption/usageDetails?api-version=2023-05-01&$top=1", "Cost Management Reader", "Cost"),
+                    ["SecurityCenter"] = ($"https://management.azure.com/subscriptions/{subscriptionId}/providers/Microsoft.Security/assessments?api-version=2020-01-01", "Security Reader", "Security"),
+                    ["PolicyAssignments"] = ($"https://management.azure.com/subscriptions/{subscriptionId}/providers/Microsoft.Authorization/policyAssignments?api-version=2021-06-01", "Reader", "Governance")
+                };
+
+                // Test each endpoint
+                foreach (var (name, (url, role, category)) in testEndpoints)
+                {
+                    try
+                    {
+                        var response = await _httpClient.GetAsync(url);
+                        
+                        matrix.ApiPermissions[name] = new PermissionTestResult
+                        {
+                            ApiEndpoint = url,
+                            HasAccess = response.IsSuccessStatusCode,
+                            ResponseCode = (int)response.StatusCode,
+                            ResponseMessage = response.ReasonPhrase ?? string.Empty,
+                            RequiredRole = role,
+                            Category = category
+                        };
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            if (!matrix.AvailableRoles.Contains(role))
+                                matrix.AvailableRoles.Add(role);
+                        }
+                        else
+                        {
+                            if (!matrix.MissingRoles.Contains(role))
+                                matrix.MissingRoles.Add(role);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        matrix.ApiPermissions[name] = new PermissionTestResult
+                        {
+                            ApiEndpoint = url,
+                            HasAccess = false,
+                            ResponseCode = 0,
+                            ResponseMessage = ex.Message,
+                            RequiredRole = role,
+                            Category = category
+                        };
+                        
+                        if (!matrix.MissingRoles.Contains(role))
+                            matrix.MissingRoles.Add(role);
+                    }
+                }
+
+                // Determine overall status
+                var hasBasicAccess = matrix.ApiPermissions.ContainsKey("Subscription") && 
+                                   matrix.ApiPermissions["Subscription"].HasAccess;
+                var hasCostAccess = matrix.ApiPermissions.ContainsKey("CostManagement") && 
+                                  matrix.ApiPermissions["CostManagement"].HasAccess;
+
+                matrix.OverallStatus = (hasBasicAccess, hasCostAccess) switch
+                {
+                    (true, true) => "Full access - all features available",
+                    (true, false) => "Basic access - cost analysis requires additional setup",
+                    (false, _) => "Limited access - OAuth setup may be required"
+                };
+
+                _logger.LogInformation("Permission matrix generated for client {ClientId}, subscription {SubscriptionId}: {OverallStatus}",
+                    clientId, subscriptionId, matrix.OverallStatus);
+
+                return matrix;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to generate permission matrix for client {ClientId}, subscription {SubscriptionId}", 
+                    clientId, subscriptionId);
+                throw;
+            }
+        }
     }
 }

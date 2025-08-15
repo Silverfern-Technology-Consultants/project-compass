@@ -1433,4 +1433,25 @@ public static class ClientAssessmentConfigurationExtensions
         var acceptedNames = config.GetAcceptedCompanyNames();
         return acceptedNames.FirstOrDefault() ?? "abc";
     }
+
+    /// <summary>
+    /// Get the list of service abbreviations from ClientPreferences (Phase 1 - Service Abbreviations Feature)
+    /// </summary>
+    public static List<object> GetServiceAbbreviations(this ClientAssessmentConfiguration config)
+    {
+        // Check if we have client preferences with service abbreviations
+        if (config.ClientPreferences?.ServiceAbbreviations == null)
+            return new List<object>();
+
+        try
+        {
+            var serviceAbbreviations = JsonSerializer.Deserialize<List<object>>(config.ClientPreferences.ServiceAbbreviations);
+            return serviceAbbreviations ?? new List<object>();
+        }
+        catch (JsonException)
+        {
+            // If JSON parsing fails, return empty list
+            return new List<object>();
+        }
+    }
 }

@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Settings, Save, Loader2, AlertCircle, Info, CheckCircle } from 'lucide-react';
 import { apiClient } from '../../services/apiService';
+import NamingStrategyTab from './ClientPreferences/NamingStrategyTab';
+import TaggingStrategyTab from './ClientPreferences/TaggingStrategyTab';
+import ComplianceTab from './ClientPreferences/ComplianceTab';
+import ServiceAbbreviationsTab from './ClientPreferences/ServiceAbbreviationsTab';
 
 const ClientPreferencesModal = ({ isOpen, onClose, client, onPreferencesUpdated }) => {
     // State declarations
@@ -17,99 +21,38 @@ const ClientPreferencesModal = ({ isOpen, onClose, client, onPreferencesUpdated 
     // Enhanced form data with guided options
     const [formData, setFormData] = useState({
         // Naming Convention Strategy
-        namingStyle: 'mixed', // 'standardized', 'mixed', 'legacy'
-        environmentIndicators: 'required', // 'required', 'recommended', 'optional', 'none'
-        namingElements: [], // Array of required elements
-        customPatterns: [], // For advanced users
+        namingStyle: 'mixed',
+        environmentIndicators: 'required',
+        namingElements: [],
+        customPatterns: [],
+
+        // Naming Scheme Configuration
+        namingScheme: {
+            components: [],
+            separator: '-',
+            caseFormat: 'lowercase'
+        },
+        acceptedCompanyNames: [],
+        companyNameInput: '',
+
+        // Service Abbreviations
+        serviceAbbreviations: [],
 
         // Tagging Strategy  
-        taggingApproach: 'basic', // 'comprehensive', 'basic', 'minimal', 'custom'
-        selectedTags: [], // Individual tag selection
-        customTags: [], // User-defined tags
-        customTagInput: '', // Text input for new custom tag
+        taggingApproach: 'basic',
+        selectedTags: [],
+        customTags: [],
+        customTagInput: '',
         enforceTagCompliance: true,
 
         // Compliance Framework
-        complianceLevel: 'none', // 'strict', 'moderate', 'basic', 'none'
-        selectedCompliances: [], // Individual compliance selection
+        complianceLevel: 'none',
+        selectedCompliances: [],
 
         // Organization Scale
-        environmentSize: 'medium', // 'small', 'medium', 'large', 'enterprise'
-        organizationMethod: 'environment' // 'environment', 'application', 'business-unit', 'hybrid'
+        environmentSize: 'medium',
+        organizationMethod: 'environment'
     });
-
-    // Constants and templates
-    const namingTemplates = {
-        standardized: {
-            title: "Standardized Naming",
-            description: "All resources follow consistent patterns (recommended for new environments)",
-            patterns: ["[company]-[env]-[service]-[number]", "[env]-[resourcetype]-[purpose]"],
-            example: "acme-prod-web-01, dev-vm-database"
-        },
-        mixed: {
-            title: "Mixed Conventions",
-            description: "Allow multiple naming styles (good for existing environments)",
-            patterns: ["Flexible patterns allowed"],
-            example: "CORP-AZ-BACKUP, DataProcessPlan, workers-sg"
-        },
-        legacy: {
-            title: "Legacy Preservation",
-            description: "Keep existing naming, focus on tagging for governance",
-            patterns: ["No naming requirements"],
-            example: "Existing names maintained"
-        }
-    };
-
-    const taggingTemplates = {
-        comprehensive: {
-            title: "Comprehensive Tagging",
-            description: "Detailed tagging for cost allocation and governance",
-            tags: ["Environment", "CostCenter", "Owner", "Application", "Project", "Backup", "Compliance"]
-        },
-        basic: {
-            title: "Essential Tagging",
-            description: "Core tags for basic governance and cost tracking",
-            tags: ["Environment", "CostCenter", "Owner", "Application"]
-        },
-        minimal: {
-            title: "Minimal Tagging",
-            description: "Only environment tagging for basic organization",
-            tags: ["Environment"]
-        },
-        custom: {
-            title: "Custom Selection",
-            description: "Choose specific tags that meet your needs",
-            tags: []
-        }
-    };
-
-    const availableTags = [
-        { name: "Environment", description: "prod, dev, test, staging" },
-        { name: "CostCenter", description: "Department or cost allocation code" },
-        { name: "Owner", description: "Resource owner or team responsible" },
-        { name: "Application", description: "Application or service name" },
-        { name: "Project", description: "Project or initiative name" },
-        { name: "Backup", description: "Backup schedule or requirement" },
-        { name: "Compliance", description: "Compliance framework requirements" },
-        { name: "Location", description: "Geographic location or region" },
-        { name: "Department", description: "Business department" },
-        { name: "Schedule", description: "Operating schedule (24x7, business hours)" },
-        { name: "Criticality", description: "Business criticality level" },
-        { name: "DataClassification", description: "Data sensitivity level" }
-    ];
-
-    const availableCompliances = [
-        { name: "SOC 2", description: "Service Organization Control 2" },
-        { name: "HIPAA", description: "Health Insurance Portability and Accountability Act" },
-        { name: "PCI DSS", description: "Payment Card Industry Data Security Standard" },
-        { name: "ISO 27001", description: "Information Security Management Systems" },
-        { name: "GDPR", description: "General Data Protection Regulation" },
-        { name: "FedRAMP", description: "Federal Risk and Authorization Management Program" },
-        { name: "NIST", description: "National Institute of Standards and Technology" },
-        { name: "CIS Controls", description: "Center for Internet Security Controls" },
-        { name: "FISMA", description: "Federal Information Security Management Act" },
-        { name: "SOX", description: "Sarbanes-Oxley Act" }
-    ];
 
     // useEffect hooks
     useEffect(() => {
@@ -131,6 +74,14 @@ const ClientPreferencesModal = ({ isOpen, onClose, client, onPreferencesUpdated 
                 environmentIndicators: 'required',
                 namingElements: [],
                 customPatterns: [],
+                namingScheme: {
+                    components: [],
+                    separator: '-',
+                    caseFormat: 'lowercase'
+                },
+                acceptedCompanyNames: [],
+                companyNameInput: '',
+                serviceAbbreviations: [],
                 taggingApproach: 'basic',
                 selectedTags: [],
                 customTags: [],
@@ -150,8 +101,16 @@ const ClientPreferencesModal = ({ isOpen, onClose, client, onPreferencesUpdated 
             const updated = { ...prev, [field]: value };
 
             // Auto-populate based on template selection
-            if (field === 'taggingApproach' && taggingTemplates[value]) {
-                updated.selectedTags = taggingTemplates[value].tags;
+            if (field === 'taggingApproach') {
+                const taggingTemplates = {
+                    comprehensive: ["Environment", "CostCenter", "Owner", "Application", "Project", "Backup", "Compliance"],
+                    basic: ["Environment", "CostCenter", "Owner", "Application"],
+                    minimal: ["Environment"],
+                    custom: []
+                };
+                if (taggingTemplates[value]) {
+                    updated.selectedTags = taggingTemplates[value];
+                }
             }
 
             return updated;
@@ -164,40 +123,6 @@ const ClientPreferencesModal = ({ isOpen, onClose, client, onPreferencesUpdated 
             [field]: prev[field].includes(value)
                 ? prev[field].filter(item => item !== value)
                 : [...prev[field], value]
-        }));
-    };
-
-    const handleAddCustomTag = () => {
-        const tagName = formData.customTagInput.trim();
-        if (tagName && !formData.customTags.includes(tagName) && !formData.selectedTags.includes(tagName)) {
-            setFormData(prev => ({
-                ...prev,
-                customTags: [...prev.customTags, tagName],
-                selectedTags: [...prev.selectedTags, tagName],
-                customTagInput: '' // Clear the input field
-            }));
-        }
-    };
-
-    const handleCustomTagInputChange = (e) => {
-        setFormData(prev => ({
-            ...prev,
-            customTagInput: e.target.value
-        }));
-    };
-
-    const handleCustomTagKeyPress = (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            handleAddCustomTag();
-        }
-    };
-
-    const handleRemoveCustomTag = (tagToRemove) => {
-        setFormData(prev => ({
-            ...prev,
-            customTags: prev.customTags.filter(tag => tag !== tagToRemove),
-            selectedTags: prev.selectedTags.filter(tag => tag !== tagToRemove)
         }));
     };
 
@@ -214,12 +139,39 @@ const ClientPreferencesModal = ({ isOpen, onClose, client, onPreferencesUpdated 
                 setHasExistingPreferences(true);
                 setPreferences(prefs);
 
-                // Map backend data to enhanced form structure
+                console.log('Loading preferences:', prefs); // Debug log
+                console.log('NamingScheme from backend:', prefs.NamingScheme); // Debug log
+                
+                const mappedNamingScheme = prefs.NamingScheme ? {
+                    components: (prefs.NamingScheme.Components || []).map(comp => ({
+                        componentType: comp.ComponentType,
+                        position: comp.Position,
+                        isRequired: comp.IsRequired,
+                        allowedValues: comp.AllowedValues || [],
+                        defaultValue: comp.DefaultValue || ''
+                    })),
+                    separator: prefs.NamingScheme.Separator || '-',
+                    caseFormat: prefs.NamingScheme.CaseFormat || 'lowercase'
+                } : {
+                    components: [],
+                    separator: '-',
+                    caseFormat: 'lowercase'
+                };
+                
+                console.log('Mapped naming scheme:', mappedNamingScheme); // Debug log
+
                 setFormData({
                     namingStyle: prefs.NamingStyle || 'mixed',
                     environmentIndicators: prefs.EnvironmentIndicators ? 'required' : 'optional',
                     namingElements: prefs.RequiredNamingElements || [],
                     customPatterns: prefs.AllowedNamingPatterns || [],
+                    
+                    // Use the mapped naming scheme
+                    namingScheme: mappedNamingScheme,
+                    acceptedCompanyNames: prefs.AcceptedCompanyNames || [],
+                    companyNameInput: '',
+                    serviceAbbreviations: prefs.ServiceAbbreviations || [],
+                    
                     taggingApproach: prefs.TaggingApproach || 'basic',
                     selectedTags: prefs.RequiredTags || [],
                     customTags: prefs.CustomTags || [],
@@ -250,23 +202,24 @@ const ClientPreferencesModal = ({ isOpen, onClose, client, onPreferencesUpdated 
         setError(null);
 
         try {
-            // Transform enhanced form data to backend format
             const backendData = {
-                // Backend expects PascalCase properties
                 AllowedNamingPatterns: formData.customPatterns.filter(p => p.trim()),
                 RequiredNamingElements: formData.namingElements.filter(e => e.trim()),
                 EnvironmentIndicators: formData.environmentIndicators === 'required',
                 RequiredTags: [...formData.selectedTags, ...formData.customTags],
                 EnforceTagCompliance: formData.enforceTagCompliance,
                 ComplianceFrameworks: formData.selectedCompliances,
-
-                // Add new structured preferences
                 NamingStyle: formData.namingStyle,
                 TaggingApproach: formData.taggingApproach,
                 CustomTags: formData.customTags,
                 ComplianceLevel: formData.complianceLevel,
                 EnvironmentSize: formData.environmentSize,
-                OrganizationMethod: formData.organizationMethod
+                OrganizationMethod: formData.organizationMethod,
+                NamingScheme: (formData.namingScheme?.components || []).length > 0 
+                    ? formData.namingScheme 
+                    : null,
+                AcceptedCompanyNames: formData.acceptedCompanyNames,
+                ServiceAbbreviations: formData.serviceAbbreviations
             };
 
             await apiClient.post(`/clientpreferences/client/${client.ClientId}`, backendData);
@@ -299,7 +252,6 @@ const ClientPreferencesModal = ({ isOpen, onClose, client, onPreferencesUpdated 
         try {
             await apiClient.delete(`/clientpreferences/client/${client.ClientId}`);
 
-            // Reset state
             setHasExistingPreferences(false);
             setPreferences(null);
             setFormData({
@@ -307,6 +259,14 @@ const ClientPreferencesModal = ({ isOpen, onClose, client, onPreferencesUpdated 
                 environmentIndicators: 'required',
                 namingElements: [],
                 customPatterns: [],
+                namingScheme: {
+                    components: [],
+                    separator: '-',
+                    caseFormat: 'lowercase'
+                },
+                acceptedCompanyNames: [],
+                companyNameInput: '',
+                serviceAbbreviations: [],
                 taggingApproach: 'basic',
                 selectedTags: [],
                 customTags: [],
@@ -450,25 +410,34 @@ const ClientPreferencesModal = ({ isOpen, onClose, client, onPreferencesUpdated 
                             <div className="flex space-x-1 bg-gray-700 rounded-lg p-1">
                                 <button
                                     onClick={() => setActiveTab('naming')}
-                                    className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'naming'
+                                    className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'naming'
                                             ? 'bg-yellow-600 text-black'
                                             : 'text-gray-300 hover:text-white hover:bg-gray-600'
                                         }`}
                                 >
-                                    Naming Strategy
+                                    Naming
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('abbreviations')}
+                                    className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'abbreviations'
+                                            ? 'bg-yellow-600 text-black'
+                                            : 'text-gray-300 hover:text-white hover:bg-gray-600'
+                                        }`}
+                                >
+                                    Abbreviations
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('tagging')}
-                                    className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'tagging'
+                                    className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'tagging'
                                             ? 'bg-yellow-600 text-black'
                                             : 'text-gray-300 hover:text-white hover:bg-gray-600'
                                         }`}
                                 >
-                                    Tagging Strategy
+                                    Tagging
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('compliance')}
-                                    className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'compliance'
+                                    className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'compliance'
                                             ? 'bg-yellow-600 text-black'
                                             : 'text-gray-300 hover:text-white hover:bg-gray-600'
                                         }`}
@@ -480,297 +449,36 @@ const ClientPreferencesModal = ({ isOpen, onClose, client, onPreferencesUpdated 
 
                         {/* Tab Content */}
                         <div className="p-6">
-                            {/* Naming Strategy Tab */}
                             {activeTab === 'naming' && (
-                                <div className="space-y-6">
-                                    {/* Naming Convention Approach */}
-                                    <div>
-                                        <h3 className="text-white font-medium mb-4">Naming Convention Approach</h3>
-                                        <div className="space-y-3">
-                                            {Object.entries(namingTemplates).map(([key, template]) => (
-                                                <label key={key} className="flex items-start space-x-3 p-4 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600">
-                                                    <input
-                                                        type="radio"
-                                                        name="namingStyle"
-                                                        value={key}
-                                                        checked={formData.namingStyle === key}
-                                                        onChange={(e) => handleRadioChange('namingStyle', e.target.value)}
-                                                        className="mt-1 text-yellow-600 focus:ring-yellow-600"
-                                                    />
-                                                    <div className="flex-1">
-                                                        <div className="text-white font-medium">{template.title}</div>
-                                                        <div className="text-gray-300 text-sm mt-1">{template.description}</div>
-                                                        <div className="text-gray-400 text-xs mt-2">
-                                                            <strong>Example:</strong> {template.example}
-                                                        </div>
-                                                    </div>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Environment Indicators */}
-                                    <div>
-                                        <h3 className="text-white font-medium mb-4">Environment Indicators</h3>
-                                        <div className="space-y-3">
-                                            {[
-                                                { value: 'required', label: 'Required', desc: 'All resources must indicate environment (prod, dev, test)' },
-                                                { value: 'recommended', label: 'Recommended', desc: 'Environment indicators preferred but not enforced' },
-                                                { value: 'optional', label: 'Optional', desc: 'Environment indicators used only where helpful' },
-                                                { value: 'none', label: 'Not Used', desc: 'No environment indicators in naming' }
-                                            ].map(option => (
-                                                <label key={option.value} className="flex items-start space-x-3 p-3 bg-gray-700 rounded cursor-pointer hover:bg-gray-600">
-                                                    <input
-                                                        type="radio"
-                                                        name="environmentIndicators"
-                                                        value={option.value}
-                                                        checked={formData.environmentIndicators === option.value}
-                                                        onChange={(e) => handleRadioChange('environmentIndicators', e.target.value)}
-                                                        className="mt-1 text-yellow-600 focus:ring-yellow-600"
-                                                    />
-                                                    <div>
-                                                        <div className="text-white font-medium">{option.label}</div>
-                                                        <div className="text-gray-300 text-sm">{option.desc}</div>
-                                                    </div>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Required Naming Elements */}
-                                    <div>
-                                        <h3 className="text-white font-medium mb-4">Required Naming Elements</h3>
-                                        <p className="text-gray-400 text-sm mb-4">
-                                            Select elements that must be present in resource names for easier identification and organization.
-                                        </p>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {[
-                                                { element: 'Company Code', example: 'acme, corp, abc' },
-                                                { element: 'Environment', example: 'prod, dev, test, stage' },
-                                                { element: 'Location', example: 'eastus, westus, central' },
-                                                { element: 'Application', example: 'web, api, db, crm' },
-                                                { element: 'Resource Type', example: 'vm, storage, vnet, lb' },
-                                                { element: 'Sequence Number', example: '01, 02, 001, 002' }
-                                            ].map(item => (
-                                                <label key={item.element} className="flex items-start space-x-3 p-3 bg-gray-700 rounded cursor-pointer hover:bg-gray-600">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={formData.namingElements.includes(item.element)}
-                                                        onChange={() => handleCheckboxChange('namingElements', item.element)}
-                                                        className="mt-1 text-yellow-600 focus:ring-yellow-600"
-                                                    />
-                                                    <div className="flex-1">
-                                                        <div className="text-gray-300 text-sm font-medium">{item.element}</div>
-                                                        <div className="text-gray-400 text-xs mt-1">
-                                                            Examples: {item.example}
-                                                        </div>
-                                                    </div>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
+                                <NamingStrategyTab 
+                                    formData={formData}
+                                    setFormData={setFormData}
+                                    handleRadioChange={handleRadioChange}
+                                />
                             )}
-
-                            {/* Tagging Strategy Tab */}
+                            
+                            {activeTab === 'abbreviations' && (
+                                <ServiceAbbreviationsTab 
+                                    formData={formData}
+                                    setFormData={setFormData}
+                                />
+                            )}
+                            
                             {activeTab === 'tagging' && (
-                                <div className="space-y-6">
-                                    {/* Tagging Approach */}
-                                    <div>
-                                        <h3 className="text-white font-medium mb-4">Tagging Strategy</h3>
-                                        <div className="space-y-3">
-                                            {Object.entries(taggingTemplates).map(([key, template]) => (
-                                                <label key={key} className="flex items-start space-x-3 p-4 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600">
-                                                    <input
-                                                        type="radio"
-                                                        name="taggingApproach"
-                                                        value={key}
-                                                        checked={formData.taggingApproach === key}
-                                                        onChange={(e) => handleRadioChange('taggingApproach', e.target.value)}
-                                                        className="mt-1 text-yellow-600 focus:ring-yellow-600"
-                                                    />
-                                                    <div className="flex-1">
-                                                        <div className="text-white font-medium">{template.title}</div>
-                                                        <div className="text-gray-300 text-sm mt-1">{template.description}</div>
-                                                        {template.tags.length > 0 && (
-                                                            <div className="text-gray-400 text-xs mt-2">
-                                                                <strong>Includes:</strong> {template.tags.join(', ')}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Tag Selection */}
-                                    <div>
-                                        <h3 className="text-white font-medium mb-4">Required Tags</h3>
-                                        <p className="text-gray-400 text-sm mb-4">
-                                            Select the tags that must be present on all resources for proper governance and cost tracking.
-                                        </p>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            {availableTags.map(tag => (
-                                                <label key={tag.name} className="flex items-start space-x-3 p-3 bg-gray-700 rounded cursor-pointer hover:bg-gray-600">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={formData.selectedTags.includes(tag.name)}
-                                                        onChange={() => handleCheckboxChange('selectedTags', tag.name)}
-                                                        className="mt-1 text-yellow-600 focus:ring-yellow-600"
-                                                    />
-                                                    <div className="flex-1">
-                                                        <div className="text-gray-300 text-sm font-medium">{tag.name}</div>
-                                                        <div className="text-gray-400 text-xs mt-1">{tag.description}</div>
-                                                    </div>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Custom Tags */}
-                                    <div>
-                                        <h3 className="text-white font-medium mb-4">Custom Tags</h3>
-                                        <p className="text-gray-400 text-sm mb-4">
-                                            Add organization-specific tags that aren't covered by the standard options.
-                                        </p>
-
-                                        {/* Custom Tag Input */}
-                                        <div className="mb-4">
-                                            <div className="flex space-x-3">
-                                                <input
-                                                    type="text"
-                                                    value={formData.customTagInput}
-                                                    onChange={handleCustomTagInputChange}
-                                                    onKeyPress={handleCustomTagKeyPress}
-                                                    placeholder="Enter custom tag name..."
-                                                    className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-600"
-                                                />
-                                                <button
-                                                    onClick={handleAddCustomTag}
-                                                    disabled={!formData.customTagInput.trim()}
-                                                    className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-black rounded text-sm font-medium"
-                                                >
-                                                    Add Tag
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* Display Custom Tags */}
-                                        {formData.customTags.length > 0 && (
-                                            <div className="mb-4">
-                                                <div className="flex flex-wrap gap-2">
-                                                    {formData.customTags.map(tag => (
-                                                        <div key={tag} className="flex items-center space-x-2 bg-yellow-600 text-black px-3 py-1 rounded-full text-sm">
-                                                            <span>{tag}</span>
-                                                            <button
-                                                                onClick={() => handleRemoveCustomTag(tag)}
-                                                                className="text-black hover:text-gray-700"
-                                                            >
-                                                                <X size={14} />
-                                                            </button>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Tag Compliance */}
-                                    <div>
-                                        <h3 className="text-white font-medium mb-4">Tag Compliance</h3>
-                                        <label className="flex items-center space-x-3">
-                                            <input
-                                                type="checkbox"
-                                                checked={formData.enforceTagCompliance}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, enforceTagCompliance: e.target.checked }))}
-                                                className="text-yellow-600 focus:ring-yellow-600"
-                                            />
-                                            <div>
-                                                <span className="text-white font-medium">Enforce Tag Compliance</span>
-                                                <p className="text-gray-400 text-sm">Flag resources as non-compliant if missing required tags</p>
-                                            </div>
-                                        </label>
-                                    </div>
-                                </div>
+                                <TaggingStrategyTab 
+                                    formData={formData}
+                                    setFormData={setFormData}
+                                    handleRadioChange={handleRadioChange}
+                                    handleCheckboxChange={handleCheckboxChange}
+                                />
                             )}
-
-                            {/* Compliance Tab */}
+                            
                             {activeTab === 'compliance' && (
-                                <div className="space-y-6">
-                                    {/* No Specific Requirements Option */}
-                                    <div>
-                                        <label className="flex items-center space-x-3 p-4 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600">
-                                            <input
-                                                type="checkbox"
-                                                checked={formData.selectedCompliances.length === 0}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setFormData(prev => ({ ...prev, selectedCompliances: [] }));
-                                                    }
-                                                }}
-                                                className="text-yellow-600 focus:ring-yellow-600"
-                                            />
-                                            <div>
-                                                <div className="text-white font-medium">No Specific Requirements</div>
-                                                <div className="text-gray-300 text-sm">Standard governance only - no compliance frameworks required</div>
-                                            </div>
-                                        </label>
-                                    </div>
-
-                                    {/* Compliance Frameworks - Always Visible */}
-                                    <div>
-                                        <h3 className="text-white font-medium mb-4">Applicable Frameworks</h3>
-                                        <p className="text-gray-400 text-sm mb-4">
-                                            Select the compliance frameworks that apply to this client's environment.
-                                        </p>
-
-                                        {/* Quick Selection - Common Frameworks */}
-                                        <div className="mb-6">
-                                            <h4 className="text-gray-300 font-medium mb-3">Common Frameworks</h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                                {[
-                                                    { name: "PCI DSS", description: "Payment Card Industry Data Security Standard" },
-                                                    { name: "SOC 2", description: "Service Organization Control 2" },
-                                                    { name: "CIS Controls", description: "Center for Internet Security Controls" }
-                                                ].map(compliance => (
-                                                    <label key={compliance.name} className="flex items-start space-x-3 p-4 bg-blue-900/20 border border-blue-800 rounded-lg cursor-pointer hover:bg-blue-900/30">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={formData.selectedCompliances.includes(compliance.name)}
-                                                            onChange={() => handleCheckboxChange('selectedCompliances', compliance.name)}
-                                                            className="mt-1 text-yellow-600 focus:ring-yellow-600"
-                                                        />
-                                                        <div className="flex-1">
-                                                            <div className="text-blue-300 text-sm font-medium">{compliance.name}</div>
-                                                            <div className="text-blue-400 text-xs mt-1">{compliance.description}</div>
-                                                        </div>
-                                                    </label>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        {/* All Available Frameworks */}
-                                        <div>
-                                            <h4 className="text-gray-300 font-medium mb-3">All Available Frameworks</h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                {availableCompliances.map(compliance => (
-                                                    <label key={compliance.name} className="flex items-start space-x-3 p-3 bg-gray-700 rounded cursor-pointer hover:bg-gray-600">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={formData.selectedCompliances.includes(compliance.name)}
-                                                            onChange={() => handleCheckboxChange('selectedCompliances', compliance.name)}
-                                                            className="mt-1 text-yellow-600 focus:ring-yellow-600"
-                                                        />
-                                                        <div className="flex-1">
-                                                            <div className="text-gray-300 text-sm font-medium">{compliance.name}</div>
-                                                            <div className="text-gray-400 text-xs mt-1">{compliance.description}</div>
-                                                        </div>
-                                                    </label>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                <ComplianceTab 
+                                    formData={formData}
+                                    setFormData={setFormData}
+                                    handleCheckboxChange={handleCheckboxChange}
+                                />
                             )}
                         </div>
 
@@ -860,8 +568,8 @@ const ClientPreferencesModal = ({ isOpen, onClose, client, onPreferencesUpdated 
                     </div>
                 </div>
             )}
-        </div>
-        , document.body
+        </div>,
+        document.body
     );
 };
 

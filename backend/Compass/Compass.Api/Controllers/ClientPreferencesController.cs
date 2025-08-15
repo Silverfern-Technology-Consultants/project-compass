@@ -440,6 +440,11 @@ public class ClientPreferencesController : ControllerBase
                 ? JsonSerializer.Serialize(request.AcceptedCompanyNames)
                 : null,
 
+            // NEW: Service Abbreviations
+            ServiceAbbreviations = request.ServiceAbbreviations?.Any() == true
+                ? JsonSerializer.Serialize(request.ServiceAbbreviations)
+                : null,
+
             // Enhanced fields
             NamingStyle = request.NamingStyle,
             EnvironmentSize = request.EnvironmentSize,
@@ -497,6 +502,11 @@ public class ClientPreferencesController : ControllerBase
         // NEW: Accepted company names
         existing.AcceptedCompanyNames = request.AcceptedCompanyNames?.Any() == true
             ? JsonSerializer.Serialize(request.AcceptedCompanyNames)
+            : null;
+
+        // NEW: Service Abbreviations
+        existing.ServiceAbbreviations = request.ServiceAbbreviations?.Any() == true
+            ? JsonSerializer.Serialize(request.ServiceAbbreviations)
             : null;
 
         // Enhanced fields
@@ -562,6 +572,11 @@ public class ClientPreferencesController : ControllerBase
                 ? JsonSerializer.Deserialize<List<string>>(preferences.AcceptedCompanyNames) ?? new List<string>()
                 : new List<string>(),
 
+            // NEW: Service Abbreviations
+            ServiceAbbreviations = !string.IsNullOrEmpty(preferences.ServiceAbbreviations)
+                ? JsonSerializer.Deserialize<List<CoreModels.ServiceAbbreviationDto>>(preferences.ServiceAbbreviations) ?? new List<CoreModels.ServiceAbbreviationDto>()
+                : new List<CoreModels.ServiceAbbreviationDto>(),
+
             // Enhanced fields
             NamingStyle = preferences.NamingStyle,
             EnvironmentSize = preferences.EnvironmentSize,
@@ -611,6 +626,9 @@ public class CreateClientPreferencesRequest
     // NEW: Accepted company names for validation
     public List<string> AcceptedCompanyNames { get; set; } = new();
 
+    // NEW: Service Abbreviations (Phase 1 - Service Abbreviations Feature)  
+    public List<CoreModels.ServiceAbbreviationDto> ServiceAbbreviations { get; set; } = new();
+
     // Naming scheme configuration
     public NamingSchemeConfiguration? NamingScheme { get; set; }
     public List<ComponentDefinition> ComponentDefinitions { get; set; } = new();
@@ -648,6 +666,9 @@ public class ClientPreferencesResponse
 
     // NEW: Accepted company names for validation
     public List<string> AcceptedCompanyNames { get; set; } = new();
+
+    // NEW: Service Abbreviations (Phase 1 - Service Abbreviations Feature)
+    public List<CoreModels.ServiceAbbreviationDto> ServiceAbbreviations { get; set; } = new();
 
     // Enhanced fields
     public string? NamingStyle { get; set; }

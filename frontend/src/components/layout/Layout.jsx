@@ -20,6 +20,9 @@ const Layout = ({ children }) => {
         if (pathname.includes('/company/team')) return 'team';
         if (pathname.includes('/company/settings')) return 'company-settings';
 
+        // Handle tools routes
+        if (pathname.includes('/tools/')) return 'tools';
+
         // Handle regular routes
         const page = pathname.split('/').pop();
         return page || 'dashboard';

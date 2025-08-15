@@ -1,3 +1,60 @@
+// Cost Analysis API - NEW for Sprint 4
+export const costAnalysisApi = {
+    analyzeCostTrends: async (clientId, requestData) => {
+        try {
+            console.log('[costAnalysisApi] analyzeCostTrends request:', { clientId, requestData });
+            
+            // Transform to match backend CostAnalysisRequest model (PascalCase)
+            const backendRequest = {
+                SubscriptionIds: requestData.subscriptionIds || [],
+                TimeRange: requestData.timeRange || 0, // LastMonthToThisMonth
+                Aggregation: requestData.aggregation || 1, // ResourceType
+                SortBy: requestData.sortBy || 0, // Name
+                SortDirection: requestData.sortDirection || 0 // Ascending
+            };
+            
+            const response = await apiClient.post(`/CostAnalysis/client/${clientId}/analyze`, backendRequest);
+            console.log('[costAnalysisApi] analyzeCostTrends response:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error('[costAnalysisApi] analyzeCostTrends error:', error);
+            throw error;
+        }
+    },
+    
+    exportCostAnalysisCsv: async (clientId, requestData) => {
+        try {
+            console.log('[costAnalysisApi] exportCostAnalysisCsv for client:', clientId);
+            
+            const backendRequest = {
+                SubscriptionIds: requestData.subscriptionIds || [],
+                TimeRange: requestData.timeRange || 0,
+                Aggregation: requestData.aggregation || 1,
+                SortBy: requestData.sortBy || 0,
+                SortDirection: requestData.sortDirection || 0
+            };
+            
+            const response = await fetch(`${API_BASE_URL}/CostAnalysis/client/${clientId}/export/csv`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('compass_token')}`,
+                },
+                body: JSON.stringify(backendRequest)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Export failed: ${response.statusText}`);
+            }
+            
+            return response; // Return the response for blob handling
+        } catch (error) {
+            console.error('[costAnalysisApi] exportCostAnalysisCsv error:', error);
+            throw error;
+        }
+    }
+};
+
 ﻿// apiService.js - Enhanced with MFA support, Team Management, and OAuth Integration
 import axios from 'axios';
 
@@ -770,6 +827,7 @@ export default {
     assessmentsApi,
     azureEnvironmentsApi,
     oauthApi,  // NEW: OAuth API
+    costAnalysisApi, // NEW: Cost Analysis API
     clientApi,
     testApi,
     apiUtils,

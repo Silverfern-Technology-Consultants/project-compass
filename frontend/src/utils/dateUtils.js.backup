@@ -1,0 +1,91 @@
+/**
+ * Date utility functions for timezone-aware formatting
+ */
+
+// Default timezone if user hasn't set one
+const DEFAULT_TIMEZONE = 'America/New_York';
+
+/**
+ * Formats a date string according to user's timezone preference
+ * @param {string} dateString - ISO date string from backend
+ * @param {string} timezone - User's timezone preference
+ * @param {object} options - Formatting options
+ * @returns {string} Formatted date string
+ */
+export const formatDateWithTimezone = (dateString, timezone = DEFAULT_TIMEZONE, options = {}) => {
+    if (!dateString) return 'Unknown';
+    
+    try {
+        const date = new Date(dateString);
+        
+        // Default formatting options
+        const formatOptions = {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZoneName: 'short',
+            timeZone: timezone,
+            ...options
+        };
+        
+        return date.toLocaleString('en-US', formatOptions);
+    } catch (error) {
+        console.error('Error formatting date:', error);
+        return dateString; // Fallback to original string
+    }
+};
+
+/**
+ * Formats a date for display in assessment details
+ * @param {string} dateString - ISO date string from backend
+ * @param {object} user - User object with timezone preference
+ * @returns {string} Formatted date string
+ */
+export const formatAssessmentDate = (dateString, user) => {
+    const timezone = user?.Timezone || user?.timezone || DEFAULT_TIMEZONE;
+    return formatDateWithTimezone(dateString, timezone, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZoneName: 'short'
+    });
+};
+
+/**
+ * Gets relative time (e.g., "2 hours ago") with timezone awareness
+ * @param {string} dateString - ISO date string from backend
+ * @param {object} user - User object with timezone preference
+ * @returns {string} Relative time string
+ */
+export const getRelativeTime = (dateString, user) => {
+    if (!dateString) return 'Unknown time';
+    
+    try {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now - date;
+        
+        if (diffMs < 60000) { // Less than 1 minute
+            return 'Just now';
+        } else if (diffMs < 3600000) { // Less than 1 hour
+            const minutes = Math.floor(diffMs / 60000);
+            return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+        } else if (diffMs < 86400000) { // Less than 1 day
+            const hours = Math.floor(diffMs / 3600000);
+            return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+        } else if (diffMs < 604800000) { // Less than 1 week
+            const days = Math.floor(diffMs / 86400000);
+            return `${days} day${days !== 1 ? 's' : ''} ago`;
+        } else {
+            // For older dates, show the formatted date
+            return formatAssessmentDate(dateString, user);
+        }
+    } catch (error) {
+        console.error('Error calculating relative time:', error);
+        return 'Unknown time';
+    }
+};

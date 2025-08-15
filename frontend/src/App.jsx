@@ -25,6 +25,10 @@ import ProfilePage from './components/pages/ProfilePage';
 // New Company pages
 import MyClientsPage from './components/pages/MyClientsPage';
 import CompanySettingsPage from './components/pages/CompanySettingsPage';
+import CostAnalysisPage from './components/pages/CostAnalysisPage';
+
+// Tools components
+import PermissionsCheckerTool from './components/PermissionsCheckerTool';
 
 // MFA Components
 import MfaVerificationModal from './components/modals/MfaVerificationModal';
@@ -38,6 +42,7 @@ const AuthenticatedRoutes = () => {
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/assessments" element={<AssessmentsPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
+                    <Route path="/cost-analysis" element={<CostAnalysisPage />} />
                     <Route path="/compliance" element={<CompliancePage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/profile" element={<ProfilePage />} />
@@ -46,6 +51,9 @@ const AuthenticatedRoutes = () => {
                     <Route path="/company/clients" element={<MyClientsPage />} />
                     <Route path="/company/team" element={<TeamManagementPage />} />
                     <Route path="/company/settings" element={<CompanySettingsPage />} />
+
+                    {/* Tools routes */}
+                    <Route path="/tools/permissions" element={<PermissionsCheckerTool />} />
 
                     {/* Legacy team route redirect */}
                     <Route path="/team" element={<Navigate to="/company/team" replace />} />

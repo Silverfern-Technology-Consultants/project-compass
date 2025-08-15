@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, User, Bell, Shield, Eye, Accessibility, Monitor, Clock, Globe, Mail, Smartphone, Laptop, History, Key } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { TIMEZONES } from '../../contexts/TimezoneContext';
 import MfaSettings from '../ui/MfaSettings';
 import { apiClient } from '../../services/apiService';
 
@@ -176,17 +177,8 @@ const SettingsPage = ({ defaultTab = 'profile' }) => {
         { id: 'accessibility', label: 'Accessibility', icon: Accessibility }
     ];
 
-    const timezones = [
-        { value: 'America/New_York', label: 'Eastern Time (UTC-5/-4)' },
-        { value: 'America/Chicago', label: 'Central Time (UTC-6/-5)' },
-        { value: 'America/Denver', label: 'Mountain Time (UTC-7/-6)' },
-        { value: 'America/Los_Angeles', label: 'Pacific Time (UTC-8/-7)' },
-        { value: 'UTC', label: 'UTC (GMT+0)' },
-        { value: 'Europe/London', label: 'London Time (UTC+0/+1)' },
-        { value: 'Europe/Berlin', label: 'Central European Time (UTC+1/+2)' },
-        { value: 'Asia/Tokyo', label: 'Japan Time (UTC+9)' },
-        { value: 'Australia/Sydney', label: 'Sydney Time (UTC+10/+11)' }
-    ];
+    // Use TIMEZONES from TimezoneContext instead of local array
+    const timezones = TIMEZONES;
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -194,9 +186,34 @@ const SettingsPage = ({ defaultTab = 'profile' }) => {
     };
 
     const handleSave = async () => {
-        // TODO: Implement profile update API call
-        console.log('Saving profile:', formData);
-        setIsEditing(false);
+        try {
+            // Prepare update request matching AccountController.UpdateProfileRequest
+            const updateRequest = {
+                companyName: formData.firstName && formData.lastName ? null : user?.CompanyName, // Don't change company name
+                contactName: `${formData.firstName} ${formData.lastName}`.trim(),
+                contactEmail: formData.email,
+                timeZone: formData.timezone
+            };
+
+            console.log('Updating profile with:', updateRequest);
+            
+            // Call the backend API
+            const response = await apiClient.put('/Account/profile', updateRequest);
+            
+            console.log('Profile update response:', response.data);
+            
+            // Update the user context with new data
+            // The user object should be refreshed on next page load or we could trigger a refresh
+            
+            setIsEditing(false);
+            
+            // Show success message
+            alert('Profile updated successfully! Your timezone preference has been saved.');
+            
+        } catch (error) {
+            console.error('Failed to update profile:', error);
+            alert('Failed to update profile. Please try again.');
+        }
     };
 
     const handleCancel = () => {
@@ -452,7 +469,7 @@ const SettingsPage = ({ defaultTab = 'profile' }) => {
                                             {session.DeviceInfo || session.deviceInfo || `${session.Browser || session.browser || 'Unknown'} on ${session.OperatingSystem || session.operatingSystem || 'Unknown'}`}
                                         </p>
                                         <p className="text-sm text-gray-400">
-                                            {session.Location || session.location || session.LocationDisplay || session.locationDisplay || 'Unknown Location'} • {session.TimeAgo || session.timeAgo || getTimeAgo(session.LoginTime || session.loginTime)}
+                                            {session.Location || session.location || session.LocationDisplay || session.locationDisplay || 'Unknown Location'} ï¿½ {session.TimeAgo || session.timeAgo || getTimeAgo(session.LoginTime || session.loginTime)}
                                         </p>
                                         <p className="text-xs text-gray-500">IP: {session.IpAddress || session.ipAddress || 'Unknown'}</p>
                                     </div>

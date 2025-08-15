@@ -76,6 +76,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOAuthService, OAuthService>();
         services.AddScoped<IMicrosoftGraphService, MicrosoftGraphService>();
 
+        // Cost Analysis service
+        services.AddScoped<ICostAnalysisService, CostAnalysisService>();
+        services.AddHttpClient<CostAnalysisService>();
+
+        // NEW: Permissions service
+        services.AddScoped<IPermissionsService, PermissionsService>();
+
         // Other services
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IClientService, ClientService>();

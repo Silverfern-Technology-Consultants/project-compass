@@ -198,4 +198,70 @@ namespace Compass.Core.Models
             };
         }
     }
+
+    // NEW: Cost Management permission models
+    public class CostManagementPermissionStatus
+    {
+        public bool HasCostAccess { get; set; }
+        public bool HasResourceAccess { get; set; }
+        public string SubscriptionId { get; set; } = string.Empty;
+        public List<string> AvailableApis { get; set; } = new();
+        public List<string> MissingPermissions { get; set; } = new();
+        public string StatusMessage { get; set; } = string.Empty;
+        public DateTime TestedAt { get; set; } = DateTime.UtcNow;
+    }
+
+    public class CostManagementSetupInstructions
+    {
+        public string ServicePrincipalId { get; set; } = string.Empty;
+        public string SubscriptionId { get; set; } = string.Empty;
+        public string AzureCliCommand { get; set; } = string.Empty;
+        public string PowerShellCommand { get; set; } = string.Empty;
+        public List<string> ManualSteps { get; set; } = new();
+        public string DocumentationUrl { get; set; } = string.Empty;
+        public bool AutoAssignmentAvailable { get; set; }
+        public string SetupStatus { get; set; } = string.Empty;
+    }
+
+    public class AzurePermissionMatrix
+    {
+        public string SubscriptionId { get; set; } = string.Empty;
+        public Dictionary<string, PermissionTestResult> ApiPermissions { get; set; } = new();
+        public List<string> AvailableRoles { get; set; } = new();
+        public List<string> MissingRoles { get; set; } = new();
+        public DateTime TestedAt { get; set; } = DateTime.UtcNow;
+        public string OverallStatus { get; set; } = string.Empty;
+    }
+
+    public class PermissionTestResult
+    {
+        public string ApiEndpoint { get; set; } = string.Empty;
+        public bool HasAccess { get; set; }
+        public int ResponseCode { get; set; }
+        public string ResponseMessage { get; set; } = string.Empty;
+        public string RequiredRole { get; set; } = string.Empty;
+        public string Category { get; set; } = string.Empty; // "Cost", "Resource", "Security", etc.
+    }
+
+    // NEW: Environment-specific permission tracking
+    public class EnvironmentPermissionStatus
+    {
+        public Guid AzureEnvironmentId { get; set; }
+        public string EnvironmentName { get; set; } = string.Empty;
+        public bool HasCostManagementAccess { get; set; }
+        public string CostManagementSetupStatus { get; set; } = string.Empty; // "NotTested", "SetupRequired", "Ready", "Error"
+        public DateTime? LastChecked { get; set; }
+        public string? LastError { get; set; }
+        public List<string> SubscriptionIds { get; set; } = new();
+        public List<string> AvailablePermissions { get; set; } = new();
+        public List<string> MissingPermissions { get; set; } = new();
+    }
+
+    public class ClientPermissionMatrix
+    {
+        public Guid ClientId { get; set; }
+        public string OverallStatus { get; set; } = string.Empty;
+        public List<EnvironmentPermissionStatus> EnvironmentStatuses { get; set; } = new();
+        public DateTime CheckedAt { get; set; } = DateTime.UtcNow;
+    }
 }

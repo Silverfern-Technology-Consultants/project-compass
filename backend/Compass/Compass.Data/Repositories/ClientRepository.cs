@@ -191,4 +191,41 @@ public class ClientRepository : IClientRepository
 
         return !await query.AnyAsync();
     }
+
+    public async Task<IEnumerable<AzureEnvironment>> GetClientAzureEnvironmentsAsync(Guid clientId, Guid organizationId)
+    {
+        // First verify the client belongs to the organization
+        var clientExists = await ExistsAsync(clientId, organizationId);
+        if (!clientExists)
+        {
+            return new List<AzureEnvironment>();
+        }
+
+        return await _context.AzureEnvironments
+            .Where(env => env.ClientId == clientId && env.IsActive)
+            .ToListAsync();
+    }
+
+    public async Task<Client?> GetClientByIdAsync(Guid clientId, Guid organizationId)
+    {
+        return await GetByIdAndOrganizationAsync(clientId, organizationId);
+    }
+
+    // NEW: Azure Environment management methods
+    public async Task<AzureEnvironment?> GetAzureEnvironmentByIdAsync(Guid azureEnvironmentId, Guid organizationId)
+    {
+        return await _context.AzureEnvironments
+            .Include(env => env.Client)
+            .Where(env => env.AzureEnvironmentId == azureEnvironmentId && 
+                         env.Client != null && 
+                         env.Client.OrganizationId == organizationId)
+            .FirstOrDefaultAsync();
+    }
+
+    public async Task<AzureEnvironment> UpdateAzureEnvironmentAsync(AzureEnvironment azureEnvironment)
+    {
+        _context.AzureEnvironments.Update(azureEnvironment);
+        await _context.SaveChangesAsync();
+        return azureEnvironment;
+    }
 }

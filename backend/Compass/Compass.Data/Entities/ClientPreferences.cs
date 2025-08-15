@@ -27,6 +27,9 @@ public class ClientPreferences
     // NEW: Accepted company names for validation
     public string? AcceptedCompanyNames { get; set; } // JSON array - ["abc", "xyz", "company"] - Valid company identifiers
 
+    // NEW: Service Abbreviations (Phase 1 - Service Abbreviations Feature)
+    public string? ServiceAbbreviations { get; set; } // JSON array of ServiceAbbreviationDto
+
     // Enhanced naming strategy fields
     public string? NamingStyle { get; set; } // 'standardized', 'mixed', 'legacy'
     public string? EnvironmentSize { get; set; } // 'small', 'medium', 'large', 'enterprise'

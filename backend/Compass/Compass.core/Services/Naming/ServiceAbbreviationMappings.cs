@@ -332,18 +332,39 @@ public static class ServiceAbbreviationMappings
     }
 
     /// <summary>
-    /// Extract service name from a resource name, considering common abbreviations
+    /// Extract service name from a resource name, considering common abbreviations and client-specific mappings
     /// </summary>
     /// <param name="resourceName">Resource name to analyze</param>
     /// <param name="acceptedCompanyNames">List of accepted company names to exclude</param>
+    /// <param name="clientServiceAbbreviations">Client-specific service abbreviations</param>
     /// <returns>Detected service name or null if not found</returns>
-    public static string? ExtractServiceFromResourceName(string resourceName, List<string>? acceptedCompanyNames = null)
+    public static string? ExtractServiceFromResourceName(
+        string resourceName, 
+        List<string>? acceptedCompanyNames = null,
+        List<object>? clientServiceAbbreviations = null)
     {
         if (string.IsNullOrWhiteSpace(resourceName))
             return null;
 
         var parts = resourceName.Split(new[] { '-', '_', '.' }, StringSplitOptions.RemoveEmptyEntries);
         acceptedCompanyNames ??= new List<string>();
+
+        // Convert client abbreviations to dictionary for faster lookup
+        var clientAbbrevDict = new Dictionary<string, string>(StringComparer.Ordinal); // Case-sensitive as per requirements
+        if (clientServiceAbbreviations != null)
+        {
+            foreach (var abbr in clientServiceAbbreviations)
+            {
+                // Handle both ServiceAbbreviationDto objects and dynamic objects
+                var abbreviation = GetPropertyValue(abbr, "Abbreviation")?.ToString();
+                var fullName = GetPropertyValue(abbr, "FullName")?.ToString();
+                
+                if (!string.IsNullOrEmpty(abbreviation) && !string.IsNullOrEmpty(fullName))
+                {
+                    clientAbbrevDict[abbreviation] = fullName;
+                }
+            }
+        }
 
         // Common environments to exclude
         var commonEnvironments = new[] { "dev", "test", "staging", "stage", "prod", "production", "qa", "uat", "shared" };
@@ -369,13 +390,27 @@ public static class ServiceAbbreviationMappings
                 System.Text.RegularExpressions.Regex.IsMatch(partLower, @"^[a-z]+\d+$"))
                 continue;
 
-            // Check if it's a known service abbreviation
+            // PRIORITY 1: Check client-specific abbreviations FIRST (case-sensitive)
+            if (clientAbbrevDict.TryGetValue(part, out var clientMapping))
+            {
+                return clientMapping;
+            }
+
+            // PRIORITY 2: Check case-insensitive client abbreviations as fallback
+            var caseInsensitiveMatch = clientAbbrevDict.FirstOrDefault(kvp => 
+                kvp.Key.Equals(part, StringComparison.OrdinalIgnoreCase));
+            if (!caseInsensitiveMatch.Equals(default(KeyValuePair<string, string>)))
+            {
+                return caseInsensitiveMatch.Value;
+            }
+
+            // PRIORITY 3: Check if it's a known service abbreviation
             if (IsKnownServiceAbbreviation(partLower))
             {
                 return GetFullServiceName(partLower);
             }
 
-            // If it's longer than 2 characters and not excluded, might be a service
+            // PRIORITY 4: If it's longer than 2 characters and not excluded, might be a service
             if (partLower.Length > 2)
             {
                 return partLower;
@@ -493,5 +528,29 @@ public static class ServiceAbbreviationMappings
         }
 
         return suggestions.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>
+    /// Helper method to safely get property values from objects (handles both strongly typed and dynamic objects)
+    /// </summary>
+    private static object? GetPropertyValue(object obj, string propertyName)
+    {
+        if (obj == null) return null;
+
+        var type = obj.GetType();
+        var property = type.GetProperty(propertyName);
+        
+        if (property != null)
+        {
+            return property.GetValue(obj);
+        }
+
+        // Try to handle dynamic objects or dictionaries
+        if (obj is IDictionary<string, object> dict)
+        {
+            return dict.TryGetValue(propertyName, out var value) ? value : null;
+        }
+
+        return null;
     }
 }

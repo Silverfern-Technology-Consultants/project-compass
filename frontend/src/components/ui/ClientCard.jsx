@@ -341,11 +341,11 @@ const ClientCard = ({
                                                 </button>
 
                                                 <button
-                                                    onClick={() => { onManageSubscriptions?.(client); setShowDropdown(false); }}
-                                                    className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-3"
+                                                onClick={() => { onManageSubscriptions?.(client); setShowDropdown(false); }}
+                                                className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex items-center space-x-3"
                                                 >
-                                                    <Cloud size={16} />
-                                                    <span>Manage Subscriptions</span>
+                                                <Cloud size={16} />
+                                                <span>Manage Subscriptions</span>
                                                 </button>
 
                                                 <div className="border-t border-gray-600 my-1"></div>
